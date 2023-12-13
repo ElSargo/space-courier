@@ -16,7 +16,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
         linker_pkgs = with pkgs; [mold clang];
         
-        dev_rust_toolchain = fenix.packages.${system}.complete.withComponents [
+        fast_rust_toolchain = fenix.packages.${system}.complete.withComponents [
           "rustc"
           "cargo"
           "clippy"
@@ -24,11 +24,27 @@
           "rust-src"
           "rust-std"
           "rustc-codegen-cranelift-preview"
+          "rust-analyzer"
         ];
+        rust_toolchain = fenix.packages.${system}.stable.withComponents [
+          "rustc"
+          "cargo"
+          "clippy"
+          "rustfmt"
+          "rust-src"
+          "rust-std"
+          "rust-analyzer"
+        ];
+        fast_run_command = pkgs.writeShellApplication {
+          name = "frun";
+          text = ''
+             RUSTFLAGS="-Z threads=10 -C target-cpu=native -Zcodegen-backend=cranelift" cargo run \$@
+          '';
+        };
         run_command = pkgs.writeShellApplication {
           name = "run";
           text = ''
-             RUSTFLAGS="-Z threads=10 -C target-cpu=native -Zcodegen-backend=cranelift" cargo run \$@
+             cargo run \$@
           '';
         };
       in with pkgs; {
@@ -39,9 +55,9 @@
             [ pkg-config cmake pkg-config freetype expat fontconfig mold ];
 
           buildInputs = [
-            
+            sccache           
             run_command
-            dev_rust_toolchain
+            rust_toolchain
             wgsl.packages.${system}.default
             lldb_15
             udev
