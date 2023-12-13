@@ -2,17 +2,20 @@ use crate::model::Vertex;
 mod camera;
 mod camera_controller;
 mod model;
+mod planets;
 mod resources;
 mod texture;
 mod transform;
 use crate::camera::Camera;
 use crate::camera_controller::CameraController;
 use camera::CameraUniform;
-use glam::{vec3, Mat3, Mat4, Quat, Vec3};
+use glam::{Mat3, Mat4, Quat, Vec3};
 use model::Model;
+use planets::{Planet, Planets};
+use rand::prelude::*;
 use std::mem::size_of;
 use texture::Texture;
-use transform::Transform;
+use transform::{AsTransform, Transform, TransformView};
 use wgpu::{util::DeviceExt, Color};
 use winit::{
     event::*,
@@ -94,7 +97,7 @@ struct State {
     render_pipeline: wgpu::RenderPipeline,
     my_render_pipeline: wgpu::RenderPipeline,
 
-    models: Model,
+    planet_model: Model,
     current_model: usize,
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
@@ -102,10 +105,13 @@ struct State {
     camera_controller: CameraController,
     camera_uniform: CameraUniform,
 
-    model_transforms: Vec<Transform>,
-    // model_transforms_bind_group: wgpu::BindGroup,
-    transform_instance_buffer: wgpu::Buffer,
-    // model_transforms_uniform: ModelTransformUniform,
+    planets: Planets,
+    planet_instance_buffer: wgpu::Buffer,
+
+    ship_transforms: Vec<Transform>,
+    ship_instance_buffer: wgpu::Buffer,
+    ship_model: Model,
+
     init_time: Instant,
     timer: Instant,
     delta_time: f32,
@@ -179,22 +185,39 @@ impl State {
             view_formats: vec![],
         };
         surface.configure(&device, &config);
-
-        let transforms = (0..5)
-            .flat_map(|x| {
-                (0..5).map(move |y| Transform {
-                    scale: Vec3::ONE,
-                    translation: vec3(x as f32 * 3.0, 0.0, y as f32 * 3.0),
-                    rotation: Quat::default(),
-                })
+        let mut rng = thread_rng();
+        let planets = (0..1000)
+            .map(|x| {
+                let distance = rng.gen_range(10.0..50.0);
+                let mut t = Planet {
+                    rotation: Quat::from_euler(
+                        glam::EulerRot::XYZ,
+                        rng.gen_range(0.0..std::f32::consts::TAU),
+                        rng.gen_range(0.0..std::f32::consts::TAU),
+                        rng.gen_range(0.0..std::f32::consts::TAU),
+                    ),
+                    ..Default::default()
+                };
+                t.translation = t.as_transform().forward() * distance;
+                t
             })
             .collect::<Vec<_>>();
 
-        let transform_buffer_data = instance_buffer_bytes(&transforms);
-        let transform_instance_buffer =
+        let planet_transform_buffer_data = instance_buffer_bytes(&planets);
+        let planet_transform_instance_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&transform_buffer_data),
+                contents: bytemuck::cast_slice(&planet_transform_buffer_data),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            });
+
+        let ship_transforms = vec![Transform::default()];
+
+        let ship_transform_buffer_data = instance_buffer_bytes(&ship_transforms);
+        let ship_transform_instance_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Ship instance Buffer"),
+                contents: bytemuck::cast_slice(&ship_transform_buffer_data),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
 
@@ -254,8 +277,13 @@ impl State {
             label: Some("diffuse_bind_group"),
         });
 
-        let obj_model =
+        let planet_model =
             resources::load_model("wallmart.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
+
+        let ship_model =
+            resources::load_model("ship.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
 
@@ -412,7 +440,7 @@ impl State {
             size,
             render_pipeline,
             my_render_pipeline,
-            models: obj_model,
+            planet_model,
             current_model: 0,
             diffuse_bind_group,
             diffuse_texture,
@@ -422,9 +450,12 @@ impl State {
             timer,
             init_time: timer,
             delta_time: 0.0,
-            model_transforms: transforms,
-            transform_instance_buffer,
+            planet: planets,
+            planet_instance_buffer: planet_transform_instance_buffer,
             depth_texture,
+            ship_transforms,
+            ship_instance_buffer: ship_transform_instance_buffer,
+            ship_model,
         }
     }
 
@@ -436,6 +467,8 @@ impl State {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
+            self.camera.aspect = new_size.width as f32 / new_size.height as f32;
+            self.camera_uniform.update(&self.camera, &self.queue);
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture =
@@ -457,7 +490,7 @@ impl State {
                         true
                     } else if matches!(key, VirtualKeyCode::Space) {
                         self.current_model += 1;
-                        if self.current_model >= self.models.meshes.len() {
+                        if self.current_model >= self.planet_model.meshes.len() {
                             self.current_model = 0;
                         }
                         true
@@ -476,22 +509,25 @@ impl State {
         self.delta_time = now.duration_since(self.timer).as_secs_f32();
         self.timer = now;
 
-        for (i, transform) in self.model_transforms.iter_mut().enumerate() {
-            let speed = (i as f32).sin();
-            transform.rotation = transform
-                .rotation
-                .mul_quat(Quat::from_rotation_z(self.delta_time * speed * 10.));
-            transform.translation += transform.right() * 0.03 * self.delta_time;
-            transform.translation += transform.forward() * time_since_startup.sin() * 0.01;
+        for (i, transform) in self.planet_transforms.iter_mut().enumerate() {
+            // transform.look_at(Vec3::ZERO, transform.up());
+            // transform.translation += transform.left() * self.delta_time;
+
+            // transform.rotation = transform
+            //     .rotation
+            //     .mul_quat(Quat::from_rotation_z(self.delta_time * speed * 10.));
+            // transform.translation += transform.right() * 0.03 * self.delta_time;
+            // transform.translation += transform.forward() * time_since_startup.sin() * 0.01;
             // transform.translation += transform.up() * time_since_startup.sin() * 0.01;
         }
-        let raw_instances = instance_buffer_bytes(&self.model_transforms);
+        let raw_instances = instance_buffer_bytes(self.planets.iter().map(|p| p.as_transfomr));
         self.queue.write_buffer(
-            &self.transform_instance_buffer,
+            &self.planet_instance_buffer,
             0,
             bytemuck::cast_slice(&raw_instances),
         );
 
+        self.camera_controller.update_rotational_velocity();
         self.camera_controller
             .update_camera(&mut self.camera, self.delta_time);
         self.camera_uniform.update(&self.camera, &self.queue);
@@ -541,16 +577,22 @@ impl State {
             // render_pass.set_bind_group(2, &self.model_transforms_bind_group, &[]);
             // render_pass.draw_indexed(0..model.index_len, 0, 0..self.model_transforms.len() as _);
 
-            render_pass.set_vertex_buffer(1, self.transform_instance_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.planet_instance_buffer.slice(..));
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.models.materials[0].bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera_uniform.bind_group, &[]);
+            // render_pass.set_bind_group(0, &self.model.materials[0].bind_group, &[]);
+            // render_pass.set_bind_group(1, &self.camera_uniform.bind_group, &[]);
 
             use model::DrawModel;
-            render_pass.draw_mesh_instanced(
-                &self.models.meshes[0],
-                &self.models.materials[0],
-                0..self.model_transforms.len() as u32,
+            render_pass.draw_model_instanced(
+                &self.planet_model,
+                0..self.planet_transforms.len() as u32,
+                &self.camera_uniform.bind_group,
+            );
+
+            render_pass.set_vertex_buffer(1, self.ship_instance_buffer.slice(..));
+            render_pass.draw_model_instanced(
+                &self.ship_model,
+                0..self.ship_transforms.len() as u32,
                 &self.camera_uniform.bind_group,
             );
 
@@ -586,12 +628,14 @@ impl State {
     }
 }
 
-fn instance_buffer_bytes(transforms: &Vec<Transform>) -> Vec<RawInstance> {
+fn instance_buffer_bytes<'a>(
+    transforms: impl IntoIterator<Item = TransformView<'a>>,
+) -> Vec<RawInstance> {
     transforms
-        .iter()
+        .into_iter()
         .map(|t| RawInstance {
             transform: t.to_mat(),
-            rotation_only: Mat3::from_quat(t.rotation),
+            rotation_only: Mat3::from_quat(*t.rotation),
         })
         .collect::<Vec<_>>()
 }

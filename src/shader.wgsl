@@ -78,13 +78,13 @@ fn fresnel(rd: vec3<f32>,  normal: vec3<f32>,amount: f32) -> f32 {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let rd = normalize(in.world_position - camera.world_position);
     let nor = normalize(in.world_normal);
-    let dis = distance(vec3(12.5), in.world_position);
-    let sun = normalize(vec3(12.5)-in.world_position);
+    let dis = length(in.world_position);
+    let sun = normalize(-in.world_position);
     let dif = max(0.0, dot(nor, sun));
     let frez = fresnel(rd,nor,5.0);
     let refl = reflect(rd,nor);
     let spe = pow(max(0.0,dot(sun,refl)), 9.0);
-    return vec4<f32>(( textureSample(diff, diff_sampler, in.uv).rgb * 50.0 * dif + frez * spe * 10. ) / (dis * dis) , 1.0);
+    return vec4<f32>(( textureSample(diff, diff_sampler, in.uv).rgb * 5000.0 * dif + frez * spe * 10. ) / (dis * dis) , 1.0);
     // return vec4(spe);
     // let pos = in.world_position % vec3(1.0) ;
     // return vec4(pos,1.0);
