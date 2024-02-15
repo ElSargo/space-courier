@@ -1,14 +1,16 @@
 use gilrs::{Event, Gilrs};
-use glam::{Quat, Vec3};
-use winit::event::VirtualKeyCode;
-
-use crate::camera::Camera;
+use glam::{vec3, Quat, Vec3};
+use winit::{dpi::PhysicalSize, event::VirtualKeyCode};
+pub const G: f32 = -10.0;
+use crate::{camera::Camera, transform::Transform, SUN_MASS};
 
 #[derive(Debug)]
-pub struct CameraController {
+pub struct PlayerController {
     pub speed: f32,
+    pub acceleration: Vec3,
     pub velocity: Vec3,
     pub rotational_velocity: Vec3,
+    pub rotated_by_mouse: bool,
     pub is_forward_pressed: bool,
     pub is_backward_pressed: bool,
     pub is_left_pressed: bool,
@@ -16,14 +18,18 @@ pub struct CameraController {
     pub is_down_pressed: bool,
     pub is_up_pressed: bool,
     pub gilrs: Gilrs,
+
+    pub camera_target_debug: Vec3,
 }
 
-impl CameraController {
+impl PlayerController {
     pub fn new(speed: f32) -> Self {
         Self {
             speed,
             gilrs: Gilrs::new().unwrap(),
             velocity: Default::default(),
+            rotated_by_mouse: false,
+            acceleration: Default::default(),
             rotational_velocity: Default::default(),
             is_forward_pressed: Default::default(),
             is_backward_pressed: Default::default(),
@@ -31,6 +37,7 @@ impl CameraController {
             is_right_pressed: Default::default(),
             is_down_pressed: Default::default(),
             is_up_pressed: Default::default(),
+            camera_target_debug: Default::default(),
         }
     }
 
@@ -64,37 +71,72 @@ impl CameraController {
         }
     }
 
-    pub fn update_camera(&mut self, camera: &mut Camera, delta: f32) {
-        let mut vel = Vec3::ZERO;
+    pub fn update<'a>(
+        &mut self,
+        camera: &mut Camera,
+        ship: &mut Transform,
+        delta: f32,
+        planets: impl Iterator<Item = (&'a Vec3, &'a f32)>,
+    ) {
+        self.acceleration = Vec3::ZERO;
+
         if self.is_forward_pressed {
-            vel += camera.transform.forward()
+            self.acceleration += ship.forward() * self.speed
         }
         if self.is_backward_pressed {
-            vel += camera.transform.back()
+            self.acceleration += ship.back() * self.speed
         }
         if self.is_left_pressed {
-            vel += camera.transform.left()
+            self.acceleration += ship.left() * self.speed
         }
         if self.is_right_pressed {
-            vel += camera.transform.right()
+            self.acceleration += ship.right() * self.speed
         }
         if self.is_up_pressed {
-            vel += camera.transform.up()
+            self.acceleration += ship.up() * self.speed
         }
         if self.is_down_pressed {
-            vel += camera.transform.down()
+            self.acceleration += ship.down() * self.speed
         }
-        self.velocity += vel * delta;
-        self.velocity += delta * gravity(camera.transform.translation);
-        camera.transform.translation += self.velocity * delta * self.speed;
+        let prev_vel = self.velocity.normalize_or_zero();
+        for (translation, mass) in planets {
+            self.acceleration += gravity(camera.eye - *translation) * *mass;
+        }
+        // self.acceleration += gravity(ship.translation) * SUN_MASS;
 
-        camera.transform.rotation = camera.transform.rotation
+        self.velocity += self.acceleration * delta;
+        self.velocity *= 1.0 - delta * 0.1;
+        ship.translation += self.velocity * delta;
+        camera.eye += self.velocity * delta;
+        ship.rotation = ship.rotation
             * Quat::from_euler(
                 glam::EulerRot::XYZ,
-                self.rotational_velocity.x * 0.01,
-                self.rotational_velocity.y * 0.01,
-                self.rotational_velocity.z * 0.01,
+                self.rotational_velocity.x * 3.0 * delta,
+                self.rotational_velocity.y * 3.0 * delta,
+                self.rotational_velocity.z * 3.0 * delta,
             );
+        if self.rotated_by_mouse {
+            self.rotational_velocity = Vec3::ZERO;
+            self.rotated_by_mouse = false;
+        }
+
+        let velocity_magnitude = self.velocity.length();
+        let target_distance_coef = 0.001 * velocity_magnitude / (1.0 + velocity_magnitude * 0.001);
+        let camera_eye_target = ship.translation
+            + ship
+                .rotation
+                .mul_vec3(vec3(0.1, 0.2, -1. * (target_distance_coef * 10.0 + 1.0)));
+
+        let speed = 10.0;
+
+        let camera_eye_displacement = camera_eye_target - camera.eye; // + (delta * self.velocity).powf(2.0) * 0.5;
+
+        camera.eye += camera_eye_displacement * (delta * speed).min(1.0);
+
+        let target = ship.translation + ship.forward() * (target_distance_coef * 20. + 1.0);
+        camera.target = target;
+        self.camera_target_debug = target;
+        camera.up = ship.up();
     }
 
     pub fn update_rotational_velocity(&mut self) {
@@ -141,8 +183,22 @@ impl CameraController {
             // active_gamepad = Some(id);
         }
     }
+
+    pub fn mouse_motion(
+        &mut self,
+        delta: (f64, f64),
+        // size: &PhysicalSize<u32>,
+        // camera: &mut Camera,
+    ) {
+        self.rotated_by_mouse = true;
+        self.rotational_velocity = vec3(delta.1 as f32 / 10.0, delta.0 as f32 / 10.0, 0.0);
+    }
 }
 
-fn gravity(position: Vec3) -> Vec3 {
-    -0.001 * position.normalize_or_zero() * position.length().max(1.0).powi(2)
+pub fn gravity(position: Vec3) -> Vec3 {
+    G * position.normalize_or_zero() / position.length_squared().max(1.0) // Prevent extreamly high gravty when things are close
+}
+
+pub fn alt_gravity(distance: f32, a: f32, b: f32) -> f32 {
+    ((distance - 1.1 * (a + b)).atan() / (distance - a - b).max(0.0).powi(2)).max(-2.0)
 }

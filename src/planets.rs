@@ -1,48 +1,22 @@
-use std::default::Default;
+use std::{borrow::BorrowMut, default::Default};
 
 use glam::{Quat, Vec3};
-
-use crate::transform::{AsTransform, TransformView};
 
 #[derive(Default, Debug)]
 pub struct Planet {
     pub translation: Vec3,
     pub rotation: Quat,
     pub velocity: Vec3,
-    pub scale: Vec3,
-    pub masse: f32,
+    pub radius: f32,
+    pub mass: f32,
 }
 
-#[derive(Default, Debug)]
-pub struct PlanetView {
-    pub translation: Vec3,
-    pub rotation: Quat,
-    pub velocity: Vec3,
-    pub scale: Vec3,
-    pub masse: f32,
-}
-impl AsTransform for Planet {
-    fn as_transform(&self) -> TransformView {
-        TransformView {
-            scale: &self.scale,
-            translation: &self.translation,
-            rotation: &self.rotation,
-        }
-    }
-    fn as_transform_mut(&mut self) -> TransformView {
-        TransformView {
-            scale: &mut self.scale,
-            translation: &mut self.translation,
-            rotation: &mut self.rotation,
-        }
-    }
-}
 #[derive(Default, Debug)]
 pub struct Planets {
     pub translations: Vec<Vec3>,
     pub rotations: Vec<Quat>,
-    pub velocity: Vec<Vec3>,
-    pub scales: Vec<Vec3>,
+    pub velocities: Vec<Vec3>,
+    pub radii: Vec<f32>,
     pub masses: Vec<f32>,
 }
 
@@ -62,46 +36,58 @@ impl FromIterator<Planet> for Planets {
 }
 
 impl Planets {
-    fn with_capacity(size: usize) -> Self {
+    pub fn with_capacity(size: usize) -> Self {
         Self {
             translations: Vec::with_capacity(size),
             rotations: Vec::with_capacity(size),
-            velocity: Vec::with_capacity(size),
-            scales: Vec::with_capacity(size),
+            velocities: Vec::with_capacity(size),
+            radii: Vec::with_capacity(size),
             masses: Vec::with_capacity(size),
         }
     }
 
-    fn push(&mut self, planet: Planet) {
+    pub fn len(&self) -> usize {
+        self.translations.len()
+    }
+
+    pub fn push(&mut self, planet: Planet) {
         self.translations.push(planet.translation);
         self.rotations.push(planet.rotation);
-        self.velocity.push(planet.velocity);
-        self.scales.push(planet.scale);
-        self.masses.push(planet.masse);
+        self.velocities.push(planet.velocity);
+        self.radii.push(planet.radius);
+        self.masses.push(planet.mass);
     }
 
-    fn get(&mut self, index: usize) -> PlanetView {
-        if index < self.translations.len() {}
-    }
-}
+    // pub fn get(&self, index: usize) -> Option<PlanetView> {
+    //     (index < self.translations.len()).then_some(PlanetView {
+    //         translation: &self.translations[index],
+    //         rotation: &self.rotations[index],
+    //         velocity: &self.velocities[index],
+    //         scale: &self.scales[index],
+    //         masse: &self.masses[index],
+    //     })
+    // }
+    // pub fn get_mut(&mut self, index: usize) -> Option<PlanetViewMut> {
+    //     (index < self.translations.len()).then_some(PlanetViewMut {
+    //         translation: &mut self.translations[index],
+    //         rotation: &mut self.rotations[index],
+    //         velocity: &mut self.velocities[index],
+    //         scale: &mut self.scales[index],
+    //         masse: &mut self.masses[index],
+    //     })
+    // }
 
-impl IntoIterator for Planets {
-    type Item = Planet;
+    // pub fn iter_mut(&mut self) -> PlanetIterator<'_> {
+    //     PlanetIterator {
+    //         iter: &mut &self,
+    //         i: 0,
+    //     }
+    // }
 
-    type IntoIter = PlanetIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        todo!()
-    }
-}
-
-struct PlanetIterator<'a> {
-    iter: &'a Planets,
-    i: usize,
-}
-
-impl Iterator for PlanetIterator {
-    type Item = Planet;
-
-    fn next(&mut self) -> Option<Self::Item> {}
+    // pub fn iter_transforms_mut(&mut self) -> PlanetTransformIterator<'_> {
+    //     PlanetTransformIterator {
+    //         iter: &mut &self,
+    //         i: 0,
+    //     }
+    // }
 }
