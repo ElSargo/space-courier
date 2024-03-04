@@ -1,8 +1,8 @@
-use std::{borrow::BorrowMut, marker::PhantomData};
-
+#![allow(dead_code)]
+use bevy_ecs::component::Component;
 use glam::{Mat3, Mat4, Quat, Vec3};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Component)]
 pub struct Transform {
     pub scale: Vec3,
     pub translation: Vec3,

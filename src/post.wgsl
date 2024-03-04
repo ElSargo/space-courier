@@ -6,6 +6,8 @@
 
 @group(1) @binding(0) var<uniform> camera: InverseCamera;
 
+@group(2) @binding(0) var bloom_texture: texture_2d<f32>;
+
 struct InverseCamera {
     inv_view_proj: mat4x4<f32>,
     world_position: vec3<f32>,
@@ -38,7 +40,7 @@ fn aces_tonemap(color:vec3<f32>) -> vec3<f32>{
 	let  v = m1 * color;    
 	let  a = v * (v + 0.0245786) - 0.000090537;
 	let  b = v * (0.983729 * v + 0.4329510) + 0.238081;
-	return pow(clamp(m2 * (a / b), vec3(0.0),vec3( 1.0)), vec3(1.0 / 2.2));	
+	return clamp(m2 * (a / b), vec3(0.0),vec3( 1.0));	
 }
 
 
@@ -50,7 +52,7 @@ fn gamma(col: vec3<f32>) -> vec3<f32>{
 fn vs_main(
     @builtin(vertex_index) in_vertex_index: u32, vert: VertexInput,     
 ) -> VertexOutput {
-    return VertexOutput( vec4(vert.position,0.10), vert.uv );
+    return VertexOutput( vec4(vert.position,1.), vert.uv );
 }
 
 @fragment
@@ -58,18 +60,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let depth_inv = textureSample(depth_texture, depth_sampler, in.uv);
     let lin_depth = 1.0/depth_inv;
     var color = textureSample(color_texture, color_sampler, in.uv).rgb;
+    var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
     
+    // return vec4(gamma(bloom),1.0);
+    color += bloom;
+    color = aces_tonemap(color);
 
 
     // Depth fog
     // color = mix( color, vec3(0.2,0.15,0.25), 1.0-exp(-lin_depth*0.0001));
 
-    //reinhard tone maping 
-    // color /= 1.0 + color;
-    color = aces_tonemap(color);
 
+    // let vignet_signal = smoothstep(vec2(1.),vec2(0.8), pow(abs(in.uv - vec2(0.5)) * vec2(2.0),vec2(2.0) ) );
+    // color *= vignet_signal.x * vignet_signal.y;
 
     
-    return vec4((color), 1.0);
+    return vec4(gamma(color), 1.0);
 }
 

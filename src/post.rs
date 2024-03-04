@@ -1,127 +1,20 @@
-use bytemuck::cast_slice;
-use std::mem::size_of;
-use wgpu::Device;
-use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    BufferUsages,
-};
+use wgpu::{BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device, ShaderStages};
 
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [-1.0, -1.0, 0.0],
-        uv: [0.0, 1.0],
-    },
-    Vertex {
-        position: [1.0, -1.0, 0.0],
-        uv: [1.0, 1.0],
-    },
-    Vertex {
-        position: [-1.0, 1.0, 0.0],
-        uv: [0.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, 1.0, 0.0],
-        uv: [1.0, 0.0],
-    },
-];
+use crate::fullscreen::FullscreenQuad;
 
-// const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
-const INDICES: &[u16] = &[0, 1, 2, 1, 2, 3];
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
-struct Vertex {
-    position: [f32; 3],
-    uv: [f32; 2],
-}
-
-impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
-
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-}
 pub struct Postprocessing {
-    mesh_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
     pipeline: wgpu::RenderPipeline,
-    pub textures_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl Postprocessing {
-    pub fn new(device: &Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let mesh_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("post_buffer"),
-            contents: cast_slice(
-                &VERTICES
-                    .iter()
-                    .map(|vert| Vertex {
-                        position: [
-                            vert.position[0] * 0.1,
-                            vert.position[1] * 0.1,
-                            vert.position[2] * 0.1,
-                        ],
-                        ..*vert
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            usage: BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("post_buffer_index"),
-            contents: cast_slice(INDICES),
-            usage: BufferUsages::INDEX,
-        });
+    pub fn new(
+        device: &Device,
+        config: &wgpu::SurfaceConfiguration,
+        fullscreen_quad: &FullscreenQuad,
+        view_textures_bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
+        let post_shader = device.create_shader_module(wgpu::include_wgsl!("post.wgsl"));
 
-        let post_shader = device.create_shader_module(wgpu::include_wgsl!("full_screen.wgsl"));
-        let textures_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above.
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Depth,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above.
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("post_texture_bind_group_layout"),
-            });
         let inverse_camera = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
@@ -135,22 +28,35 @@ impl Postprocessing {
             }],
             label: Some("inverse_camera_bind_group_layout"),
         });
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Bloom texture bind group layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                }],
+            });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("post pipline layout"),
             bind_group_layouts: &[
-                &textures_bind_group_layout,
+                &view_textures_bind_group_layout,
                 &inverse_camera, // &model_transform_bind_group_layout,
+                &texture_bind_group_layout,
             ],
             push_constant_ranges: &[],
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(format!("Post Render Pipeline").as_str()),
+            label: Some("Post Render Pipeline"),
             layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &post_shader,
-                entry_point: "vs_main",     // 1.
-                buffers: &[Vertex::desc()], // 2.
-            },
+            vertex: fullscreen_quad.vertex_state(),
             fragment: Some(wgpu::FragmentState {
                 // 3.
                 module: &post_shader,
@@ -183,22 +89,18 @@ impl Postprocessing {
             },
             multiview: None, // 5.
         });
-        Self {
-            mesh_buffer,
-            index_buffer,
-            pipeline,
-            textures_bind_group_layout,
-        }
+        Self { pipeline }
     }
 
     pub fn draw(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         view: wgpu::TextureView,
+        fullscreen_quad: &FullscreenQuad,
         camera_bind_group: &wgpu::BindGroup,
         textures_bind_group: &wgpu::BindGroup,
+        bloom_texture_bind_group: &wgpu::BindGroup,
     ) {
-        // Ui
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Ui render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -213,20 +115,12 @@ impl Postprocessing {
             occlusion_query_set: None,
             timestamp_writes: None,
         });
-        render_pass.set_vertex_buffer(0, self.mesh_buffer.slice(..));
-
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         // render_pass.set_bind_group(0,&self.diffuse_bind_group , &[] );
         // render_pass.set_bind_group(0,&self.view_bind_group, &[] );
         render_pass.set_bind_group(0, &textures_bind_group, &[]);
         render_pass.set_bind_group(1, camera_bind_group, &[]);
+        render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);
         render_pass.set_pipeline(&self.pipeline);
-        // use model::DrawModel;
-        // render_pass.draw_model_instanced(
-        //     &self.arrow_model,
-        //     0..self.arrows.len() as u32,
-        //     &self.camera_uniform.bind_group,
-        // );
-        render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+        fullscreen_quad.draw(&mut render_pass);
     }
 }

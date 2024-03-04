@@ -1,36 +1,41 @@
 use std::mem::size_of;
 
-use glam::{Mat4, Vec4};
+use bevy_ecs::{
+    component::Component,
+    query::{With, Without},
+    system::{Query, Res},
+};
+use glam::{vec4, Mat4, Vec3, Vec4};
 
-use crate::transform::Transform;
+use crate::{camera::Camera, ecs::Ecs, player_controller::PlayerController, transform::Transform};
 
-pub struct ArrowGizmos {
-    pub transforms: Vec<Transform>,
-    pub colors: Vec<Vec4>,
+#[derive(Debug, Component)]
+pub struct ArrowGizmo {
+    pub color: Vec4,
 }
 
-impl ArrowGizmos {
-    pub fn len(&self) -> usize {
-        self.transforms.len()
-    }
+// impl ArrowGizmos {
+//     pub fn len(&self) -> usize {
+//         self.transforms.len()
+//     }
 
-    pub fn to_raw_buffer(&self) -> Vec<RawArrowInstance> {
-        self.transforms
-            .iter()
-            .zip(self.colors.iter())
-            .map(|(transform, color)| RawArrowInstance {
-                transform: transform.to_mat(),
-                color: *color,
-            })
-            .collect()
-    }
-}
+//     pub fn to_raw_buffer(&self) -> Vec<RawArrowInstance> {
+//         self.transforms
+//             .iter()
+//             .zip(self.colors.iter())
+//             .map(|(transform, color)| RawArrowInstance {
+//                 transform: transform.to_mat(),
+//                 color: *color,
+//             })
+//             .collect()
+//     }
+// }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct RawArrowInstance {
-    transform: Mat4,
-    color: Vec4,
+    pub transform: Mat4,
+    pub color: Vec4,
 }
 unsafe impl bytemuck::Pod for RawArrowInstance {}
 unsafe impl bytemuck::Zeroable for RawArrowInstance {}
@@ -69,4 +74,43 @@ impl RawArrowInstance {
             ],
         }
     }
+}
+
+pub fn update_arrows(
+    player: Query<(&PlayerController, &Transform), Without<ArrowGizmo>>,
+    mut arrows: Query<&mut Transform, With<ArrowGizmo>>,
+    camera: Res<Camera>,
+) {
+    let (player_controller, ship_transform) = player.single();
+    let vel_dir = player_controller.velocity.normalize_or_zero();
+    let mut arrows = arrows.iter_mut();
+    let mut arrow_transform = arrows.next().unwrap();
+    arrow_transform.translation = ship_transform.translation + vel_dir * 0.3;
+    arrow_transform.look_to(vel_dir, camera.up);
+
+    let mut arrow_transform = arrows.next().unwrap();
+    let acc_dir = player_controller.acceleration.normalize_or_zero();
+    arrow_transform.translation = ship_transform.translation + acc_dir * 0.3;
+    arrow_transform.look_to(acc_dir, camera.up);
+
+    let mut arrow_transform = arrows.next().unwrap();
+    arrow_transform.translation = player_controller.camera_target_debug;
+    arrow_transform.look_at(ship_transform.translation, camera.up);
+}
+
+pub fn init(ecs: &mut Ecs) {
+    for color in [
+        vec4(1.0, 0.5, 0.25, 1.0),
+        vec4(0.2, 0.5, 1.0, 1.0),
+        vec4(0.2, 1., 0.5, 1.0),
+    ] {
+        ecs.world.spawn((
+            Transform {
+                scale: Vec3::ONE * 0.01,
+                ..Default::default()
+            },
+            ArrowGizmo { color },
+        ));
+    }
+    // ecs.update.add_systems(update_arrows);
 }

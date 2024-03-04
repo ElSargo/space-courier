@@ -1,4 +1,3 @@
-use core::prelude;
 use std::io::{BufReader, Cursor};
 
 use wgpu::util::DeviceExt;
@@ -9,7 +8,6 @@ pub async fn load_string(file_name: &str) -> color_eyre::Result<String> {
     let path = std::path::Path::new(env!("OUT_DIR"))
         .join("res")
         .join(file_name);
-    // println!("{path:?}");
     let txt = std::fs::read_to_string(path)?;
     Ok(txt)
 }
@@ -18,7 +16,6 @@ pub async fn load_binary(file_name: &str) -> color_eyre::Result<Vec<u8>> {
     let path = std::path::Path::new(env!("OUT_DIR"))
         .join("res")
         .join(file_name);
-    // println!("load bin {path:?}");
     let data = std::fs::read(path)?;
 
     Ok(data)
@@ -51,7 +48,6 @@ pub async fn load_model(
             ..Default::default()
         },
         |p| async move {
-            // println!("{p:?}");
             let mat_text = load_string(&p).await.unwrap();
             tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
         },

@@ -1,9 +1,10 @@
+use bevy_ecs::system::Resource;
 use glam::{vec3, Mat4, Vec3};
 use wgpu::{util::DeviceExt, Queue};
 
-use crate::Transform;
 use std::default::Default;
 
+#[derive(Resource)]
 pub struct Camera {
     pub eye: Vec3,
     pub target: Vec3,
