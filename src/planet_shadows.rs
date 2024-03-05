@@ -45,7 +45,11 @@ impl PlanetShadows {
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("Planet shadow pipeline"),
             layout: Some(&pipeline_layout),
-            vertex: todo!(),
+            vertex: wgpu::VertexState {
+                module: &shader_module,
+                entry_point: "vs_main",
+                buffers: &[],
+            },
             primitive: PrimitiveState::default(),
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: texture::Texture::DEPTH_FORMAT,
@@ -80,7 +84,12 @@ impl PlanetShadows {
                 })],
             }),
 
-            multiview: todo!(),
+            multiview: None,
         });
+
+        Self {
+            result_texture,
+            pipeline,
+        }
     }
 }
