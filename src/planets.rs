@@ -2,7 +2,7 @@ use bevy_ecs::{
     component::Component,
     entity::Entity,
     query::{QueryBuilder, With},
-    system::{Query, Res, Resource},
+    system::{Commands, Query, Res, Resource},
 };
 use glam::{Quat, Vec3};
 use rand::{thread_rng, Rng};
@@ -10,8 +10,8 @@ use std::default::Default;
 use wgpu::{util::DeviceExt, BindGroupLayout};
 
 use crate::{
-    ecs::Ecs, gpu::Gpu, gravity::G, instance_buffer_bytes, model::Model, physics::Physics,
-    resources, transform::Transform, SUN_MASS,
+    ecs::Ecs, gpu::Gpu, gravity::G, input::ButtonInput, instance_buffer_bytes, model::Model,
+    physics::Physics, resources, transform::Transform, SUN_MASS,
 };
 
 #[derive(Default, Debug, Component)]
@@ -24,11 +24,9 @@ pub struct Planet {
 }
 
 pub async fn init(ecs: &mut Ecs, gpu: &Gpu, texture_bind_group_layout: &BindGroupLayout) {
-    let mut rng = thread_rng();
-    for _ in 0..200 {
-        make_planet(&mut rng, ecs);
-    }
-    // ecs.update.add_systems(update_instance_buffer);
+    ecs.init.add_systems(make_planets);
+    ecs.update.add_systems(remake_planets);
+    ecs.update.add_systems(add_planet);
 
     let planet_buffer_bytes = instance_buffer_bytes(
         QueryBuilder::<&Transform, With<Planet>>::new(&mut ecs.world)
@@ -57,7 +55,34 @@ pub async fn init(ecs: &mut Ecs, gpu: &Gpu, texture_bind_group_layout: &BindGrou
     // planets.scales[1] = Vec3::ONE;
 }
 
-fn make_planet(rng: &mut rand::prelude::ThreadRng, ecs: &mut Ecs) -> Entity {
+fn remake_planets(
+    kb: Res<ButtonInput>,
+    planets: Query<Entity, With<Planet>>,
+    mut commands: Commands,
+) {
+    if kb.just_down(winit::event::VirtualKeyCode::R) {
+        for e in planets.iter() {
+            commands.entity(e).despawn();
+        }
+        make_planets(commands);
+    }
+}
+
+fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
+    if kb.is_down(winit::event::VirtualKeyCode::L) {
+        let mut rng = thread_rng();
+        make_planet(&mut rng, &mut commands);
+    }
+}
+
+fn make_planets(mut commands: Commands) {
+    let mut rng = thread_rng();
+    for _ in 0..20 {
+        make_planet(&mut rng, &mut commands);
+    }
+}
+
+fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> Entity {
     let distance = rng.gen_range(30.0..300.0);
     let mut transform = Transform {
         rotation: Quat::from_euler(
@@ -76,7 +101,7 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, ecs: &mut Ecs) -> Entity {
     let velocity = transform.left() * 0.003 / transform.translation.length().sqrt() * SUN_MASS * G
         / mass.sqrt();
 
-    ecs.world
+    commands
         .spawn((
             Planet {
                 radius,

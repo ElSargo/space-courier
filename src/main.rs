@@ -17,9 +17,7 @@ mod resources;
 mod texture;
 mod time;
 mod transform;
-use crate::camera::Camera;
-use crate::player_controller::PlayerController;
-
+use crate::{camera::Camera, player_controller::PlayerController};
 use bevy_ecs::{
     component::Component,
     query::{QueryBuilder, With},
@@ -189,7 +187,7 @@ struct State {
     // bloom: Bloom,
     bloom: Bloom,
 
-    paused: bool,
+    initialized: bool,
 
     bloom_debug: (bool, usize),
     ecs: Ecs,
@@ -405,7 +403,7 @@ impl State {
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
-            instances: 200,
+            instances: 96,
         };
         // let ship_trans =         // ship_trans.look_at(Vec3::ZERO, ship_trans.up());
         // let ship_transforms = vec![ship_trans];
@@ -498,6 +496,8 @@ impl State {
         player_controller::init(&mut ecs);
         gizmo::init(&mut ecs);
 
+        ecs.init.run(&mut ecs.world);
+
         Self {
             window,
             surface,
@@ -524,7 +524,7 @@ impl State {
             arrow_model,
             gizmo_render_pipeline,
             post,
-            paused: true,
+            initialized: false,
             fullscreen_quad,
             bloom,
             view_textures_bind_group_layout,
@@ -587,13 +587,7 @@ impl State {
                     };
 
                     let pressed = *state == ElementState::Pressed;
-                    if *key == VirtualKeyCode::Space && pressed {
-                        self.paused = !self.paused;
-                        true
-                    } else if *key == VirtualKeyCode::Space && pressed {
-                        self.paused = !self.paused;
-                        true
-                    } else if *key == VirtualKeyCode::R && pressed {
+                    if *key == VirtualKeyCode::R && pressed {
                         // self.planets = make_planets();
                         true
                     } else if *key == VirtualKeyCode::N && pressed {
@@ -658,12 +652,13 @@ impl State {
             );
         }
         {
-            let planet_bytes = instance_buffer_bytes(
+            let planet_instances = instance_buffer_bytes(
                 QueryBuilder::<&Transform, With<Planet>>::new(&mut self.ecs.world)
                     .build()
                     .iter(&self.ecs.world),
             );
-            let bytes = bytemuck::cast_slice(&planet_bytes);
+            self.planet_instance_buffer.instances = planet_instances.len() as u32;
+            let bytes = bytemuck::cast_slice(&planet_instances);
             if self.planet_instance_buffer.buffer.size() < bytes.len() as u64 {
                 println!("New buffer added");
                 self.planet_instance_buffer.buffer =
@@ -682,6 +677,10 @@ impl State {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        if !self.initialized {
+            self.update();
+            self.initialized = true;
+        }
         let output = self.surface.get_current_texture()?;
         let output_view = output
             .texture
@@ -1015,37 +1014,6 @@ fn instance_buffer_bytes<'a>(items: impl Iterator<Item = &'a Transform>) -> Vec<
         })
         .collect::<Vec<_>>()
 }
-
-// Add this if code breaks
-// unsafe impl bytemuck::Pod for Vertex {}
-// unsafe impl bytemuck::Zeroable for Vertex {}
-
-// lib.rs
-
-// struct Model {
-//     verts: Arc<wgpu::Buffer>,
-//     index: Arc<wgpu::Buffer>,
-//     index_len: u32,
-// }
-
-// #[repr(C)]
-// // This is so we can store this in a buffer
-// #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-// struct ModelTransformUniform {
-//     matrix: Mat4,
-// }
-
-// impl ModelTransformUniform {
-//     fn new() -> Self {
-//         Self {
-//             matrix: Mat4::IDENTITY,
-//         }
-//     }
-
-//     fn update(&mut self, transform: &Transform) {
-//         self.matrix = transform.to_mat();
-//     }
-// }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
