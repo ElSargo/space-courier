@@ -12,6 +12,7 @@ pub struct Time {
     now: Instant,
     pub delta: Duration,
     pub delta_seconds: f32,
+    pub since_startup: f64,
 }
 
 impl Time {
@@ -23,6 +24,7 @@ impl Time {
             now,
             delta: Duration::new(0, 0),
             delta_seconds: 0.0,
+            since_startup: 0.0,
         }
     }
 
@@ -31,6 +33,7 @@ impl Time {
         self.now = std::time::Instant::now();
         self.delta = self.now.duration_since(self.last_frame);
         self.delta_seconds = self.delta.as_secs_f32();
+        self.since_startup = self.now.duration_since(self.startup).as_secs_f64();
     }
 }
 

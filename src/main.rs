@@ -14,6 +14,7 @@ mod planets;
 mod player_controller;
 mod post;
 mod resources;
+mod shader_loader;
 mod texture;
 mod time;
 mod transform;
@@ -21,10 +22,12 @@ use crate::{camera::Camera, player_controller::PlayerController};
 use bevy_ecs::{
     component::Component,
     query::{QueryBuilder, With},
+    system::{Local, Res},
     world::Mut,
 };
 use bloom::Bloom;
 use camera::CameraUniform;
+use color_eyre::owo_colors::colors::xterm::Cumulus;
 use ecs::Ecs;
 use fullscreen::FullscreenQuad;
 use gilrs::Gilrs;
@@ -33,11 +36,14 @@ use glam::{vec3, Mat3, Mat4, Quat, Vec3};
 use gpu::{Gpu, InstanceBuffer};
 use input::{AxisInput, ButtonInput};
 use model::Model;
+use planet_shadows::PlanetShadows;
 use planets::Planet;
 
 use post::Postprocessing;
-use std::{mem::size_of, sync::Arc};
+use shader_loader::ShaderLoader;
+use std::{mem::size_of, sync::Arc, thread::Builder};
 use texture::Texture;
+use time::Time;
 use transform::Transform;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
@@ -158,21 +164,21 @@ struct State {
     sun_render_pipeline: wgpu::RenderPipeline,
     gizmo_render_pipeline: wgpu::RenderPipeline,
 
-    camera_uniform: CameraUniform,
+    camera_gpu_stuff: CameraUniform,
 
     // planets: Planets,
     planet_model: Model,
-    planet_instance_buffer: InstanceBuffer,
+    planet_transform_instance_buffer: InstanceBuffer,
 
     // ship_transforms: Vec<Transform>,
-    ship_instance_buffer: InstanceBuffer,
+    ship_transform_instance_buffer: InstanceBuffer,
     ship_model: Model,
 
-    sun_instance_buffer: InstanceBuffer,
+    sun_transform_instance_buffer: InstanceBuffer,
     sun_model: Model,
 
     // arrows: ArrowGizmos,
-    arrow_instance_buffer: InstanceBuffer,
+    arrow_transform_instance_buffer: InstanceBuffer,
     arrow_model: Model,
 
     view_texture: Texture,
@@ -182,6 +188,7 @@ struct State {
 
     fullscreen_quad: FullscreenQuad,
 
+    // planet_shadows: PlanetShadows,
     post: Postprocessing,
 
     // bloom: Bloom,
@@ -192,6 +199,7 @@ struct State {
     bloom_debug: (bool, usize),
     ecs: Ecs,
 
+    // shader_loader: shader_loader::ShaderLoader,
     gilrs: Gilrs,
 }
 
@@ -368,7 +376,7 @@ impl State {
                 .unwrap();
 
         let ship_model =
-            resources::load_model("ship.obj", &device, &queue, &texture_bind_group_layout)
+            resources::load_model("nuShip.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
 
@@ -480,6 +488,9 @@ impl State {
             RawInstance::desc(),
         );
 
+        // let planet_shadows =
+        //     PlanetShadows::new(&device, &config, &camera_gpu_stuff.bind_group_layout);
+
         let mut ecs = Ecs::new().await;
         let gpu = Gpu {
             device: Arc::new(device),
@@ -496,7 +507,11 @@ impl State {
         player_controller::init(&mut ecs);
         gizmo::init(&mut ecs);
 
+        ecs.update.add_systems(print_delta);
+
         ecs.init.run(&mut ecs.world);
+
+        // let shader_loader = ShaderLoader::new(gpu.device.clone()).unwrap();
 
         Self {
             window,
@@ -507,20 +522,20 @@ impl State {
             sun_render_pipeline,
             planet_model,
 
-            camera_uniform: camera_gpu_stuff,
+            camera_gpu_stuff,
             // planets,
-            planet_instance_buffer: planet_transform_instance_buffer,
+            planet_transform_instance_buffer,
             depth_texture,
             view_texture,
             view_textures_bind_group,
 
             // ship_transforms,
-            ship_instance_buffer: ship_transform_instance_buffer,
+            ship_transform_instance_buffer,
             ship_model,
-            sun_instance_buffer: sun_transform_instance_buffer,
+            sun_transform_instance_buffer,
             sun_model,
             // arrows,
-            arrow_instance_buffer: arrow_transform_instance_buffer,
+            arrow_transform_instance_buffer,
             arrow_model,
             gizmo_render_pipeline,
             post,
@@ -532,6 +547,8 @@ impl State {
             ecs,
             gpu,
             gilrs: Gilrs::new().unwrap(),
+            // shader_loader,
+            // planet_shadows,
         }
     }
 
@@ -546,7 +563,7 @@ impl State {
             {
                 let mut camera = self.ecs.world.resource_mut::<Camera>();
                 camera.aspect = new_size.width as f32 / new_size.height as f32;
-                self.camera_uniform.update(&camera, &self.gpu.queue);
+                self.camera_gpu_stuff.update(&camera, &self.gpu.queue);
             }
             self.config.height = new_size.height;
             self.surface.configure(&self.gpu.device, &self.config);
@@ -623,7 +640,7 @@ impl State {
                     .iter(&self.ecs.world),
             );
             self.gpu.queue.write_buffer(
-                &self.ship_instance_buffer.buffer,
+                &self.ship_transform_instance_buffer.buffer,
                 0,
                 bytemuck::cast_slice(&ship_bytes),
             );
@@ -631,7 +648,7 @@ impl State {
         {
             // Camera
             let camera = self.ecs.world.resource();
-            self.camera_uniform.update(camera, &self.gpu.queue);
+            self.camera_gpu_stuff.update(camera, &self.gpu.queue);
         }
         {
             let arrow_instances =
@@ -646,7 +663,7 @@ impl State {
             let arrow_bytes: &[u8] = bytemuck::cast_slice(&arrow_instances);
 
             self.gpu.queue.write_buffer(
-                &self.arrow_instance_buffer.buffer,
+                &self.arrow_transform_instance_buffer.buffer,
                 0,
                 bytemuck::cast_slice(&arrow_bytes),
             );
@@ -657,20 +674,22 @@ impl State {
                     .build()
                     .iter(&self.ecs.world),
             );
-            self.planet_instance_buffer.instances = planet_instances.len() as u32;
+            self.planet_transform_instance_buffer.instances = planet_instances.len() as u32;
             let bytes = bytemuck::cast_slice(&planet_instances);
-            if self.planet_instance_buffer.buffer.size() < bytes.len() as u64 {
+            if self.planet_transform_instance_buffer.buffer.size() < bytes.len() as u64 {
                 println!("New buffer added");
-                self.planet_instance_buffer.buffer =
+                self.planet_transform_instance_buffer.buffer =
                     self.gpu.device.create_buffer_init(&BufferInitDescriptor {
                         label: Some("Planet instance Buffer"),
                         contents: &bytes,
                         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                     });
             } else {
-                self.gpu
-                    .queue
-                    .write_buffer(&self.planet_instance_buffer.buffer, 0, bytes);
+                self.gpu.queue.write_buffer(
+                    &self.planet_transform_instance_buffer.buffer,
+                    0,
+                    bytes,
+                );
             }
         }
         self.ecs.world.resource_mut::<ButtonInput>().tick();
@@ -717,22 +736,23 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            render_pass.set_vertex_buffer(1, self.planet_instance_buffer.buffer.slice(..));
+            render_pass
+                .set_vertex_buffer(1, self.planet_transform_instance_buffer.buffer.slice(..));
             render_pass.set_pipeline(&self.render_pipeline);
 
             use model::DrawModel;
             render_pass.draw_model_instanced(
                 &self.planet_model,
-                0..self.planet_instance_buffer.instances,
-                &self.camera_uniform.bind_group,
+                0..self.planet_transform_instance_buffer.instances,
+                &self.camera_gpu_stuff.bind_group,
             );
 
             // Ship as well
-            render_pass.set_vertex_buffer(1, self.ship_instance_buffer.buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.ship_transform_instance_buffer.buffer.slice(..));
             render_pass.draw_model_instanced(
                 &self.ship_model,
-                0..self.ship_instance_buffer.instances,
-                &self.camera_uniform.bind_group,
+                0..self.ship_transform_instance_buffer.instances,
+                &self.camera_gpu_stuff.bind_group,
             );
 
             // 3.
@@ -760,14 +780,14 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            render_pass.set_vertex_buffer(1, self.sun_instance_buffer.buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.sun_transform_instance_buffer.buffer.slice(..));
             render_pass.set_pipeline(&self.sun_render_pipeline);
 
             use model::DrawModel;
             render_pass.draw_model_instanced(
                 &self.sun_model,
-                0..self.sun_instance_buffer.instances,
-                &self.camera_uniform.bind_group,
+                0..self.sun_transform_instance_buffer.instances,
+                &self.camera_gpu_stuff.bind_group,
             );
 
             // render_pass.set_vertex_buffer(1, self.ship_instance_buffer.slice(..));
@@ -803,25 +823,25 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            render_pass.set_vertex_buffer(1, self.arrow_instance_buffer.buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.arrow_transform_instance_buffer.buffer.slice(..));
             render_pass.set_pipeline(&self.gizmo_render_pipeline);
 
             use model::DrawModel;
             render_pass.draw_model_instanced(
                 &self.arrow_model,
-                0..self.arrow_instance_buffer.instances,
-                &self.camera_uniform.bind_group,
+                0..self.arrow_transform_instance_buffer.instances,
+                &self.camera_gpu_stuff.bind_group,
             );
         }
 
-        self.bloom
-            .draw(&mut encoder, &self.gpu.queue, &self.fullscreen_quad);
+        // self.bloom
+        //     .draw(&mut encoder, &self.gpu.queue, &self.fullscreen_quad);
 
         self.post.draw(
             &mut encoder,
             output_view,
             &self.fullscreen_quad,
-            &self.camera_uniform.bind_group,
+            &self.camera_gpu_stuff.bind_group,
             &self.view_textures_bind_group,
             if self.bloom_debug.0 {
                 &self.bloom.down_texture_bind_groups[self
@@ -1070,10 +1090,44 @@ impl RawInstance {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     run().await;
 }
 
+// fn main() {
+//     let rt = tokio::runtime::Builder::new_current_thread()
+//         .enable_all()
+//         .on_thread_park(|| println!("Parked"))
+//         .build()
+//         .unwrap();
+
+//     rt.handle().spawn(async { run().await });
+// }
+
 #[derive(Component)]
 pub struct Ship;
+
+fn print_delta(
+    mut current_second: Local<f64>,
+    mut frame: Local<u128>,
+    mut avg: Local<f64>,
+    time: Res<Time>,
+) {
+    *frame += 1;
+    *avg += time.delta_seconds as f64;
+    if time.since_startup > *current_second + 1.0 {
+        println!(
+            "FPS: {}; Delta avg: {}",
+            *frame,
+            (*avg / *frame as f64 * 1000.0) as u64
+        );
+        *frame = 0;
+        *avg = 0.0;
+        *current_second = time.since_startup;
+    }
+
+    if time.delta_seconds > 1.0 / 60.0 {
+        println!("Lag spike: {} millis", time.delta_seconds * 1000.0);
+    }
+}
