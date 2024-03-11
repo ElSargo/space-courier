@@ -6,6 +6,8 @@ use wgpu::{
     BufferUsages, RenderPass, ShaderModule, VertexBufferLayout, VertexState,
 };
 
+use crate::shader_loader::{self, ShaderHandle, ShaderLoader};
+
 const VERTICES: &[Vertex] = &[
     Vertex {
         position: [-1.0, -1.0, 0.0],
@@ -50,12 +52,12 @@ impl Vertex {
 pub struct FullscreenQuad {
     pub mesh_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    shader_module: &'static ShaderModule,
-    vertex_format: [VertexBufferLayout<'static>; 1],
+    pub shader_handle: ShaderHandle,
+    pub vertex_format: &'static [VertexBufferLayout<'static>; 1],
 }
 
 impl FullscreenQuad {
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(device: &wgpu::Device, shader_loader: &mut ShaderLoader) -> Self {
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("post_buffer_index"),
             contents: cast_slice(INDICES),
@@ -66,16 +68,18 @@ impl FullscreenQuad {
             contents: cast_slice(&VERTICES),
             usage: BufferUsages::VERTEX,
         });
-        let shader_module = std::boxed::Box::leak(Box::new(
-            device.create_shader_module(wgpu::include_wgsl!("fullscreen_quad.wgsl")),
-        ));
+        // let shader_module = std::boxed::Box::leak(Box::new(
+        //     device.create_shader_module(wgpu::include_wgsl!("fullscreen_quad.wgsl")),
+        // ));
 
-        let vertex_format = [Vertex::desc()];
+        let shader_handle = shader_loader.load_shader("./src/fullscreen_quad.wgsl".into());
+
+        let vertex_format = Box::leak(Box::new([Vertex::desc()]));
         Self {
             mesh_buffer,
             index_buffer,
             vertex_format,
-            shader_module,
+            shader_handle,
         }
     }
 
@@ -85,11 +89,11 @@ impl FullscreenQuad {
         render_pass.draw_indexed(0..6, 0, 0..1);
     }
 
-    pub fn vertex_state<'a>(&'a self) -> VertexState<'a> {
-        wgpu::VertexState {
-            module: self.shader_module,
-            entry_point: "vs_main",       // 1.
-            buffers: &self.vertex_format, // 2.
-        }
-    }
+    // pub fn vertex_state<'a>(&'a self) -> VertexState<'a> {
+    //     wgpu::VertexState {
+    //         module: self.shader_module,
+    //         entry_point: "vs_main",       // 1.
+    //         buffers: &self.vertex_format, // 2.
+    //     }
+    // }
 }

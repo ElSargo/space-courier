@@ -1,10 +1,13 @@
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    BufferDescriptor, BufferUsages, Color, Device, ShaderStages, SurfaceConfiguration,
-    TextureDescriptor, TextureFormat, TextureView,
+    BufferDescriptor, BufferUsages, Color, Device, ShaderModule, ShaderStages,
+    SurfaceConfiguration, TextureDescriptor, TextureFormat, TextureView, VertexBufferLayout,
 };
 
-use crate::fullscreen::FullscreenQuad;
+use crate::{
+    fullscreen::FullscreenQuad,
+    shader_loader::{self, PipelineHandle, ShaderLoader},
+};
 
 pub struct Bloom {
     down_textures: Vec<wgpu::Texture>,
@@ -14,8 +17,8 @@ pub struct Bloom {
     up_texture_views: Vec<wgpu::TextureView>,
     pub up_texture_bind_groups: Vec<wgpu::BindGroup>,
     sampler_bind_group: wgpu::BindGroup,
-    up_pipeline: wgpu::RenderPipeline,
-    down_pipeline: wgpu::RenderPipeline,
+    up_pipeline: PipelineHandle,
+    down_pipeline: PipelineHandle,
     threshold_bind_group: wgpu::BindGroup,
     threshold_buffer: wgpu::Buffer,
     threshold_nill_bind_group: wgpu::BindGroup,
@@ -29,8 +32,8 @@ impl Bloom {
         config: &SurfaceConfiguration,
         fullscreen_quad: &FullscreenQuad,
         view_textures_view: &TextureView,
+        shader_loader: &mut ShaderLoader,
     ) -> Self {
-        let bloom_shader_mod = device.create_shader_module(wgpu::include_wgsl!("bloom.wgsl"));
         let threshold_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[BindGroupLayoutEntry {
@@ -72,29 +75,48 @@ impl Bloom {
                 }],
             });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("bloom pipline layout"),
-            bind_group_layouts: &[
-                &sampler_bind_group_layout,
-                &threshold_bind_group_layout,
-                &texture_bind_group_layout,
-                &texture_bind_group_layout,
-            ],
-            push_constant_ranges: &[],
-        });
-        let down_pipeline = mk_layout(
-            device,
-            &pipeline_layout,
-            fullscreen_quad,
-            &bloom_shader_mod,
-            "down",
+        let pipeline_layout: &'static mut wgpu::PipelineLayout =
+            Box::<wgpu::PipelineLayout>::leak(Box::new(device.create_pipeline_layout(
+                &wgpu::PipelineLayoutDescriptor {
+                    label: Some("bloom pipline layout"),
+                    bind_group_layouts: &[
+                        &sampler_bind_group_layout,
+                        &threshold_bind_group_layout,
+                        &texture_bind_group_layout,
+                        &texture_bind_group_layout,
+                    ],
+                    push_constant_ranges: &[],
+                },
+            )));
+
+        // let bloom_shader_mod = device.create_shader_module(wgpu::include_wgsl!());
+        let bloom_shader_handle = shader_loader.load_shader("./src/bloom.wgsl".into());
+
+        let down_pipeline = shader_loader.add_pipeline(
+            vec![bloom_shader_handle, fullscreen_quad.shader_handle],
+            Box::new(|shader_moules, device| {
+                mk_layout(
+                    device,
+                    pipeline_layout,
+                    fullscreen_quad.vertex_format,
+                    "down",
+                    shader_moules[1],
+                    shader_moules[0],
+                )
+            }),
         );
-        let up_pipeline = mk_layout(
-            device,
-            &pipeline_layout,
-            fullscreen_quad,
-            &bloom_shader_mod,
-            "up",
+        let up_pipeline = shader_loader.add_pipeline(
+            vec![bloom_shader_handle, fullscreen_quad.shader_handle],
+            Box::new(|shader_moules, device| {
+                mk_layout(
+                    device,
+                    pipeline_layout,
+                    fullscreen_quad.vertex_format,
+                    "up",
+                    shader_moules[1],
+                    shader_moules[0],
+                )
+            }),
         );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some(&format!("Bloom sampler")),
@@ -290,6 +312,7 @@ impl Bloom {
         encoder: &mut wgpu::CommandEncoder,
         queue: &wgpu::Queue,
         fullscreen_quad: &FullscreenQuad,
+        shader_loader: &ShaderLoader,
     ) {
         let threshold: f32 = 2.0;
         self.update_threshold(queue, threshold);
@@ -329,7 +352,8 @@ impl Bloom {
 
             // Dummy
             render_pass.set_bind_group(3, &self.up_texture_bind_groups[0], &[]);
-            render_pass.set_pipeline(&self.down_pipeline);
+            let pipeline = shader_loader.get_pipeline(&self.down_pipeline).unwrap();
+            render_pass.set_pipeline(&pipeline);
             fullscreen_quad.draw(&mut render_pass);
         }
 
@@ -361,8 +385,8 @@ impl Bloom {
             render_pass.set_bind_group(1, &self.threshold_nill_bind_group, &[]);
             render_pass.set_bind_group(2, &self_texture, &[]);
             render_pass.set_bind_group(3, &prev_texture, &[]);
-
-            render_pass.set_pipeline(&self.up_pipeline);
+            let pipeline = shader_loader.get_pipeline(&self.up_pipeline).unwrap();
+            render_pass.set_pipeline(&pipeline);
             fullscreen_quad.draw(&mut render_pass);
             i -= 1;
         }
@@ -379,17 +403,22 @@ impl Bloom {
 fn mk_layout(
     device: &Device,
     pipeline_layout: &wgpu::PipelineLayout,
-    fullscreen_quad: &FullscreenQuad,
-    bloom_shader_mod: &wgpu::ShaderModule,
+    vertex_layout: &'static [VertexBufferLayout<'static>],
     entry_point: &str,
+    fullscreen_shader: &ShaderModule,
+    bloom_shader: &ShaderModule,
 ) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Bloom render pipeline"),
         layout: Some(&pipeline_layout),
-        vertex: fullscreen_quad.vertex_state(),
+        vertex: wgpu::VertexState {
+            module: fullscreen_shader,
+            entry_point: "vs_main",
+            buffers: vertex_layout,
+        },
         fragment: Some(wgpu::FragmentState {
             // 3.
-            module: &bloom_shader_mod,
+            module: &bloom_shader,
             entry_point,
             targets: &[Some(wgpu::ColorTargetState {
                 // 4.

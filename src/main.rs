@@ -199,7 +199,7 @@ struct State {
     bloom_debug: (bool, usize),
     ecs: Ecs,
 
-    // shader_loader: shader_loader::ShaderLoader,
+    shader_loader: ShaderLoader,
     gilrs: Gilrs,
 }
 
@@ -271,7 +271,6 @@ impl State {
         surface.configure(&device, &config);
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-        let fullscreen_quad = FullscreenQuad::new(&device);
         let view_textures_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -315,20 +314,12 @@ impl State {
                 label: Some("post_texture_bind_group_layout"),
             });
         let view_texture = make_view_texture(&config, &device);
-        let post = Postprocessing::new(
-            &device,
-            &config,
-            &fullscreen_quad,
-            &view_textures_bind_group_layout,
-        );
         let view_textures_bind_group = make_view_textures_bind_group(
             &device,
             &view_textures_bind_group_layout,
             &depth_texture,
             &view_texture,
         );
-
-        let bloom = Bloom::new(&device, &config, &fullscreen_quad, &view_texture.view);
 
         let camera = Camera {
             aspect: config.width as f32 / config.height as f32,
@@ -511,7 +502,22 @@ impl State {
 
         ecs.init.run(&mut ecs.world);
 
-        // let shader_loader = ShaderLoader::new(gpu.device.clone()).unwrap();
+        let mut shader_loader = ShaderLoader::new(gpu.device.clone()).unwrap();
+        let fullscreen_quad = FullscreenQuad::new(&gpu.device, &mut shader_loader);
+        let post = Postprocessing::new(
+            &gpu.device,
+            &config,
+            &fullscreen_quad,
+            &view_textures_bind_group_layout,
+            &mut shader_loader,
+        );
+        let bloom = Bloom::new(
+            &gpu.device,
+            &config,
+            &fullscreen_quad,
+            &view_texture.view,
+            &mut shader_loader,
+        );
 
         Self {
             window,
@@ -547,6 +553,7 @@ impl State {
             ecs,
             gpu,
             gilrs: Gilrs::new().unwrap(),
+            shader_loader,
             // shader_loader,
             // planet_shadows,
         }
@@ -632,6 +639,8 @@ impl State {
             .resource_mut::<AxisInput>()
             .update(&mut self.gilrs);
         self.ecs.update();
+
+        self.shader_loader.construct_piplines();
 
         {
             let ship_bytes = instance_buffer_bytes(
@@ -854,6 +863,7 @@ impl State {
                     .1
                     .min(self.bloom.up_texture_bind_groups.len() - 1)]
             },
+            &self.shader_loader,
         );
 
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
@@ -1090,7 +1100,7 @@ impl RawInstance {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     run().await;
 }

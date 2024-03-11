@@ -65,7 +65,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     //Chromatic abbr
     var c = in.uv - 0.5;
-    let st = 0.01;
+    let st = 0.02;
     var color = vec3(
         textureSample(color_texture, color_sampler, c*( 1.0 - st ) + 0.5).r,
         textureSample(color_texture, color_sampler, c*( 1.0      ) + 0.5).g,

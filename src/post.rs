@@ -1,9 +1,12 @@
 use wgpu::{BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device, ShaderStages};
 
-use crate::fullscreen::FullscreenQuad;
+use crate::{
+    fullscreen::FullscreenQuad,
+    shader_loader::{self, PipelineHandle},
+};
 
 pub struct Postprocessing {
-    pipeline: wgpu::RenderPipeline,
+    pipeline_handle: PipelineHandle,
 }
 
 impl Postprocessing {
@@ -12,8 +15,11 @@ impl Postprocessing {
         config: &wgpu::SurfaceConfiguration,
         fullscreen_quad: &FullscreenQuad,
         view_textures_bind_group_layout: &wgpu::BindGroupLayout,
+        shader_loader: &mut shader_loader::ShaderLoader,
     ) -> Self {
-        let post_shader = device.create_shader_module(wgpu::include_wgsl!("post.wgsl"));
+        let shader_handle = shader_loader.load_shader("./src/post.wgsl".into());
+
+        // let post_shader = device.create_shader_module(wgpu::include_wgsl!());
 
         let inverse_camera = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -44,52 +50,68 @@ impl Postprocessing {
                 }],
             });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("post pipline layout"),
-            bind_group_layouts: &[
-                &view_textures_bind_group_layout,
-                &inverse_camera, // &model_transform_bind_group_layout,
-                &texture_bind_group_layout,
-            ],
-            push_constant_ranges: &[],
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Post Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: fullscreen_quad.vertex_state(),
-            fragment: Some(wgpu::FragmentState {
-                // 3.
-                module: &post_shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
+        let pipeline_layout = Box::leak(Box::new(device.create_pipeline_layout(
+            &wgpu::PipelineLayoutDescriptor {
+                label: Some("post pipline layout"),
+                bind_group_layouts: &[
+                    &view_textures_bind_group_layout,
+                    &inverse_camera, // &model_transform_bind_group_layout,
+                    &texture_bind_group_layout,
+                ],
+                push_constant_ranges: &[],
+            },
+        )));
+        // let pipeline = device.create_render_pipeline(&);
+        let vert_fmt = fullscreen_quad.vertex_format;
+        let format = config.format.clone();
+        let pipeline_handle = shader_loader.add_pipeline(
+            vec![shader_handle, fullscreen_quad.shader_handle],
+            Box::new(move |shader_modules, device: &Device| {
+                let targets = [Some(wgpu::ColorTargetState {
                     // 4.
-                    format: config.format,
+                    format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
-                })],
+                })];
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("Post Render Pipeline"),
+                    layout: Some(pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: shader_modules[1],
+                        entry_point: "vs_main",
+                        buffers: vert_fmt,
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        // 3.
+                        module: shader_modules[0],
+                        entry_point: "fs_main",
+                        targets: &targets,
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw, // 2.
+                        // cull_mode: Some(wgpu::Face::Back),
+                        cull_mode: None,
+                        // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        // Requires Features::DEPTH_CLIP_CONTROL
+                        unclipped_depth: false,
+                        // Requires Features::CONSERVATIVE_RASTERIZATION
+                        conservative: false,
+                    },
+                    depth_stencil: None, // 1.
+                    multisample: wgpu::MultisampleState {
+                        count: 1,                         // 2.
+                        mask: !0,                         // 3.
+                        alpha_to_coverage_enabled: false, // 4.
+                    },
+                    multiview: None, // 5.
+                })
             }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList, // 1.
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw, // 2.
-                // cull_mode: Some(wgpu::Face::Back),
-                cull_mode: None,
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: None, // 1.
-            multisample: wgpu::MultisampleState {
-                count: 1,                         // 2.
-                mask: !0,                         // 3.
-                alpha_to_coverage_enabled: false, // 4.
-            },
-            multiview: None, // 5.
-        });
-        Self { pipeline }
+        );
+
+        Self { pipeline_handle }
     }
 
     pub fn draw(
@@ -100,6 +122,7 @@ impl Postprocessing {
         camera_bind_group: &wgpu::BindGroup,
         textures_bind_group: &wgpu::BindGroup,
         bloom_texture_bind_group: &wgpu::BindGroup,
+        shader_loader: &shader_loader::ShaderLoader,
     ) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Ui render pass"),
@@ -120,7 +143,9 @@ impl Postprocessing {
         render_pass.set_bind_group(0, &textures_bind_group, &[]);
         render_pass.set_bind_group(1, camera_bind_group, &[]);
         render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);
-        render_pass.set_pipeline(&self.pipeline);
-        fullscreen_quad.draw(&mut render_pass);
+        if let Some(pipeline) = shader_loader.get_pipeline(&self.pipeline_handle) {
+            render_pass.set_pipeline(pipeline);
+            fullscreen_quad.draw(&mut render_pass);
+        }
     }
 }

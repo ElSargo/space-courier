@@ -1,23 +1,16 @@
-use bytemuck::bytes_of;
-use notify::{event::ModifyKind, recommended_watcher, Event, RecommendedWatcher, Watcher};
+use notify::{recommended_watcher, Event, RecommendedWatcher, Watcher};
 use rand::{thread_rng, Rng};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     os::unix::ffi::OsStrExt,
     path::PathBuf,
     sync::Arc,
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use wgpu::{
-    Device, RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor,
-};
+use wgpu::{Device, RenderPipeline, ShaderModule, ShaderModuleDescriptor};
 
 pub struct ShaderLoader {
     gpu_device: Arc<Device>,
-    // shader_info: HashMap<PathBuf, usize>,
-    // constructors: HashMap<PiplineReasource, PipelineConstructor>,
-    // compiled_shaders: Vec<Option<ShaderModule>>,
-    // pipelines: HashMap<PiplineReasource, RenderPipeline>,
     whatcher: RecommendedWatcher,
     compile_queue_sender: UnboundedSender<(PathBuf, Option<ShaderHandle>)>,
     pipelines_requirements: BTreeMap<ShaderHandle, Vec<PipelineHandle>>,
@@ -49,7 +42,7 @@ pub struct PipelineHandle {
     id: u64,
 }
 
-type PipelineConstructor = Box<dyn FnMut(Vec<&ShaderModule>) -> RenderPipelineDescriptor>;
+type PipelineConstructor = Box<dyn FnMut(Vec<&ShaderModule>, &Device) -> RenderPipeline>;
 
 impl ShaderLoader {
     pub fn new(device: Arc<Device>) -> Result<Self, notify::Error> {
@@ -93,17 +86,17 @@ impl ShaderLoader {
         })
     }
 
-    pub fn load_shader(&mut self, path: impl ToOwned<Owned = PathBuf>) -> ShaderHandle {
+    pub fn load_shader(&mut self, path: PathBuf) -> ShaderHandle {
         let path = path
-            .to_owned()
             .canonicalize()
-            .expect("Unable to resolve file path");
+            .expect(&format!("Unable to resolve file path {path:#?}"));
 
         self.whatcher
             .watch(&path, notify::RecursiveMode::NonRecursive)
             .expect("File whatcher failed to accept new path");
 
         let handle = path_to_shader_id(&path);
+        println!("Sent {path:#?} to queue");
         self.compile_queue_sender
             .send((path, Some(handle)))
             .expect("Unable to send shader to load queue");
@@ -129,6 +122,12 @@ impl ShaderLoader {
             .insert(pipeline_handle, connstructor);
         self.pipline_reasoureces.insert(pipeline_handle, res);
         pipeline_handle
+    }
+
+    pub fn get_pipeline(&self, pipeline_handle: &PipelineHandle) -> Option<&RenderPipeline> {
+        self.pipelines
+            .get(pipeline_handle)
+            .map(|sp| &sp.render_pipeline)
     }
 
     pub fn construct_piplines(&mut self) {
@@ -189,10 +188,10 @@ impl ShaderLoader {
             if should_recompile {
                 if let Some(constructor) = self.pipeline_connstructors.get_mut(pipline_handle) {
                     let shader_modules = compiled_shaders.iter().map(|s| &s.module).collect();
-                    let new_pipeline_descriptor = constructor(shader_modules);
-                    let new_pipeline = self
-                        .gpu_device
-                        .create_render_pipeline(&new_pipeline_descriptor);
+                    let new_pipeline = constructor(shader_modules, &self.gpu_device);
+                    // = self
+                    //     .gpu_device
+                    //     .create_render_pipeline(&new_pipeline_descriptor);
                     match self.pipelines.get_mut(pipline_handle) {
                         Some(stored_pipeline) => {
                             stored_pipeline.render_pipeline = new_pipeline;
@@ -260,13 +259,16 @@ async fn compile_shaders(
     device: Arc<Device>,
     outgoing: UnboundedSender<(ShaderModule, ShaderHandle)>,
 ) {
+    println!("Compiling compiler running");
     while let Some((path, handle)) = incomming.recv().await {
+        println!("Compiling {path:#?}");
         match tokio::fs::read_to_string(&path).await {
             Ok(source) => {
                 let module = device.create_shader_module(ShaderModuleDescriptor {
                     label: None,
                     source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
                 });
+                println!("Compiled {path:#?}");
                 let handle = handle.unwrap_or_else(|| path_to_shader_id(&path));
                 outgoing
                     .send((module, handle))
