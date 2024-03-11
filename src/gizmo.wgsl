@@ -55,6 +55,6 @@ fn vs_main(
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let nor = normalize(in.normal);
     let a = abs(nor);
-    return in.color * max(a.z,max(a.x,a.y)) * 10.0;
+    return in.color * max(a.z,max(a.x,a.y)) * 6.0;
 }
 

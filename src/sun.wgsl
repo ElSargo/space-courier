@@ -73,6 +73,6 @@ fn fresnel(rd: vec3<f32>,  normal: vec3<f32>,amount: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4(1.0,0.8,0.5,1.0)*10.0;
+    return vec4(1.0,0.8,0.5,1.0)*8.0;
 }
 
