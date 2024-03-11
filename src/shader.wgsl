@@ -80,11 +80,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let nor = normalize(in.world_normal);
     let dis = length(in.world_position * 0.01);
     let sun = normalize(-in.world_position);
-    let dif = max(0.0, dot(nor, sun) ) ;
+    let dif = max(0.0, dot(nor, sun));
     let frez = fresnel(rd,nor,5.0);
     let refl = reflect(rd,nor);
     let spe = pow(max(0.0,dot(sun,refl)), 4.0);
-    return vec4<f32>( max(vec3(0.00001),( textureSample(diff, diff_sampler, in.uv).rgb + (frez*0.2 + 1.0 ) * spe  )  / ( dis * dis ) * dif * 0.5 )   , 1.0)  ;
+    return vec4<f32>( max(vec3(0.00001),( textureSample(diff, diff_sampler, in.uv).rgb + (frez*0.2 + 1.0 ) * spe  )  / ( dis * dis ) * (dif + 0.01) * 0.5 ) , 1.0)  ;
     // return vec4(0.00001);
     // return vec4(spe*(1.+frez));
     // return vec4(spe);
