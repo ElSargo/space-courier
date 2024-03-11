@@ -59,12 +59,28 @@ fn vs_main(
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let depth_inv = textureSample(depth_texture, depth_sampler, in.uv);
     let lin_depth = 1.0/depth_inv;
-    var color = textureSample(color_texture, color_sampler, in.uv).rgb;
-    var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
+    // No chromaitc abbr
+    // var color = textureSample(color_texture, color_sampler, in.uv).rgb;
+    // var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
+
+    //Chromatic abbr
+    var c = in.uv - 0.5;
+    let st = 0.01;
+    var color = vec3(
+        textureSample(color_texture, color_sampler, c*( 1.0 - st ) + 0.5).r,
+        textureSample(color_texture, color_sampler, c*( 1.0      ) + 0.5).g,
+        textureSample(color_texture, color_sampler, c*( 1.0 + st ) + 0.5).b
+    );
+    var bloom = vec3(
+        textureSample(bloom_texture, color_sampler, c*( 1.0 - st ) + 0.5).r,
+        textureSample(bloom_texture, color_sampler, c*( 1.0      ) + 0.5).g,
+        textureSample(bloom_texture, color_sampler, c*( 1.0 + st ) + 0.5).b
+    );
+    
     
     // return vec4(gamma(bloom),1.0);
-    color += bloom;
     color = aces_tonemap(color);
+    color += bloom*0.5;
 
 
     // Depth fog
