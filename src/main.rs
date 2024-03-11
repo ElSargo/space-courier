@@ -27,7 +27,7 @@ use bevy_ecs::{
 };
 use bloom::Bloom;
 use camera::CameraUniform;
-use color_eyre::owo_colors::colors::xterm::Cumulus;
+
 use ecs::Ecs;
 use fullscreen::FullscreenQuad;
 use gilrs::Gilrs;
@@ -36,12 +36,12 @@ use glam::{vec3, Mat3, Mat4, Quat, Vec3};
 use gpu::{Gpu, InstanceBuffer};
 use input::{AxisInput, ButtonInput};
 use model::Model;
-use planet_shadows::PlanetShadows;
+
 use planets::Planet;
 
 use post::Postprocessing;
-use shader_loader::ShaderLoader;
-use std::{mem::size_of, sync::Arc, thread::Builder};
+use shader_loader::{PipelineHandle, ShaderLoader};
+use std::{mem::size_of, sync::Arc};
 use texture::Texture;
 use time::Time;
 use transform::Transform;
@@ -160,11 +160,11 @@ struct State {
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
     window: Window,
-    render_pipeline: wgpu::RenderPipeline,
+    render_pipeline: PipelineHandle,
     sun_render_pipeline: wgpu::RenderPipeline,
     gizmo_render_pipeline: wgpu::RenderPipeline,
 
-    camera_gpu_stuff: CameraUniform,
+    camera_gpu_stuff: Arc<CameraUniform>,
 
     // planets: Planets,
     planet_model: Model,
@@ -327,12 +327,12 @@ impl State {
             target: Vec3::ZERO,
             ..Default::default()
         };
-        let camera_gpu_stuff = CameraUniform::setup(&camera, &device);
+        let camera_gpu_stuff = Arc::new(CameraUniform::setup(&camera, &device));
 
         // let camera_controller = PlayerController::new(100.0);
 
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let texture_bind_group_layout = Arc::new(device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
@@ -354,7 +354,8 @@ impl State {
                     },
                 ],
                 label: Some("texture_bind_group_layout"),
-            });
+            },
+        ));
 
         let planet_model =
             resources::load_model("wallmart.obj", &device, &queue, &texture_bind_group_layout)
@@ -371,16 +372,7 @@ impl State {
                 .await
                 .unwrap();
 
-        let normal_shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
-        let render_pipeline = mk_pipeline(
-            &device,
-            &texture_bind_group_layout,
-            &camera_gpu_stuff,
-            None,
-            normal_shader,
-            "normal",
-            RawInstance::desc(),
-        );
+        // let normal_shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
         let sun_transforms = vec![Transform {
             scale: Vec3::ONE * 20.0,
             ..Default::default()
@@ -460,10 +452,10 @@ impl State {
         let gizmo_shader = device.create_shader_module(wgpu::include_wgsl!("gizmo.wgsl"));
         let gizmo_render_pipeline = mk_pipeline(
             &device,
-            &texture_bind_group_layout,
-            &camera_gpu_stuff,
+            texture_bind_group_layout.clone(),
+            camera_gpu_stuff.clone(),
             None,
-            gizmo_shader,
+            &gizmo_shader,
             "gizmo",
             RawArrowInstance::desc(),
         );
@@ -471,10 +463,10 @@ impl State {
         let sun_shader = device.create_shader_module(wgpu::include_wgsl!("sun.wgsl"));
         let sun_render_pipeline = mk_pipeline(
             &device,
-            &texture_bind_group_layout,
-            &camera_gpu_stuff,
+            texture_bind_group_layout.clone(),
+            camera_gpu_stuff.clone(),
             None,
-            sun_shader,
+            &sun_shader,
             "sun",
             RawInstance::desc(),
         );
@@ -517,6 +509,22 @@ impl State {
             &fullscreen_quad,
             &view_texture.view,
             &mut shader_loader,
+        );
+        let normal_shader = shader_loader.load_shader("./src/shader.wgsl".into());
+        let cgs = camera_gpu_stuff.clone();
+        let render_pipeline = shader_loader.add_pipeline(
+            vec![normal_shader],
+            Box::new(move |shaders, device| {
+                mk_pipeline(
+                    &device,
+                    texture_bind_group_layout.clone(),
+                    cgs.clone(),
+                    None,
+                    shaders[0],
+                    "normal",
+                    RawInstance::desc(),
+                )
+            }),
         );
 
         Self {
@@ -745,9 +753,12 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            render_pass
-                .set_vertex_buffer(1, self.planet_transform_instance_buffer.buffer.slice(..));
-            render_pass.set_pipeline(&self.render_pipeline);
+            if let Some(pipeline) = self.shader_loader.get_pipeline(&self.render_pipeline) {
+                render_pass
+                    .set_vertex_buffer(1, self.planet_transform_instance_buffer.buffer.slice(..));
+
+                render_pass.set_pipeline(&pipeline);
+            }
 
             use model::DrawModel;
             render_pass.draw_model_instanced(
@@ -949,10 +960,10 @@ fn make_view_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu::Device)
 
 fn mk_pipeline(
     device: &wgpu::Device,
-    texture_bind_group_layout: &wgpu::BindGroupLayout,
-    camera_gpu_stuff: &CameraUniform,
+    texture_bind_group_layout: Arc<wgpu::BindGroupLayout>,
+    camera_gpu_stuff: Arc<CameraUniform>,
     format: Option<TextureFormat>,
-    shader: ShaderModule,
+    shader: &ShaderModule,
     label: &str,
     descritptor: VertexBufferLayout,
 ) -> wgpu::RenderPipeline {
@@ -961,7 +972,7 @@ fn mk_pipeline(
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some(format!("{label} pipline layout").as_str()),
                 bind_group_layouts: &[
-                    texture_bind_group_layout,
+                    &texture_bind_group_layout,
                     &camera_gpu_stuff.bind_group_layout,
                     // &model_transform_bind_group_layout,
                 ],
