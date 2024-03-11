@@ -1,17 +1,39 @@
 use bevy_ecs::system::Resource;
 
+use glam::Vec3;
 use wgpu::{
     include_wgsl, BindGroupLayout, BlendComponent, ColorWrites, Device, Extent3d,
     PipelineLayoutDescriptor, PrimitiveState, RenderPipelineDescriptor, SurfaceConfiguration,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, VertexAttribute,
 };
 
 use crate::texture;
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct RawPlanetShadow {
+    position: Vec3,
+    shadow_direction: Vec3,
+    shadow_length: f32,
+    shadow_height: f32,
+    radius: f32,
+}
+
 #[derive(Resource)]
-struct PlanetShadows {
+pub struct PlanetShadows {
     result_texture: wgpu::Texture,
     pipeline: wgpu::RenderPipeline,
+}
+impl RawPlanetShadow {
+    const ATRIBS: [VertexAttribute; 5] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32, 3 => Float32, 4 => Float32];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATRIBS,
+        }
+    }
 }
 
 impl PlanetShadows {
@@ -48,7 +70,7 @@ impl PlanetShadows {
             vertex: wgpu::VertexState {
                 module: &shader_module,
                 entry_point: "vs_main",
-                buffers: &[],
+                buffers: &[RawPlanetShadow::desc()],
             },
             primitive: PrimitiveState::default(),
             depth_stencil: Some(wgpu::DepthStencilState {
