@@ -3,10 +3,10 @@ use std::mem::size_of;
 
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferUsages, RenderPass, ShaderModule, VertexBufferLayout, VertexState,
+    BufferUsages, RenderPass, VertexBufferLayout,
 };
 
-use crate::shader_loader::{self, ShaderHandle, ShaderLoader};
+use crate::shader_loader::{ShaderHandle, ShaderLoader};
 
 const VERTICES: &[Vertex] = &[
     Vertex {

@@ -6,7 +6,7 @@ use wgpu::{
 
 use crate::{
     fullscreen::FullscreenQuad,
-    shader_loader::{self, PipelineHandle, ShaderLoader},
+    shader_loader::{PipelineHandle, ShaderLoader},
 };
 
 pub struct Bloom {

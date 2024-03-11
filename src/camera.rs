@@ -2,7 +2,7 @@ use bevy_ecs::system::Resource;
 use glam::{vec3, Mat4, Vec3};
 use wgpu::{util::DeviceExt, Queue};
 
-use std::default::Default;
+use std::{cell::RefCell, default::Default};
 
 #[derive(Resource)]
 pub struct Camera {
@@ -26,7 +26,7 @@ unsafe impl bytemuck::Zeroable for CameraUniformData {}
 pub struct CameraUniform {
     pub bind_group: wgpu::BindGroup,
     pub buffer: wgpu::Buffer,
-    pub uniform: CameraUniformData,
+    pub uniform: RefCell<CameraUniformData>,
     pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
@@ -74,18 +74,26 @@ impl Default for Camera {
 }
 
 impl CameraUniform {
-    pub fn update(&mut self, camera: &Camera, queue: &Queue) {
-        self.uniform.update_view_proj(camera);
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[self.uniform]))
+    pub fn update(&self, camera: &Camera, queue: &Queue) {
+        {
+            let mut this = self.uniform.borrow_mut();
+            this.view_proj = camera.build_view_projection_matrix().into();
+            this.world_position = camera.eye;
+        };
+        queue.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::cast_slice(&[*self.uniform.borrow()]),
+        )
     }
 
     pub fn setup(camera: &Camera, device: &wgpu::Device) -> Self {
-        let mut camera_uniform = CameraUniformData::new();
-        camera_uniform.update_view_proj(camera);
+        let camera_uniform = RefCell::new(CameraUniformData::new());
+        camera_uniform.borrow_mut().update_view_proj(camera);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
+            contents: bytemuck::cast_slice(&[*camera_uniform.borrow()]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
