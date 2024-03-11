@@ -89,7 +89,7 @@ pub fn update_arrows(
     arrow_transform.look_to(vel_dir, camera.up);
 
     let mut arrow_transform = arrows.next().unwrap();
-    let acc_dir = player_controller.acceleration.normalize_or_zero();
+    let acc_dir = player_controller.debug_acceleration.normalize_or_zero();
     arrow_transform.translation = ship_transform.translation + acc_dir * 0.3;
     arrow_transform.look_to(acc_dir, camera.up);
 

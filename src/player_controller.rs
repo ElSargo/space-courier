@@ -9,7 +9,7 @@ use crate::{
 use bevy_ecs::{
     component::Component,
     schedule::IntoSystemConfigs,
-    system::{Query, Res, ResMut},
+    system::{Commands, Query, Res, ResMut},
 };
 
 use glam::{vec3, Quat, Vec3};
@@ -23,6 +23,7 @@ pub struct PlayerController {
     pub rotational_velocity: Vec3,
     pub rotated_by_mouse: bool,
 
+    pub debug_acceleration: Vec3,
     pub camera_target_debug: Vec3,
 }
 
@@ -36,6 +37,7 @@ impl PlayerController {
             acceleration: Default::default(),
             rotational_velocity: Default::default(),
             camera_target_debug: Default::default(),
+            debug_acceleration: std::default::Default::default(),
         }
     }
 
@@ -85,6 +87,7 @@ pub fn update<'a>(
     if kb.is_down(VirtualKeyCode::Q) {
         player_controller.acceleration += ship_transform.down() * player_controller.speed
     }
+    player_controller.debug_acceleration = player_controller.acceleration;
     // player_controller.acceleration += gravity(ship_transform.translation) * crate::SUN_MASS;
 
     player_controller.velocity += player_controller.acceleration * time.delta_seconds;
@@ -125,8 +128,8 @@ pub fn update<'a>(
     camera.up = ship_transform.up();
 }
 
-pub fn init(ecs: &mut Ecs) {
-    ecs.world.spawn((
+fn spawn_player(mut commands: Commands) {
+    commands.spawn((
         PlayerController::new(100.0),
         Transform {
             scale: Vec3::ONE * 0.1,
@@ -135,6 +138,11 @@ pub fn init(ecs: &mut Ecs) {
         },
         Ship,
     ));
+}
+
+pub fn init(ecs: &mut Ecs) {
+    // ecs.world.spawn(());
+    ecs.init.add_systems(spawn_player);
     ecs.update
         .add_systems(update_rotational_velocity.before(update));
     ecs.update.add_systems(update);

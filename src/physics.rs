@@ -6,7 +6,7 @@ use glam::{Quat, Vec3};
 
 use crate::{ecs::Ecs, time::Time, transform::Transform};
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Default)]
 pub struct Physics {
     pub velocity: Vec3,
     pub angular_velocity: Quat,
