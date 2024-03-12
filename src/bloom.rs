@@ -330,30 +330,31 @@ impl Bloom {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            render_pass.set_bind_group(0, &self.sampler_bind_group, &[]);
-            if i == 0 {
-                render_pass.set_bind_group(1, &self.threshold_bind_group, &[]);
-            } else {
-                render_pass.set_bind_group(1, &self.threshold_nill_bind_group, &[]);
-            }
+            if let Some(pipeline) = shader_manager.get_pipeline(&self.down_pipeline) {
+                render_pass.set_bind_group(0, &self.sampler_bind_group, &[]);
+                if i == 0 {
+                    render_pass.set_bind_group(1, &self.threshold_bind_group, &[]);
+                } else {
+                    render_pass.set_bind_group(1, &self.threshold_nill_bind_group, &[]);
+                }
 
-            if let Some(index) = i.checked_sub(1) {
-                render_pass.set_bind_group(2, &self.down_texture_bind_groups[index], &[]);
-            } else {
-                render_pass.set_bind_group(
-                    2,
-                    self.view_texture_bind_group
-                        .as_ref()
-                        .expect("No view texture bind group set"),
-                    &[],
-                );
-            }
+                if let Some(index) = i.checked_sub(1) {
+                    render_pass.set_bind_group(2, &self.down_texture_bind_groups[index], &[]);
+                } else {
+                    render_pass.set_bind_group(
+                        2,
+                        self.view_texture_bind_group
+                            .as_ref()
+                            .expect("No view texture bind group set"),
+                        &[],
+                    );
+                }
 
-            // Dummy
-            render_pass.set_bind_group(3, &self.up_texture_bind_groups[0], &[]);
-            let pipeline = shader_manager.get_pipeline(&self.down_pipeline).unwrap();
-            render_pass.set_pipeline(&pipeline);
-            fullscreen_quad.draw(&mut render_pass);
+                // Dummy
+                render_pass.set_bind_group(3, &self.up_texture_bind_groups[0], &[]);
+                render_pass.set_pipeline(&pipeline);
+                fullscreen_quad.draw(&mut render_pass);
+            }
         }
 
         //up  :0 1 2 3 4 5
@@ -380,13 +381,14 @@ impl Bloom {
                 timestamp_writes: None,
             });
 
-            render_pass.set_bind_group(0, &self.sampler_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.threshold_nill_bind_group, &[]);
-            render_pass.set_bind_group(2, &self_texture, &[]);
-            render_pass.set_bind_group(3, &prev_texture, &[]);
-            let pipeline = shader_manager.get_pipeline(&self.up_pipeline).unwrap();
-            render_pass.set_pipeline(&pipeline);
-            fullscreen_quad.draw(&mut render_pass);
+            if let Some(pipeline) = shader_manager.get_pipeline(&self.up_pipeline) {
+                render_pass.set_bind_group(0, &self.sampler_bind_group, &[]);
+                render_pass.set_bind_group(1, &self.threshold_nill_bind_group, &[]);
+                render_pass.set_bind_group(2, &self_texture, &[]);
+                render_pass.set_bind_group(3, &prev_texture, &[]);
+                render_pass.set_pipeline(&pipeline);
+                fullscreen_quad.draw(&mut render_pass);
+            }
             i -= 1;
         }
         // .for_each(|((view, self_texture), prev_texture)| {

@@ -139,10 +139,10 @@ impl Postprocessing {
         });
         // render_pass.set_bind_group(0,&self.diffuse_bind_group , &[] );
         // render_pass.set_bind_group(0,&self.view_bind_group, &[] );
-        render_pass.set_bind_group(0, &textures_bind_group, &[]);
-        render_pass.set_bind_group(1, camera_bind_group, &[]);
-        render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);
         if let Some(pipeline) = shader_manager.get_pipeline(&self.pipeline_handle) {
+            render_pass.set_bind_group(0, &textures_bind_group, &[]);
+            render_pass.set_bind_group(1, camera_bind_group, &[]);
+            render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);
             render_pass.set_pipeline(pipeline);
             fullscreen_quad.draw(&mut render_pass);
         }

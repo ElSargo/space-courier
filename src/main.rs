@@ -37,6 +37,7 @@ use gpu::{Gpu, InstanceBuffer};
 use input::{AxisInput, ButtonInput};
 use model::Model;
 
+use planet_shadows::PlanetShadows;
 use planets::Planet;
 
 use post::Postprocessing;
@@ -459,7 +460,6 @@ impl State {
             RawInstance::desc(),
         );
 
-
         let mut ecs = Ecs::new().await;
         let gpu = Gpu {
             device: Arc::new(device),
@@ -767,22 +767,23 @@ impl State {
                     .set_vertex_buffer(1, self.planet_transform_instance_buffer.buffer.slice(..));
 
                 render_pass.set_pipeline(&pipeline);
+
+                use model::DrawModel;
+                render_pass.draw_model_instanced(
+                    &self.planet_model,
+                    0..self.planet_transform_instance_buffer.instances,
+                    &self.camera_gpu_stuff.bind_group,
+                );
+
+                // Ship as well
+                render_pass
+                    .set_vertex_buffer(1, self.ship_transform_instance_buffer.buffer.slice(..));
+                render_pass.draw_model_instanced(
+                    &self.ship_model,
+                    0..self.ship_transform_instance_buffer.instances,
+                    &self.camera_gpu_stuff.bind_group,
+                );
             }
-
-            use model::DrawModel;
-            render_pass.draw_model_instanced(
-                &self.planet_model,
-                0..self.planet_transform_instance_buffer.instances,
-                &self.camera_gpu_stuff.bind_group,
-            );
-
-            // Ship as well
-            render_pass.set_vertex_buffer(1, self.ship_transform_instance_buffer.buffer.slice(..));
-            render_pass.draw_model_instanced(
-                &self.ship_model,
-                0..self.ship_transform_instance_buffer.instances,
-                &self.camera_gpu_stuff.bind_group,
-            );
 
             // 3.
         }
@@ -818,15 +819,6 @@ impl State {
                 0..self.sun_transform_instance_buffer.instances,
                 &self.camera_gpu_stuff.bind_group,
             );
-
-            // render_pass.set_vertex_buffer(1, self.ship_instance_buffer.slice(..));
-            // render_pass.draw_model_instanced(
-            //     &self.ship_model,
-            //     0..self.ship_transforms.len() as u32,
-            //     &self.camera_uniform.bind_group,
-            // );
-
-            // 3.
         }
 
         {
@@ -1132,6 +1124,7 @@ impl RawInstance {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    color_eyre::install().unwrap();
     run().await;
 }
 
