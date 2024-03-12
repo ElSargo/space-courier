@@ -14,6 +14,25 @@ use crate::{
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    length_coef: f32,
+    displacment: f32,
+}
+
+impl Vertex {
+    const ATRIBS: [VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32, 1 => Float32];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATRIBS,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct RawPlanetShadow {
     position: Vec3,
     shadow_direction: Vec3,
@@ -28,13 +47,13 @@ pub struct PlanetShadows {
     pipeline: PipelineHandle,
 }
 impl RawPlanetShadow {
-    const ATRIBS: [VertexAttribute; 5] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32, 3 => Float32, 4 => Float32];
+    const INSTANCE_ATRIBS: [VertexAttribute; 5] = wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32x3, 4 => Float32, 5 => Float32, 6 => Float32];
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATRIBS,
+            attributes: &Self::INSTANCE_ATRIBS,
         }
     }
 }
@@ -68,7 +87,7 @@ impl PlanetShadows {
             },
         )));
 
-        let shader_handle = shader_manager.load_shader("planet_shadows.wgsl".into());
+        let shader_handle = shader_manager.load_shader("./src/planet_shadows.wgsl".into());
 
         let pipeline = shader_manager.add_pipeline(
             vec![shader_handle],
@@ -79,7 +98,7 @@ impl PlanetShadows {
                     vertex: wgpu::VertexState {
                         module: shaders[0],
                         entry_point: "vs_main",
-                        buffers: &[RawPlanetShadow::desc()],
+                        buffers: &[Vertex::desc(), RawPlanetShadow::desc()],
                     },
                     primitive: PrimitiveState::default(),
                     depth_stencil: Some(wgpu::DepthStencilState {

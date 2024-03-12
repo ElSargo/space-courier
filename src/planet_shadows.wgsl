@@ -7,8 +7,8 @@ struct Camera {
     world_position: vec3<f32>,
 };
 
-struct VertexInput{
-    @location(0) lenght_coef: f32,
+struct VertexInput {
+    @location(0) length_coef: f32,
     @location(1) displacment: f32,
 };
 
@@ -38,20 +38,23 @@ struct VertexOutput {
 //             4
 
 @vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32, in: VertexInput , instance: Instance) -> VertexOutput {
-
-    var out: VertexOutput;
-    
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32, in: VertexInput , instance: Instance) -> VertexOutput  {
     let camera_space_origin = (vec4(instance.position,1.0) * camera.view).xyz;
     let camera_space_shadow_direction = instance.shadow_direction * camera.view_rotation;
-    let y_displacement = dot(vec2(instance.radius,instance.shadow_height), vec2(in.lenght_coef,1.0 - in.lenght_coef)) ;
+    let y_displacement = dot(vec2(instance.radius,instance.shadow_height), vec2(in.length_coef,1.0 - in.length_coef)) ;
     let position = camera_space_origin + instance.shadow_length * camera_space_shadow_direction;
-    out.clip_position = camera.projection * vec4(position,1.0);
-    out.cone_origin = camera_space_origin;
-    out.umbra_point = camera_space_origin + camera_space_shadow_direction * instance.shadow_length;
-    out.radius = instance.radius;
-    out.umbra_radius = 0.0;
-    out.penumbra_radius = instance.shadow_height;
+     return VertexOutput (
+            camera.projection * vec4(position,1.0),
+             camera_space_origin, // cone_origin: vec3<f32>,
+             camera_space_origin + camera_space_shadow_direction * instance.shadow_length, // umbra_point: vec3<f32>,
+             camera_space_origin + camera_space_shadow_direction * instance.shadow_length, // penumbra_point: vec3<f32>,
+             instance.radius, // radius: f32,
+             0.0, // umbra_radius: f32,
+             instance.shadow_height // penumbra_radius: f32,
+    );
+}
 
-    return out;
+@fragment 
+fn fs_main(in: VertexOutput ) -> @location(0) vec4<f32> {
+    return vec4(0.0);
 }

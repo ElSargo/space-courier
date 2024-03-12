@@ -188,7 +188,7 @@ struct State {
 
     fullscreen_quad: FullscreenQuad,
 
-    // planet_shadows: PlanetShadows,
+    planet_shadows: PlanetShadows,
     post: Postprocessing,
 
     // bloom: Bloom,
@@ -459,8 +459,6 @@ impl State {
             RawInstance::desc(),
         );
 
-        // let planet_shadows =
-        //     PlanetShadows::new(&device, &config, &camera_gpu_stuff.bind_group_layout);
 
         let mut ecs = Ecs::new().await;
         let gpu = Gpu {
@@ -532,6 +530,12 @@ impl State {
                 )
             }),
         );
+        let planet_shadows = PlanetShadows::new(
+            &gpu.device,
+            &config,
+            &camera_gpu_stuff.bind_group_layout,
+            &mut shader_manager,
+        );
 
         Self {
             window,
@@ -568,8 +572,7 @@ impl State {
             gpu,
             gilrs: Gilrs::new().unwrap(),
             shader_manager,
-            // shader_manager,
-            // planet_shadows,
+            planet_shadows,
         }
     }
 
@@ -866,8 +869,12 @@ impl State {
             );
         }
 
-        // self.bloom
-        //     .draw(&mut encoder, &self.gpu.queue, &self.fullscreen_quad);
+        // self.bloom.draw(
+        //     &mut encoder,
+        //     &self.gpu.queue,
+        //     &self.fullscreen_quad,
+        //     &self.shader_manager,
+        // );
 
         self.post.draw(
             &mut encoder,
