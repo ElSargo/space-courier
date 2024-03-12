@@ -206,9 +206,16 @@ impl Bloom {
         device: &Device,
         view_texture_view: &TextureView,
     ) {
+        self.down_textures.clear();
+        self.down_texture_views.clear();
+        self.down_texture_bind_groups.clear();
+        self.up_textures.clear();
+        self.up_texture_views.clear();
+        self.up_texture_bind_groups.clear();
+
         let lowest_x = 40;
-        let mut width = config.width;
-        let mut height = config.height;
+        let mut width = config.width / 2;
+        let mut height = config.height / 2;
 
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Bloom bind group layout"),
@@ -316,6 +323,7 @@ impl Bloom {
         let threshold: f32 = 2.0;
         self.update_threshold(queue, threshold);
         for i in 0..self.down_textures.len() {
+            // println!("Down: {:#?}", self.down_textures[i].size());
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Bloom down render pass {i}"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -360,36 +368,36 @@ impl Bloom {
         //up  :0 1 2 3 4 5
         //down:0 1 2 3 4 5
 
-        let mut i = self.down_textures.len() - 1;
-        while i > 0 {
-            let target_index = i - 1;
-            let view = &self.up_texture_views[target_index];
-            let self_texture = &self.down_texture_bind_groups[target_index];
-            let prev_texture = &self.up_texture_bind_groups[i];
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Bloom render pass {i}"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
+        if let Some(pipeline) = shader_manager.get_pipeline(&self.up_pipeline) {
+            let mut i = self.down_textures.len() - 1;
+            while i > 0 {
+                let target_index = i - 1;
+                let view = &self.up_texture_views[target_index];
+                let self_texture = &self.down_texture_bind_groups[target_index];
+                let prev_texture = &self.up_texture_bind_groups[i];
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Bloom render pass {i}"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
 
-            if let Some(pipeline) = shader_manager.get_pipeline(&self.up_pipeline) {
                 render_pass.set_bind_group(0, &self.sampler_bind_group, &[]);
                 render_pass.set_bind_group(1, &self.threshold_nill_bind_group, &[]);
                 render_pass.set_bind_group(2, &self_texture, &[]);
                 render_pass.set_bind_group(3, &prev_texture, &[]);
                 render_pass.set_pipeline(&pipeline);
                 fullscreen_quad.draw(&mut render_pass);
+                i -= 1;
             }
-            i -= 1;
         }
         // .for_each(|((view, self_texture), prev_texture)| {
         // });
