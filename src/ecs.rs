@@ -10,9 +10,10 @@ pub struct Ecs {
 impl Ecs {
     pub async fn new() -> Self {
         let world = World::default();
-        let update = Schedule::default();
-        let extract = Schedule::default();
         let init = Schedule::default();
+        let update = Schedule::default();
+
+        let extract = Schedule::default();
 
         let ecs = Self {
             world,
