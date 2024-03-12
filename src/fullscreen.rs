@@ -6,7 +6,7 @@ use wgpu::{
     BufferUsages, RenderPass, VertexBufferLayout,
 };
 
-use crate::shader_loader::{ShaderHandle, ShaderLoader};
+use crate::shader_manager::{ShaderHandle, ShaderManager};
 
 const VERTICES: &[Vertex] = &[
     Vertex {
@@ -57,7 +57,7 @@ pub struct FullscreenQuad {
 }
 
 impl FullscreenQuad {
-    pub fn new(device: &wgpu::Device, shader_loader: &mut ShaderLoader) -> Self {
+    pub fn new(device: &wgpu::Device, shader_manager: &mut ShaderManager) -> Self {
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("post_buffer_index"),
             contents: cast_slice(INDICES),
@@ -72,7 +72,7 @@ impl FullscreenQuad {
         //     device.create_shader_module(wgpu::include_wgsl!("fullscreen_quad.wgsl")),
         // ));
 
-        let shader_handle = shader_loader.load_shader("./src/fullscreen_quad.wgsl".into());
+        let shader_handle = shader_manager.load_shader("./src/fullscreen_quad.wgsl".into());
 
         let vertex_format = Box::leak(Box::new([Vertex::desc()]));
         Self {

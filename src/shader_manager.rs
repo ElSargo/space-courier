@@ -9,7 +9,7 @@ use std::{
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use wgpu::{Device, RenderPipeline, ShaderModule, ShaderModuleDescriptor};
 
-pub struct ShaderLoader {
+pub struct ShaderManager {
     gpu_device: Arc<Device>,
     whatcher: RecommendedWatcher,
     compile_queue_sender: UnboundedSender<(PathBuf, Option<ShaderHandle>)>,
@@ -44,13 +44,25 @@ pub struct PipelineHandle {
 
 type PipelineConstructor = Box<dyn FnMut(Vec<&ShaderModule>, &Device) -> RenderPipeline>;
 
-impl ShaderLoader {
+macro_rules! log {
+    ($msg:tt) => {
+        use color_eyre::owo_colors::OwoColorize;
+        println!(
+            "{}{}",
+            "[ShaderManager]: ".blue().bold(),
+            format!($msg).blue()
+        );
+    };
+}
+
+impl ShaderManager {
     pub fn new(device: Arc<Device>) -> Result<Self, notify::Error> {
         let (compile_queue_sender, rcv) = unbounded_channel();
         let cqs = compile_queue_sender.clone();
         let whatcher = recommended_watcher(move |event| match event {
             Ok(Event { kind, paths, .. }) => {
-                if let notify::EventKind::Modify(_) = kind {
+                if let notify::EventKind::Modify(mk) = kind {
+                    log!("{mk:#?}");
                     for path in paths {
                         cqs.send((path, None)).expect(
                             "Unable to send fs-msg from whatcher to shader loader, channel error",
@@ -70,9 +82,6 @@ impl ShaderLoader {
         ));
 
         Ok(Self {
-            // shader_info: HashMap::new(),
-            // compiled_shaders: vec![],
-            // pipelines: HashMap::new(),
             gpu_device: device,
             whatcher,
             compile_queue_sender,
@@ -96,7 +105,7 @@ impl ShaderLoader {
             .expect("File whatcher failed to accept new path");
 
         let handle = path_to_shader_id(&path);
-        println!("Sent {path:#?} to queue");
+        log!("Sent {path:#?} to queue");
         self.compile_queue_sender
             .send((path, Some(handle)))
             .expect("Unable to send shader to load queue");
@@ -259,16 +268,16 @@ async fn compile_shaders(
     device: Arc<Device>,
     outgoing: UnboundedSender<(ShaderModule, ShaderHandle)>,
 ) {
-    println!("Compiling compiler running");
+    log!("Compiling compiler running");
     while let Some((path, handle)) = incomming.recv().await {
-        println!("Compiling {path:#?}");
+        log!("Compiling {path:#?}");
         match tokio::fs::read_to_string(&path).await {
             Ok(source) => {
                 let module = device.create_shader_module(ShaderModuleDescriptor {
                     label: None,
                     source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
                 });
-                println!("Compiled {path:#?}");
+                log!("Compiled {path:#?}");
                 let handle = handle.unwrap_or_else(|| path_to_shader_id(&path));
                 outgoing
                     .send((module, handle))

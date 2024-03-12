@@ -14,7 +14,7 @@ mod planets;
 mod player_controller;
 mod post;
 mod resources;
-mod shader_loader;
+mod shader_manager;
 mod texture;
 mod time;
 mod transform;
@@ -40,7 +40,7 @@ use model::Model;
 use planets::Planet;
 
 use post::Postprocessing;
-use shader_loader::{PipelineHandle, ShaderLoader};
+use shader_manager::{PipelineHandle, ShaderManager};
 use std::{mem::size_of, sync::Arc};
 use texture::Texture;
 use time::Time;
@@ -162,7 +162,7 @@ struct State {
     window: Window,
     render_pipeline: PipelineHandle,
     sun_render_pipeline: wgpu::RenderPipeline,
-    gizmo_render_pipeline: wgpu::RenderPipeline,
+    gizmo_render_pipeline: PipelineHandle,
 
     camera_gpu_stuff: Arc<CameraUniform>,
 
@@ -199,7 +199,7 @@ struct State {
     bloom_debug: (bool, usize),
     ecs: Ecs,
 
-    shader_loader: ShaderLoader,
+    shader_manager: ShaderManager,
     gilrs: Gilrs,
 }
 
@@ -372,7 +372,6 @@ impl State {
                 .await
                 .unwrap();
 
-        // let normal_shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
         let sun_transforms = vec![Transform {
             scale: Vec3::ONE * 20.0,
             ..Default::default()
@@ -449,17 +448,6 @@ impl State {
             instances: 3,
         };
 
-        let gizmo_shader = device.create_shader_module(wgpu::include_wgsl!("gizmo.wgsl"));
-        let gizmo_render_pipeline = mk_pipeline(
-            &device,
-            texture_bind_group_layout.clone(),
-            camera_gpu_stuff.clone(),
-            None,
-            &gizmo_shader,
-            "gizmo",
-            RawArrowInstance::desc(),
-        );
-
         let sun_shader = device.create_shader_module(wgpu::include_wgsl!("sun.wgsl"));
         let sun_render_pipeline = mk_pipeline(
             &device,
@@ -490,39 +478,57 @@ impl State {
         player_controller::init(&mut ecs);
         gizmo::init(&mut ecs);
 
-        ecs.update.add_systems(print_delta);
+        ecs.update.add_systems(log_time);
 
         ecs.init.run(&mut ecs.world);
 
-        let mut shader_loader = ShaderLoader::new(gpu.device.clone()).unwrap();
-        let fullscreen_quad = FullscreenQuad::new(&gpu.device, &mut shader_loader);
+        let mut shader_manager = ShaderManager::new(gpu.device.clone()).unwrap();
+        let fullscreen_quad = FullscreenQuad::new(&gpu.device, &mut shader_manager);
         let post = Postprocessing::new(
             &gpu.device,
             &config,
             &fullscreen_quad,
             &view_textures_bind_group_layout,
-            &mut shader_loader,
+            &mut shader_manager,
         );
         let bloom = Bloom::new(
             &gpu.device,
             &config,
             &fullscreen_quad,
             &view_texture.view,
-            &mut shader_loader,
+            &mut shader_manager,
         );
-        let normal_shader = shader_loader.load_shader("./src/shader.wgsl".into());
+        let normal_shader = shader_manager.load_shader("./src/shader.wgsl".into());
         let cgs = camera_gpu_stuff.clone();
-        let render_pipeline = shader_loader.add_pipeline(
+        let tbgl = texture_bind_group_layout.clone();
+        let render_pipeline = shader_manager.add_pipeline(
             vec![normal_shader],
             Box::new(move |shaders, device| {
                 mk_pipeline(
                     &device,
-                    texture_bind_group_layout.clone(),
+                    tbgl.clone(),
                     cgs.clone(),
                     None,
                     shaders[0],
                     "normal",
                     RawInstance::desc(),
+                )
+            }),
+        );
+        let gizmo_shader = shader_manager.load_shader("./src/gizmo.wgsl".into());
+        let tbgl = texture_bind_group_layout.clone();
+        let cgs = camera_gpu_stuff.clone();
+        let gizmo_render_pipeline = shader_manager.add_pipeline(
+            vec![gizmo_shader],
+            Box::new(move |shaders, device| {
+                mk_pipeline(
+                    &device,
+                    tbgl.clone(),
+                    cgs.clone(),
+                    None,
+                    shaders[0],
+                    "gizmo",
+                    RawArrowInstance::desc(),
                 )
             }),
         );
@@ -561,8 +567,8 @@ impl State {
             ecs,
             gpu,
             gilrs: Gilrs::new().unwrap(),
-            shader_loader,
-            // shader_loader,
+            shader_manager,
+            // shader_manager,
             // planet_shadows,
         }
     }
@@ -648,7 +654,7 @@ impl State {
             .update(&mut self.gilrs);
         self.ecs.update();
 
-        self.shader_loader.construct_piplines();
+        self.shader_manager.construct_piplines();
 
         {
             let ship_bytes = instance_buffer_bytes(
@@ -753,7 +759,7 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            if let Some(pipeline) = self.shader_loader.get_pipeline(&self.render_pipeline) {
+            if let Some(pipeline) = self.shader_manager.get_pipeline(&self.render_pipeline) {
                 render_pass
                     .set_vertex_buffer(1, self.planet_transform_instance_buffer.buffer.slice(..));
 
@@ -843,8 +849,14 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            render_pass.set_vertex_buffer(1, self.arrow_transform_instance_buffer.buffer.slice(..));
-            render_pass.set_pipeline(&self.gizmo_render_pipeline);
+            if let Some(pipeline) = self
+                .shader_manager
+                .get_pipeline(&self.gizmo_render_pipeline)
+            {
+                render_pass
+                    .set_vertex_buffer(1, self.arrow_transform_instance_buffer.buffer.slice(..));
+                render_pass.set_pipeline(pipeline);
+            }
 
             use model::DrawModel;
             render_pass.draw_model_instanced(
@@ -874,7 +886,7 @@ impl State {
                     .1
                     .min(self.bloom.up_texture_bind_groups.len() - 1)]
             },
-            &self.shader_loader,
+            &self.shader_manager,
         );
 
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
@@ -1129,18 +1141,23 @@ async fn main() {
 #[derive(Component)]
 pub struct Ship;
 
-fn print_delta(
+fn log_time(
     mut current_second: Local<f64>,
     mut frame: Local<u128>,
     mut avg: Local<f64>,
     time: Res<Time>,
 ) {
+    use color_eyre::owo_colors::OwoColorize;
     *frame += 1;
     *avg += time.delta_seconds as f64;
     if time.since_startup > *current_second + 1.0 {
         println!(
-            "FPS: {}; Delta avg: {}",
-            *frame,
+            "[Time]: FPS: {}; Delta avg: {}",
+            match *frame {
+                0..=30 => format!("{}", (*frame).red()),
+                31..=60 => format!("{}", (*frame).yellow()),
+                61.. => format!("{}", (*frame).green()),
+            },
             (*avg / *frame as f64 * 1000.0) as u64
         );
         *frame = 0;
@@ -1149,6 +1166,10 @@ fn print_delta(
     }
 
     if time.delta_seconds > 1.0 / 60.0 {
-        println!("Lag spike: {} millis", time.delta_seconds * 1000.0);
+        println!(
+            "[Time] {}: {} millis",
+            "Lag spike".red(),
+            time.delta_seconds * 1000.0
+        );
     }
 }

@@ -1,9 +1,8 @@
-use wgpu::{BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device, ShaderStages};
-
 use crate::{
     fullscreen::FullscreenQuad,
-    shader_loader::{self, PipelineHandle},
+    shader_manager::{self, PipelineHandle},
 };
+use wgpu::{BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device, ShaderStages};
 
 pub struct Postprocessing {
     pipeline_handle: PipelineHandle,
@@ -15,9 +14,9 @@ impl Postprocessing {
         config: &wgpu::SurfaceConfiguration,
         fullscreen_quad: &FullscreenQuad,
         view_textures_bind_group_layout: &wgpu::BindGroupLayout,
-        shader_loader: &mut shader_loader::ShaderLoader,
+        shader_manager: &mut shader_manager::ShaderManager,
     ) -> Self {
-        let shader_handle = shader_loader.load_shader("./src/post.wgsl".into());
+        let shader_handle = shader_manager.load_shader("./src/post.wgsl".into());
 
         // let post_shader = device.create_shader_module(wgpu::include_wgsl!());
 
@@ -64,7 +63,7 @@ impl Postprocessing {
         // let pipeline = device.create_render_pipeline(&);
         let vert_fmt = fullscreen_quad.vertex_format;
         let format = config.format.clone();
-        let pipeline_handle = shader_loader.add_pipeline(
+        let pipeline_handle = shader_manager.add_pipeline(
             vec![shader_handle, fullscreen_quad.shader_handle],
             Box::new(move |shader_modules, device: &Device| {
                 let targets = [Some(wgpu::ColorTargetState {
@@ -122,7 +121,7 @@ impl Postprocessing {
         camera_bind_group: &wgpu::BindGroup,
         textures_bind_group: &wgpu::BindGroup,
         bloom_texture_bind_group: &wgpu::BindGroup,
-        shader_loader: &shader_loader::ShaderLoader,
+        shader_manager: &shader_manager::ShaderManager,
     ) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Ui render pass"),
@@ -143,7 +142,7 @@ impl Postprocessing {
         render_pass.set_bind_group(0, &textures_bind_group, &[]);
         render_pass.set_bind_group(1, camera_bind_group, &[]);
         render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);
-        if let Some(pipeline) = shader_loader.get_pipeline(&self.pipeline_handle) {
+        if let Some(pipeline) = shader_manager.get_pipeline(&self.pipeline_handle) {
             render_pass.set_pipeline(pipeline);
             fullscreen_quad.draw(&mut render_pass);
         }

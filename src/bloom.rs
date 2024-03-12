@@ -6,7 +6,7 @@ use wgpu::{
 
 use crate::{
     fullscreen::FullscreenQuad,
-    shader_loader::{PipelineHandle, ShaderLoader},
+    shader_manager::{PipelineHandle, ShaderManager},
 };
 
 pub struct Bloom {
@@ -32,7 +32,7 @@ impl Bloom {
         config: &SurfaceConfiguration,
         fullscreen_quad: &FullscreenQuad,
         view_textures_view: &TextureView,
-        shader_loader: &mut ShaderLoader,
+        shader_manager: &mut ShaderManager,
     ) -> Self {
         let threshold_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -89,10 +89,9 @@ impl Bloom {
                 },
             )));
 
-        // let bloom_shader_mod = device.create_shader_module(wgpu::include_wgsl!());
-        let bloom_shader_handle = shader_loader.load_shader("./src/bloom.wgsl".into());
+        let bloom_shader_handle = shader_manager.load_shader("./src/bloom.wgsl".into());
 
-        let down_pipeline = shader_loader.add_pipeline(
+        let down_pipeline = shader_manager.add_pipeline(
             vec![bloom_shader_handle, fullscreen_quad.shader_handle],
             Box::new(|shader_moules, device| {
                 mk_layout(
@@ -105,7 +104,7 @@ impl Bloom {
                 )
             }),
         );
-        let up_pipeline = shader_loader.add_pipeline(
+        let up_pipeline = shader_manager.add_pipeline(
             vec![bloom_shader_handle, fullscreen_quad.shader_handle],
             Box::new(|shader_moules, device| {
                 mk_layout(
@@ -312,7 +311,7 @@ impl Bloom {
         encoder: &mut wgpu::CommandEncoder,
         queue: &wgpu::Queue,
         fullscreen_quad: &FullscreenQuad,
-        shader_loader: &ShaderLoader,
+        shader_manager: &ShaderManager,
     ) {
         let threshold: f32 = 2.0;
         self.update_threshold(queue, threshold);
@@ -352,7 +351,7 @@ impl Bloom {
 
             // Dummy
             render_pass.set_bind_group(3, &self.up_texture_bind_groups[0], &[]);
-            let pipeline = shader_loader.get_pipeline(&self.down_pipeline).unwrap();
+            let pipeline = shader_manager.get_pipeline(&self.down_pipeline).unwrap();
             render_pass.set_pipeline(&pipeline);
             fullscreen_quad.draw(&mut render_pass);
         }
@@ -385,7 +384,7 @@ impl Bloom {
             render_pass.set_bind_group(1, &self.threshold_nill_bind_group, &[]);
             render_pass.set_bind_group(2, &self_texture, &[]);
             render_pass.set_bind_group(3, &prev_texture, &[]);
-            let pipeline = shader_loader.get_pipeline(&self.up_pipeline).unwrap();
+            let pipeline = shader_manager.get_pipeline(&self.up_pipeline).unwrap();
             render_pass.set_pipeline(&pipeline);
             fullscreen_quad.draw(&mut render_pass);
             i -= 1;
