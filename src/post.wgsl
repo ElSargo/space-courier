@@ -60,31 +60,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let depth_inv = textureSample(depth_texture, depth_sampler, in.uv);
     let lin_depth = 1.0/depth_inv;
     // No chromaitc abbr
-    // var color = textureSample(color_texture, color_sampler, in.uv).rgb;
-    // var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
+    var color = textureSample(color_texture, color_sampler, in.uv).rgb;
+    var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
 
     //Chromatic abbr
-    var c = in.uv - 0.5;
-    let st = 0.02;
-    var color = vec3(
-        textureSample(color_texture, color_sampler, c*( 1.0 - st ) + 0.5).r,
-        textureSample(color_texture, color_sampler, c*( 1.0      ) + 0.5).g,
-        textureSample(color_texture, color_sampler, c*( 1.0 + st ) + 0.5).b
-    );
-    var bloom = vec3(
-        textureSample(bloom_texture, color_sampler, c*( 1.0 - st ) + 0.5).r,
-        textureSample(bloom_texture, color_sampler, c*( 1.0      ) + 0.5).g,
-        textureSample(bloom_texture, color_sampler, c*( 1.0 + st ) + 0.5).b
-    );
+    // var c = in.uv - 0.5;
+    // let st = 0.02;
+    // var color = vec3(
+    //     textureSample(color_texture, color_sampler, c*( 1.0 - st ) + 0.5).r,
+    //     textureSample(color_texture, color_sampler, c*( 1.0      ) + 0.5).g,
+    //     textureSample(color_texture, color_sampler, c*( 1.0 + st ) + 0.5).b
+    // );
+    // var bloom = vec3(
+    //     textureSample(bloom_texture, color_sampler, c*( 1.0 - st ) + 0.5).r,
+    //     textureSample(bloom_texture, color_sampler, c*( 1.0      ) + 0.5).g,
+    //     textureSample(bloom_texture, color_sampler, c*( 1.0 + st ) + 0.5).b
+    // );
     
+    // Depth fog
+    // color = mix( color, vec3(0.05,0.0,0.11), 0.2*(1.0-exp(-lin_depth*0.0001)));
     
     // return vec4(gamma(bloom),1.0);
     color = aces_tonemap(color);
     color += bloom*0.5;
 
 
-    // Depth fog
-    // color = mix( color, vec3(0.2,0.15,0.25), 1.0-exp(-lin_depth*0.0001));
 
 
     // let vignet_signal = smoothstep(vec2(1.),vec2(0.8), pow(abs(in.uv - vec2(0.5)) * vec2(2.0),vec2(2.0) ) );
