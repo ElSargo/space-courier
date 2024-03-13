@@ -87,7 +87,7 @@ impl PlanetShadows {
             },
         )));
 
-        let shader_handle = shader_manager.load_shader("./src/planet_shadows.wgsl".into());
+        let shader_handle = shader_manager.load_shader("./src/planet_shadows.wgsl");
 
         let pipeline = shader_manager.add_pipeline(
             vec![shader_handle],

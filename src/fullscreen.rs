@@ -72,7 +72,7 @@ impl FullscreenQuad {
         //     device.create_shader_module(wgpu::include_wgsl!("fullscreen_quad.wgsl")),
         // ));
 
-        let shader_handle = shader_manager.load_shader("./src/fullscreen_quad.wgsl".into());
+        let shader_handle = shader_manager.load_shader("./src/fullscreen_quad.wgsl");
 
         let vertex_format = Box::leak(Box::new([Vertex::desc()]));
         Self {

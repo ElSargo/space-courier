@@ -16,7 +16,7 @@ impl Postprocessing {
         view_textures_bind_group_layout: &wgpu::BindGroupLayout,
         shader_manager: &mut shader_manager::ShaderManager,
     ) -> Self {
-        let shader_handle = shader_manager.load_shader("./src/post.wgsl".into());
+        let shader_handle = shader_manager.load_shader("./src/post.wgsl");
 
         // let post_shader = device.create_shader_module(wgpu::include_wgsl!());
 
@@ -123,23 +123,23 @@ impl Postprocessing {
         bloom_texture_bind_group: &wgpu::BindGroup,
         shader_manager: &shader_manager::ShaderManager,
     ) {
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Ui render pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            occlusion_query_set: None,
-            timestamp_writes: None,
-        });
-        // render_pass.set_bind_group(0,&self.diffuse_bind_group , &[] );
-        // render_pass.set_bind_group(0,&self.view_bind_group, &[] );
         if let Some(pipeline) = shader_manager.get_pipeline(&self.pipeline_handle) {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Ui render pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+            // render_pass.set_bind_group(0,&self.diffuse_bind_group , &[] );
+            // render_pass.set_bind_group(0,&self.view_bind_group, &[] );
             render_pass.set_bind_group(0, &textures_bind_group, &[]);
             render_pass.set_bind_group(1, camera_bind_group, &[]);
             render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);

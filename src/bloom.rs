@@ -89,7 +89,7 @@ impl Bloom {
                 },
             )));
 
-        let bloom_shader_handle = shader_manager.load_shader("./src/bloom.wgsl".into());
+        let bloom_shader_handle = shader_manager.load_shader("./src/bloom.wgsl");
 
         let down_pipeline = shader_manager.add_pipeline(
             vec![bloom_shader_handle, fullscreen_quad.shader_handle],
@@ -322,23 +322,23 @@ impl Bloom {
     ) {
         let threshold: f32 = 2.0;
         self.update_threshold(queue, threshold);
-        for i in 0..self.down_textures.len() {
-            // println!("Down: {:#?}", self.down_textures[i].size());
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Bloom down render pass {i}"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.down_texture_views[i],
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-            if let Some(pipeline) = shader_manager.get_pipeline(&self.down_pipeline) {
+        if let Some(pipeline) = shader_manager.get_pipeline(&self.down_pipeline) {
+            for i in 0..self.down_textures.len() {
+                // println!("Down: {:#?}", self.down_textures[i].size());
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Bloom down render pass {i}"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.down_texture_views[i],
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
                 render_pass.set_bind_group(0, &self.sampler_bind_group, &[]);
                 if i == 0 {
                     render_pass.set_bind_group(1, &self.threshold_bind_group, &[]);

@@ -95,7 +95,8 @@ impl ShaderManager {
         })
     }
 
-    pub fn load_shader(&mut self, path: PathBuf) -> ShaderHandle {
+    pub fn load_shader(&mut self, path: impl Into<PathBuf>) -> ShaderHandle {
+        let path = path.into();
         let path = path
             .canonicalize()
             .expect(&format!("Unable to resolve file path {path:#?}"));

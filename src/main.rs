@@ -162,7 +162,7 @@ struct State {
     // unsafe references to the window's resources.
     window: Window,
     render_pipeline: PipelineHandle,
-    sun_render_pipeline: wgpu::RenderPipeline,
+    sun_render_pipeline: PipelineHandle,
     gizmo_render_pipeline: PipelineHandle,
 
     camera_gpu_stuff: Arc<CameraUniform>,
@@ -449,17 +449,6 @@ impl State {
             instances: 3,
         };
 
-        let sun_shader = device.create_shader_module(wgpu::include_wgsl!("sun.wgsl"));
-        let sun_render_pipeline = mk_pipeline(
-            &device,
-            texture_bind_group_layout.clone(),
-            camera_gpu_stuff.clone(),
-            None,
-            &sun_shader,
-            "sun",
-            RawInstance::desc(),
-        );
-
         let mut ecs = Ecs::new().await;
         let gpu = Gpu {
             device: Arc::new(device),
@@ -496,7 +485,7 @@ impl State {
             &view_texture.view,
             &mut shader_manager,
         );
-        let normal_shader = shader_manager.load_shader("./src/shader.wgsl".into());
+        let normal_shader = shader_manager.load_shader("./src/shader.wgsl");
         let cgs = camera_gpu_stuff.clone();
         let tbgl = texture_bind_group_layout.clone();
         let render_pipeline = shader_manager.add_pipeline(
@@ -513,7 +502,7 @@ impl State {
                 )
             }),
         );
-        let gizmo_shader = shader_manager.load_shader("./src/gizmo.wgsl".into());
+        let gizmo_shader = shader_manager.load_shader("./src/gizmo.wgsl");
         let tbgl = texture_bind_group_layout.clone();
         let cgs = camera_gpu_stuff.clone();
         let gizmo_render_pipeline = shader_manager.add_pipeline(
@@ -535,6 +524,22 @@ impl State {
             &config,
             &camera_gpu_stuff.bind_group_layout,
             &mut shader_manager,
+        );
+        let sun_shader = shader_manager.load_shader("./src/sun.wgsl");
+        let cgs = camera_gpu_stuff.clone();
+        let sun_render_pipeline = shader_manager.add_pipeline(
+            vec![sun_shader],
+            Box::new(move |shaders, device| {
+                mk_pipeline(
+                    &device,
+                    texture_bind_group_layout.clone(),
+                    cgs.clone(),
+                    None,
+                    shaders[0],
+                    "sun",
+                    RawInstance::desc(),
+                )
+            }),
         );
 
         Self {
@@ -628,14 +633,21 @@ impl State {
                     };
 
                     let pressed = *state == ElementState::Pressed;
-                    if *key == VirtualKeyCode::R && pressed {
-                        // self.planets = make_planets();
-                        true
-                    } else if *key == VirtualKeyCode::N && pressed {
+                    if *key == VirtualKeyCode::N && pressed {
                         self.bloom_debug.0 = !self.bloom_debug.0;
+                        if self.bloom_debug.0 {
+                            println!("Viewing down");
+                        } else {
+                            println!("Viewing up");
+                        }
                         true
                     } else if *key == VirtualKeyCode::Plus && pressed {
                         self.bloom_debug.1 += 1;
+                        println!(
+                            "BDG: {}:{}",
+                            self.bloom_debug.1,
+                            self.bloom.down_texture_bind_groups.len()
+                        );
                         true
                     } else if *key == VirtualKeyCode::Minus && pressed {
                         self.bloom_debug.1 = self.bloom_debug.1.saturating_sub(1);
@@ -739,7 +751,7 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        {
+        if let Some(pipeline) = self.shader_manager.get_pipeline(&self.render_pipeline) {
             // Planets
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -762,32 +774,28 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            if let Some(pipeline) = self.shader_manager.get_pipeline(&self.render_pipeline) {
-                render_pass
-                    .set_vertex_buffer(1, self.planet_transform_instance_buffer.buffer.slice(..));
+            render_pass
+                .set_vertex_buffer(1, self.planet_transform_instance_buffer.buffer.slice(..));
 
-                render_pass.set_pipeline(&pipeline);
+            render_pass.set_pipeline(&pipeline);
 
-                use model::DrawModel;
-                render_pass.draw_model_instanced(
-                    &self.planet_model,
-                    0..self.planet_transform_instance_buffer.instances,
-                    &self.camera_gpu_stuff.bind_group,
-                );
+            use model::DrawModel;
+            render_pass.draw_model_instanced(
+                &self.planet_model,
+                0..self.planet_transform_instance_buffer.instances,
+                &self.camera_gpu_stuff.bind_group,
+            );
 
-                // Ship as well
-                render_pass
-                    .set_vertex_buffer(1, self.ship_transform_instance_buffer.buffer.slice(..));
-                render_pass.draw_model_instanced(
-                    &self.ship_model,
-                    0..self.ship_transform_instance_buffer.instances,
-                    &self.camera_gpu_stuff.bind_group,
-                );
-            }
-
-            // 3.
+            // Ship as well
+            render_pass.set_vertex_buffer(1, self.ship_transform_instance_buffer.buffer.slice(..));
+            render_pass.draw_model_instanced(
+                &self.ship_model,
+                0..self.ship_transform_instance_buffer.instances,
+                &self.camera_gpu_stuff.bind_group,
+            );
         }
-        {
+
+        if let Some(pipeline) = self.shader_manager.get_pipeline(&self.sun_render_pipeline) {
             // Sun
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Sun render pass"),
@@ -811,7 +819,7 @@ impl State {
                 timestamp_writes: None,
             });
             render_pass.set_vertex_buffer(1, self.sun_transform_instance_buffer.buffer.slice(..));
-            render_pass.set_pipeline(&self.sun_render_pipeline);
+            render_pass.set_pipeline(pipeline);
 
             use model::DrawModel;
             render_pass.draw_model_instanced(
@@ -821,6 +829,9 @@ impl State {
             );
         }
 
+        if let Some(pipeline) = self
+            .shader_manager
+            .get_pipeline(&self.gizmo_render_pipeline)
         {
             // Arrow gizmos
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -844,14 +855,9 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            if let Some(pipeline) = self
-                .shader_manager
-                .get_pipeline(&self.gizmo_render_pipeline)
-            {
-                render_pass
-                    .set_vertex_buffer(1, self.arrow_transform_instance_buffer.buffer.slice(..));
-                render_pass.set_pipeline(pipeline);
-            }
+
+            render_pass.set_vertex_buffer(1, self.arrow_transform_instance_buffer.buffer.slice(..));
+            render_pass.set_pipeline(pipeline);
 
             use model::DrawModel;
             render_pass.draw_model_instanced(
@@ -861,12 +867,16 @@ impl State {
             );
         }
 
-        // self.bloom.draw(
-        //     &mut encoder,
-        //     &self.gpu.queue,
-        //     &self.fullscreen_quad,
-        //     &self.shader_manager,
-        // );
+        {
+            // self.planet_shadows.draw(&mut encoder);
+        }
+
+        self.bloom.draw(
+            &mut encoder,
+            &self.gpu.queue,
+            &self.fullscreen_quad,
+            &self.shader_manager,
+        );
 
         self.post.draw(
             &mut encoder,
