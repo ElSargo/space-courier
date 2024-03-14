@@ -1,4 +1,4 @@
-use notify::{recommended_watcher, Event, RecommendedWatcher, Watcher};
+use notify::{event::AccessMode, recommended_watcher, Event, RecommendedWatcher, Watcher};
 use rand::{thread_rng, Rng};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -46,11 +46,12 @@ type PipelineConstructor = Box<dyn FnMut(Vec<&ShaderModule>, &Device) -> RenderP
 
 macro_rules! log {
     ($msg:tt) => {
-        use color_eyre::owo_colors::OwoColorize;
         println!(
             "{}{}",
-            "[ShaderManager]: ".blue().bold(),
-            format!($msg).blue()
+            color_eyre::owo_colors::OwoColorize::bold(&color_eyre::owo_colors::OwoColorize::blue(
+                &"[ShaderManager]: "
+            )),
+            color_eyre::owo_colors::OwoColorize::blue(&format!($msg))
         );
     };
 }
@@ -61,8 +62,11 @@ impl ShaderManager {
         let cqs = compile_queue_sender.clone();
         let whatcher = recommended_watcher(move |event| match event {
             Ok(Event { kind, paths, .. }) => {
-                if let notify::EventKind::Modify(mk) = kind {
-                    log!("{mk:#?}");
+                if let notify::EventKind::Access(notify::event::AccessKind::Close(
+                    AccessMode::Write,
+                )) = kind
+                {
+                    log!("fs event: {kind:#?}");
                     for path in paths {
                         cqs.send((path, None)).expect(
                             "Unable to send fs-msg from whatcher to shader loader, channel error",
@@ -221,37 +225,6 @@ impl ShaderManager {
             }
         }
     }
-
-    // fn add_pipeline(
-    //     &mut self,
-    //     shader_a: Option<ShaderHandle>,
-    //     shader_b: Option<ShaderHandle>,
-    //     pipeline_constructor: PipelineConstructor,
-    // ) {
-    //     let id = self.constructors.len();
-    //     let res = PiplineReasource {
-    //         id,
-    //         shader_a,
-    //         shader_b,
-    //     };
-    //     self.constructors.insert(res, pipeline_constructor);
-    // }
-
-    // fn get_pipeline(&self, handle: PiplineReasource) -> Option<&RenderPipeline> {
-    //     self.pipelines.entry(handle).or_insert_with(|| self.constructors[] )
-    // }
-
-    // async fn whatch(&mut self) {
-    //     while let Some(Ok(event)) = self.compile_queue.recv().await {
-    //         for path in event.paths.iter() {
-    //             if let Some(id) = self.shader_info.get(path) {
-    //                 self.load_queue.push_front(*id);
-    //             }
-    //         }
-    //     }
-    // }
-
-    // fn get
 }
 
 /// Stable hash
@@ -274,15 +247,25 @@ async fn compile_shaders(
         log!("Compiling {path:#?}");
         match tokio::fs::read_to_string(&path).await {
             Ok(source) => {
-                let module = device.create_shader_module(ShaderModuleDescriptor {
+                device.push_error_scope(wgpu::ErrorFilter::Validation);
+
+                let shader = device.create_shader_module(ShaderModuleDescriptor {
                     label: None,
                     source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
                 });
-                log!("Compiled {path:#?}");
-                let handle = handle.unwrap_or_else(|| path_to_shader_id(&path));
-                outgoing
-                    .send((module, handle))
-                    .expect("Unable to send compiled shader to queue");
+
+                if let Some(e) = device.pop_error_scope().await {
+                    match e {
+                        wgpu::Error::OutOfMemory { source } => eprintln!("{source:#?}"),
+                        wgpu::Error::Validation { description, .. } => eprintln!("{description}"),
+                    }
+                } else {
+                    log!("Compiled {path:#?}");
+                    let handle = handle.unwrap_or_else(|| path_to_shader_id(&path));
+                    outgoing
+                        .send((shader, handle))
+                        .expect("Unable to send compiled shader to queue");
+                };
             }
             Err(e) => eprintln!("{e}"),
         }
