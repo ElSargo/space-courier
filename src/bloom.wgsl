@@ -56,8 +56,6 @@ const weights = array<f32,arr_size>(
 
 @fragment
 fn down(in: VertexOutput) -> @location(0) vec4<f32> {
-
-    
     let dxdy = vec2(dpdx(in.uv.x),dpdy(in.uv.y));
     var color = vec3(0.0);
     var offset = offsets[0];
@@ -125,7 +123,7 @@ fn down(in: VertexOutput) -> @location(0) vec4<f32> {
     sample_position = in.uv + offset * dxdy; // Texture we are sampling is twice as big;
     sample = textureSample(color_texture, color_sampler, sample_position).rgb;
     color += max(vec3(0.0), sample - threshold) * weight;
-    return vec4(color * 1.2, 1.0);
+    return vec4(color * 1.0, 1.0);
 }
 
 
@@ -141,15 +139,19 @@ fn up(in: VertexOutput) -> @location(0) vec4<f32> {
     for (var dx = -1.0; dx < 1.5 ; dx += 1.0 ) {
     for (var dy = -1.0; dy < 1.5 ; dy += 1.0 ) {
         let offset = vec2(dx,dy);
-        let sample_position = in.uv + offset * dxdy * 2.0;
+        let sample_position = in.uv + offset * dxdy * acos(-1.0);
         let sample = textureSample(low_res_texture, color_sampler, sample_position).rgb;
-        let e = 2.0 - abs(dx) - abs(dy);
+        let e = 2.0 * (1.0 - 0.5*abs(dx)) * (1.0 - 0.5*abs(dy));
         color += sample * e ;
         a += e;
     }}
     color /= a;
     // color *= 0.5;
-    color += textureSample(color_texture, color_sampler, in.uv).rgb;
+    color = mix(
+        color,
+        textureSample(color_texture, color_sampler, in.uv).rgb,
+        0.8
+    );
     
     return vec4(color , 1.0);
 }

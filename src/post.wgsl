@@ -82,10 +82,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // return vec4(gamma(bloom),1.0);
     color = aces_tonemap(color);
-    color += bloom*0.5;
-
-
-
+    color += bloom;
 
     // let vignet_signal = smoothstep(vec2(1.),vec2(0.8), pow(abs(in.uv - vec2(0.5)) * vec2(2.0),vec2(2.0) ) );
     // color *= vignet_signal.x * vignet_signal.y;

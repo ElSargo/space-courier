@@ -213,9 +213,9 @@ impl Bloom {
         self.up_texture_views.clear();
         self.up_texture_bind_groups.clear();
 
-        let lowest_x = 40;
-        let mut width = config.width / 2;
-        let mut height = config.height / 2;
+        let lowest_x = 10;
+        let mut width = config.width;
+        let mut height = config.height;
 
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Bloom bind group layout"),
@@ -241,39 +241,41 @@ impl Bloom {
         }));
 
         while lowest_x < width {
-            let down_texture = device.create_texture(&TextureDescriptor {
-                label: Some(&format!("Bloom down buffer {width} {height}")),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: TextureFormat::Rgba16Float,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT // 3.
+            if width != config.width {
+                let down_texture = device.create_texture(&TextureDescriptor {
+                    label: Some(&format!("Bloom down buffer {width} {height}")),
+                    size: wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: TextureFormat::Rgba16Float,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT // 3.
         | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
+                    view_formats: &[],
+                });
 
-            let view = down_texture.create_view(&wgpu::TextureViewDescriptor {
-                label: Some(&format!("Bloom down view {width} {height}")),
-                format: Some(TextureFormat::Rgba16Float),
-                ..Default::default()
-            });
+                let view = down_texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some(&format!("Bloom down view {width} {height}")),
+                    format: Some(TextureFormat::Rgba16Float),
+                    ..Default::default()
+                });
 
-            let bind_group = device.create_bind_group(&BindGroupDescriptor {
-                label: Some(&format!("Bloom down {width} {height} bind group")),
-                layout: &bind_group_layout,
-                entries: &[BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                }],
-            });
-            self.down_textures.push(down_texture);
-            self.down_texture_views.push(view);
-            self.down_texture_bind_groups.push(bind_group);
+                let bind_group = device.create_bind_group(&BindGroupDescriptor {
+                    label: Some(&format!("Bloom down {width} {height} bind group")),
+                    layout: &bind_group_layout,
+                    entries: &[BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    }],
+                });
+                self.down_textures.push(down_texture);
+                self.down_texture_views.push(view);
+                self.down_texture_bind_groups.push(bind_group);
+            }
 
             let up_texture = device.create_texture(&TextureDescriptor {
                 label: Some(&format!("Bloom up buffer {width} {height}")),
@@ -311,6 +313,9 @@ impl Bloom {
             width /= 2;
             height /= 2;
         }
+
+        println!("Down: {}", self.down_textures.len());
+        println!("Up: {}", self.up_textures.len());
     }
 
     pub fn draw(
@@ -369,12 +374,10 @@ impl Bloom {
         //down:0 1 2 3 4 5
 
         if let Some(pipeline) = shader_manager.get_pipeline(&self.up_pipeline) {
-            let mut i = self.down_textures.len() - 1;
-            while i > 0 {
-                let target_index = i - 1;
-                let view = &self.up_texture_views[target_index];
-                let self_texture = &self.down_texture_bind_groups[target_index];
-                let prev_texture = &self.up_texture_bind_groups[i];
+            for i in (0..self.down_textures.len() - 1).rev() {
+                let view = &self.up_texture_views[i];
+                let down_texture = &self.down_texture_bind_groups[i];
+                let prev_texture = &self.up_texture_bind_groups[i + 1];
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Bloom render pass {i}"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -392,11 +395,10 @@ impl Bloom {
 
                 render_pass.set_bind_group(0, &self.sampler_bind_group, &[]);
                 render_pass.set_bind_group(1, &self.threshold_nill_bind_group, &[]);
-                render_pass.set_bind_group(2, &self_texture, &[]);
+                render_pass.set_bind_group(2, &down_texture, &[]);
                 render_pass.set_bind_group(3, &prev_texture, &[]);
                 render_pass.set_pipeline(&pipeline);
                 fullscreen_quad.draw(&mut render_pass);
-                i -= 1;
             }
         }
         // .for_each(|((view, self_texture), prev_texture)| {

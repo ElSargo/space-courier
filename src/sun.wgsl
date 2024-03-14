@@ -73,6 +73,20 @@ fn fresnel(rd: vec3<f32>,  normal: vec3<f32>,amount: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4(1.0,0.8,0.5,1.0)*8.0;
+    // var col = vec3(0.0);
+    // if in.world_position.x > 0.0 {
+    //     col.r += 1.0;
+        return vec4(1.4,0.75,0.5,1.0)*14.0;
+    // }
+    // if in.world_position.y > 0.0 {
+    //     col.g += 1.0;
+    //     // return vec4(1.4,0.75,0.5,1.0)*14.0;
+    // }
+    // if in.world_position.z > 0.0 {
+    //     col.b += 1.0;
+    //     // return vec4(1.4,0.75,0.5,1.0)*14.0;
+    // }
+    // return vec4(0.5,0.75,1.4,1.0)*10.0;
+    // return vec4(col,1.0)*14.0;
 }
 
