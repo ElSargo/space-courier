@@ -47,8 +47,7 @@ use texture::Texture;
 use time::Time;
 use transform::Transform;
 use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    BindGroup, BindGroupLayout, BufferDescriptor, BufferUsages, Color, ShaderModule, TextureFormat,
+    BindGroup, BindGroupLayout, BufferUsages, Color, ShaderModule, TextureFormat,
     VertexBufferLayout,
 };
 use winit::{
@@ -377,45 +376,16 @@ impl State {
             scale: Vec3::ONE * 20.0,
             ..Default::default()
         }];
-        // let planets = make_planets();
-
-        // let planet_transform_buffer_data = instance_buffer_bytes_from_components(
-        //     planets
-        //         .translations
-        //         .iter()
-        //         .zip(planets.radii.iter())
-        //         .zip(planets.rotations.iter())
-        //         .map(|((t, s), r)| (*t, *r, *s * Vec3::ONE)),
-        // );
-        let planet_transform_instance_buffer = InstanceBuffer {
-            buffer: device.create_buffer(&BufferDescriptor {
-                label: Some("Planet instance buffer"),
-                size: 0,
-                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
-            instances: 96,
-        };
-        // let ship_trans =         // ship_trans.look_at(Vec3::ZERO, ship_trans.up());
-        // let ship_transforms = vec![ship_trans];
-
-        // let ship_transform_buffer_data =
-        //     instance_buffer_bytes_from_components(ship_transforms.iter().map(
-        //         |Transform {
-        //              scale,
-        //              translation,
-        //              rotation,
-        //          }| (*translation, *rotation, *scale),
-        //     ));
-        let ship_transform_instance_buffer = InstanceBuffer {
-            buffer: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Ship instance Buffer"),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-                size: std::mem::size_of::<RawInstance>() as u64,
-            }),
-            instances: 1,
-        };
+        let planet_transform_instance_buffer = InstanceBuffer::new(
+            Some("Planet instance buffer".to_owned()),
+            BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            &device,
+        );
+        let ship_transform_instance_buffer = InstanceBuffer::new(
+            Some("Ship instance Buffer".to_owned()),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            &device,
+        );
 
         let sun_transform_buffer_data =
             instance_buffer_bytes_from_components(sun_transforms.iter().map(
@@ -425,29 +395,23 @@ impl State {
                      rotation,
                  }| (*translation, *rotation, *scale),
             ));
-        let sun_transform_instance_buffer = InstanceBuffer {
-            buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Sun instance Buffer"),
-                contents: bytemuck::cast_slice(&sun_transform_buffer_data),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            }),
-            instances: 1,
-        };
+        let sun_transform_instance_buffer = InstanceBuffer::new_init::<RawInstance>(
+            Some("Sun instance Buffer".to_owned()),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            &device,
+            bytemuck::cast_slice(&sun_transform_buffer_data),
+        );
 
         let arrow_model =
             resources::load_model("arrow.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
         // let arrow_transform_buffer_data = arrows.to_raw_buffer();
-        let arrow_transform_instance_buffer = InstanceBuffer {
-            buffer: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("arrow instance Buffer"),
-                mapped_at_creation: false,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                size: std::mem::size_of::<gizmo::RawArrowInstance>() as u64 * 3,
-            }),
-            instances: 3,
-        };
+        let arrow_transform_instance_buffer = InstanceBuffer::new(
+            Some("arrow instance Buffer".to_owned()),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            &device,
+        );
 
         let mut ecs = Ecs::new().await;
         let gpu = Gpu {
@@ -677,10 +641,10 @@ impl State {
                     .build()
                     .iter(&self.ecs.world),
             );
-            self.gpu.queue.write_buffer(
-                &self.ship_transform_instance_buffer.buffer,
-                0,
-                bytemuck::cast_slice(&ship_bytes),
+            self.ship_transform_instance_buffer.write(
+                &self.gpu.device,
+                &ship_bytes.as_slice(),
+                &self.gpu.queue,
             );
         }
         {
@@ -698,12 +662,11 @@ impl State {
                         color: gizmo.color,
                     })
                     .collect::<Vec<_>>();
-            let arrow_bytes: &[u8] = bytemuck::cast_slice(&arrow_instances);
 
-            self.gpu.queue.write_buffer(
-                &self.arrow_transform_instance_buffer.buffer,
-                0,
-                bytemuck::cast_slice(&arrow_bytes),
+            self.arrow_transform_instance_buffer.write(
+                &self.gpu.device,
+                &arrow_instances.as_slice(),
+                &self.gpu.queue,
             );
         }
         {
@@ -712,23 +675,11 @@ impl State {
                     .build()
                     .iter(&self.ecs.world),
             );
-            self.planet_transform_instance_buffer.instances = planet_instances.len() as u32;
-            let bytes = bytemuck::cast_slice(&planet_instances);
-            if self.planet_transform_instance_buffer.buffer.size() < bytes.len() as u64 {
-                println!("New buffer added");
-                self.planet_transform_instance_buffer.buffer =
-                    self.gpu.device.create_buffer_init(&BufferInitDescriptor {
-                        label: Some("Planet instance Buffer"),
-                        contents: &bytes,
-                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                    });
-            } else {
-                self.gpu.queue.write_buffer(
-                    &self.planet_transform_instance_buffer.buffer,
-                    0,
-                    bytes,
-                );
-            }
+            self.planet_transform_instance_buffer.write(
+                &self.gpu.device,
+                &planet_instances.as_slice(),
+                &self.gpu.queue,
+            );
         }
         self.ecs.world.resource_mut::<ButtonInput>().tick();
     }
