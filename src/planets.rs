@@ -110,7 +110,7 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
             transform,
             Physics {
                 velocity,
-                angular_velocity: Quat::IDENTITY,
+                angular_velocity: Quat::from_rotation_y(std::f32::consts::TAU / radius / 1.),
                 mass,
             },
         ))
