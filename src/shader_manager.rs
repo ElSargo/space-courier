@@ -44,17 +44,29 @@ pub struct PipelineHandle {
 
 type PipelineConstructor = Box<dyn FnMut(Vec<&ShaderModule>, &Device) -> RenderPipeline>;
 
+macro_rules! log_expand {
+    (  $txt:expr, $col:ident ) => {
+        &color_eyre::owo_colors::OwoColorize::$col(&format!($txt))
+    };
+    (  $txt:expr, $col:ident, $($a:expr, $b:ident), + ) => {
+        &format!("{}{}", log_expand!($txt, $col ), log_expand!($($a, $b), +))
+    };
+    ( $msg:expr ) => { &format!($msg) };
+    
+}
+
 macro_rules! log {
-    ($msg:tt) => {
+    ($($t:tt), +) => {
         println!(
             "{}{}",
-            color_eyre::owo_colors::OwoColorize::bold(&color_eyre::owo_colors::OwoColorize::blue(
+            &color_eyre::owo_colors::OwoColorize::bold(&color_eyre::owo_colors::OwoColorize::blue(
                 &"[ShaderManager]: "
             )),
-            color_eyre::owo_colors::OwoColorize::blue(&format!($msg))
-        );
-    };
+            log_expand!($($t), +)
+        )        
+    }
 }
+
 
 impl ShaderManager {
     pub fn new(device: Arc<Device>) -> Result<Self, notify::Error> {
@@ -66,7 +78,6 @@ impl ShaderManager {
                     AccessMode::Write,
                 )) = kind
                 {
-                    log!("fs event: {kind:#?}");
                     for path in paths {
                         cqs.send((path, None)).expect(
                             "Unable to send fs-msg from whatcher to shader loader, channel error",
@@ -110,7 +121,8 @@ impl ShaderManager {
             .expect("File whatcher failed to accept new path");
 
         let handle = path_to_shader_id(&path);
-        log!("Sent {path:#?} to queue");
+
+        log!("Sent ", bright_red, "{path:#?}", bright_purple,  " to queue", white);
         self.compile_queue_sender
             .send((path, Some(handle)))
             .expect("Unable to send shader to load queue");
@@ -242,9 +254,8 @@ async fn compile_shaders(
     device: Arc<Device>,
     outgoing: UnboundedSender<(ShaderModule, ShaderHandle)>,
 ) {
-    log!("Compiling compiler running");
     while let Some((path, handle)) = incomming.recv().await {
-        log!("Compiling {path:#?}");
+        log!("Compiling ",bright_yellow, "{path:#?}", bright_purple);
         match tokio::fs::read_to_string(&path).await {
             Ok(source) => {
                 device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -260,7 +271,7 @@ async fn compile_shaders(
                         wgpu::Error::Validation { description, .. } => eprintln!("{description}"),
                     }
                 } else {
-                    log!("Compiled {path:#?}");
+                    log!("Compiled ", green, "{path:#?}", bright_purple);
                     let handle = handle.unwrap_or_else(|| path_to_shader_id(&path));
                     outgoing
                         .send((shader, handle))
