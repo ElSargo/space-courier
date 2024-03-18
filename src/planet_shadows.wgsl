@@ -60,7 +60,30 @@ struct Ray {
   d: vec3<f32>  
 };
 
-fn cone(s: Cone, r: Ray) -> vec2<f32> {
+
+struct ICone {
+    near: f32,
+    midL: f32,
+    far: f32,
+    hit: bool
+};
+
+fn lines_closest_points(ao: vec3<f32>, ad: vec3<f32>, bo: vec3<f32>, bd: vec3<f32> ) -> vec2<f32> {
+    let c = bo - ao;
+    let adb = dot(ad,bd);
+    let adc = dot(ad,c);
+    let bdc = dot(bd,c);
+    let aa = dot(ad,ad);
+    let bb = dot(bd,db);
+    let aabb = aa*bb - adb*adb;
+    let a  = ( -adb*bdc + adc*bb ) / aabb;
+    let b = ( adb*adc - bdc*aa ) / aabb;
+
+    return vec2(a,b);
+}
+
+
+fn cone(s: Cone, r: Ray) -> ICone {
     let co = r.o - s.c;
 
     let a = dot(r.d, s.v) * dot(r.d, s.v) - s.cosa * s.cosa;
