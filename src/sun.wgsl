@@ -7,8 +7,11 @@
 
 
 struct Camera {
+    view_pos: vec4<f32>,
+    view: mat4x4<f32>,
     view_proj: mat4x4<f32>,
-    world_position: vec3<f32>,
+    inv_proj: mat4x4<f32>,
+    inv_view: mat4x4<f32>,
 };
 
 struct VertexInput {
@@ -59,7 +62,7 @@ fn vs_main(
     let vert_position = model_matrix * vec4(vert.position, 1.0);
     out.world_position = vert_position.xyz;
     out.world_normal =  rotation_matrix * vert.normal;
-    out.distance = distance(vert_position.xyz, camera.world_position);
+    out.distance = distance(vert_position.xyz, camera.view_pos.xyz);
     out.clip_position =  camera.view_proj * vert_position;
     out.uv = vert.uv;
     return out;
@@ -75,18 +78,18 @@ fn fresnel(rd: vec3<f32>,  normal: vec3<f32>,amount: f32) -> f32 {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // var col = vec3(0.0);
     // if in.world_position.x > 0.0 {
-    //     col.r += 1.0;
+        // col.r += 1.0;
         return vec4(1.4,0.75,0.5,1.0)*14.0;
     // }
     // if in.world_position.y > 0.0 {
-    //     col.g += 1.0;
-    //     // return vec4(1.4,0.75,0.5,1.0)*14.0;
+        // col.g += 1.0;
+        // return vec4(1.4,0.75,0.5,1.0)*14.0;
     // }
     // if in.world_position.z > 0.0 {
-    //     col.b += 1.0;
+        // col.b += 1.0;
     //     // return vec4(1.4,0.75,0.5,1.0)*14.0;
     // }
     // return vec4(0.5,0.75,1.4,1.0)*10.0;
-    // return vec4(col,1.0)*14.0;
+    // return vec4(col,1.0)*1.0;
 }
 

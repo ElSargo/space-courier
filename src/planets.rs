@@ -27,6 +27,7 @@ pub async fn init(ecs: &mut Ecs, gpu: &Gpu, texture_bind_group_layout: &BindGrou
     ecs.init.add_systems(make_planets);
     ecs.update.add_systems(remake_planets);
     ecs.update.add_systems(add_planet);
+    ecs.update.add_systems(destroy_planets_in_sun);
 
     let planet_buffer_bytes = instance_buffer_bytes(
         QueryBuilder::<&Transform, With<Planet>>::new(&mut ecs.world)
@@ -77,19 +78,34 @@ fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
 
 fn make_planets(mut commands: Commands) {
     let mut rng = thread_rng();
-    for _ in 0..200 {
+    for _ in 0..300 {
         make_planet(&mut rng, &mut commands);
     }
 }
 
+fn destroy_planets_in_sun(
+    planets: Query<(Entity, &Transform), With<Planet>>,
+    mut commands: Commands,
+) {
+    for e in planets
+        .iter()
+        .filter_map(|(entity, transform)| (transform.translation.length() < 20.).then_some(entity))
+    {
+        commands.entity(e).despawn();
+    }
+}
+
 fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> Entity {
-    let distance = rng.gen_range(30.0..300.0);
+    let distance = rng.gen_range(60.0..500.0);
     let mut transform = Transform {
         rotation: Quat::from_euler(
             glam::EulerRot::XYZ,
-            rng.gen_range(-0.3..0.3),
+            rng.gen_range(-1.8..1.8),
             rng.gen_range(0.0..std::f32::consts::TAU),
-            rng.gen_range(-0.3..0.3),
+            rng.gen_range(-1.8..1.8),
+            // rng.gen_range(-0.3..0.3),
+            // rng.gen_range(0.0..std::f32::consts::TAU),
+            // rng.gen_range(-0.3..0.3),
         ),
         ..Default::default()
     };
@@ -98,7 +114,7 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
     transform.translation = forward * distance;
     transform.scale *= radius;
     let mass = radius * radius * radius * 10.0;
-    let velocity = transform.left() * 0.003 / transform.translation.length().sqrt() * SUN_MASS * G
+    let velocity = transform.left() * 0.001 / transform.translation.length().sqrt() * SUN_MASS * G
         / mass.sqrt();
 
     commands

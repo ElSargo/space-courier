@@ -4,13 +4,18 @@
 @group(0) @binding(2) var depth_texture: texture_depth_2d;
 @group(0) @binding(3) var depth_sampler: sampler;
 
-@group(1) @binding(0) var<uniform> camera: InverseCamera;
+@group(1) @binding(0) var<uniform> camera: Camera;
 
 @group(2) @binding(0) var bloom_texture: texture_2d<f32>;
 
-struct InverseCamera {
-    inv_view_proj: mat4x4<f32>,
-    world_position: vec3<f32>,
+@group(3) @binding(0) var planet_shadows_texture: texture_2d<f32>;
+
+struct Camera {
+    view_pos: vec4<f32>,
+    view: mat4x4<f32>,
+    view_proj: mat4x4<f32>,
+    inv_proj: mat4x4<f32>,
+    inv_view: mat4x4<f32>,
 };
 
 struct VertexInput {
@@ -55,6 +60,15 @@ fn vs_main(
     return VertexOutput( vec4(vert.position,1.), vert.uv );
 }
 
+fn fog_int(ro: vec3<f32>, rd: vec3<f32>, t: f32) -> f32 {
+    let a = (rd.y * ro.z - ro.y * rd.z);
+    let b = (rd.y * ro.z - ro.y * rd.z);
+    let c = ro.x * rd.x + ro.y * rd.y + ro.z * rd.z + rd.x * rd.x * t + rd.y * rd.y * t + rd.z * rd.z * t ;
+    let d = rd.x * rd.x * ( ro.y * ro.y + ro.z * ro.z ) + a * a - 2.0 * ro.x * rd.x * ( ro.y * rd.y + ro.z * rd.z ) + ro.x * ro.x * ( rd.y * rd.y + rd.z * rd.z ) ;
+    let e =  rd.x * rd.x * ( ro.y * ro.y + ro.z * ro.z ) + b * b - 2.0 * ro.x * rd.x * ( ro.y * rd.y + ro.z * rd.z ) + ro.x * ro.x * ( rd.y * rd.y + rd.z * rd.z ) ;
+    return atan( c / sqrt(d) ) / sqrt(e);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let depth_inv = textureSample(depth_texture, depth_sampler, in.uv);
@@ -62,6 +76,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // No chromaitc abbr
     var color = textureSample(color_texture, color_sampler, in.uv).rgb;
     var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
+    var pls = textureSample(planet_shadows_texture, color_sampler, in.uv).rg;
+
+
+    let view_pos_homogeneous = camera.inv_proj * vec4((vec2(in.uv.x,1.0 - in.uv.y) - 0.5)*2.0,1.0,1.0);
+    let view_ray_direction = view_pos_homogeneous.xyz / view_pos_homogeneous.w;
+    var ray_direction = normalize((camera.inv_view * vec4(view_ray_direction, 0.0)).xyz);
+
+    
+
 
     //Chromatic abbr
     // var c = in.uv - 0.5;
@@ -78,14 +101,35 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // );
     
     // Depth fog
-    // color = mix( color, vec3(0.05,0.0,0.11), 0.2*(1.0-exp(-lin_depth*0.0001)));
+    // color = mix( color, vec3(0.04,0.0,0.01), max(0.0,0.1*(1.0-exp(-lin_depth*0.0001) - 0.2*pls.x )));
     
     // return vec4(gamma(bloom),1.0);
+    let fog_col = vec3(5.4,0.75,0.1);
+    // let fog_col = vec3(0.2,5.0,1.2);
+    let fog = max(0.001,10.*(fog_int(camera.view_pos.xyz, ray_direction, lin_depth) - fog_int(camera.view_pos.xyz, ray_direction, 0.0)) + pls.x + sin(in.uv.x*99999.0)/256.0+sin(in.uv.y*99999.0)/256.0+sin((in.uv.x+in.uv.y)*5000.0)/256.0);
+    color = mix(color,fog*fog_col*0.1,1.0-exp(-lin_depth*0.0001));
     color = aces_tonemap(color);
     color += bloom;
 
+    // color +=  pls.x  ;
+    
+    
+
+    // color.r += pls.r;
+    // color.g += pls.g;
+
+    // color += pls.x;
+    
+    // color.g += pls.y  ;
     // let vignet_signal = smoothstep(vec2(1.),vec2(0.8), pow(abs(in.uv - vec2(0.5)) * vec2(2.0),vec2(2.0) ) );
     // color *= vignet_signal.x * vignet_signal.y;
+
+    // mix(color,vec3(pls.r,pls.g,0.0),0.5);
+
+    
+    // if depth_inv <= 0.0 {
+    //     color = ray_direction;
+    // }
 
     
     return vec4(gamma(color), 1.0);

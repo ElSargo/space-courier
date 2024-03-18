@@ -14,6 +14,7 @@ impl Postprocessing {
         config: &wgpu::SurfaceConfiguration,
         fullscreen_quad: &FullscreenQuad,
         view_textures_bind_group_layout: &wgpu::BindGroupLayout,
+        planet_shadows_texture_bind_group: &wgpu::BindGroupLayout,
         shader_manager: &mut shader_manager::ShaderManager,
     ) -> Self {
         let shader_handle = shader_manager.load_shader("./src/post.wgsl");
@@ -36,7 +37,7 @@ impl Postprocessing {
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("Bloom texture bind group layout"),
+                label: Some("Texture bind group layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::FRAGMENT,
@@ -56,6 +57,7 @@ impl Postprocessing {
                     &view_textures_bind_group_layout,
                     &inverse_camera, // &model_transform_bind_group_layout,
                     &texture_bind_group_layout,
+                    &planet_shadows_texture_bind_group,
                 ],
                 push_constant_ranges: &[],
             },
@@ -121,6 +123,7 @@ impl Postprocessing {
         camera_bind_group: &wgpu::BindGroup,
         textures_bind_group: &wgpu::BindGroup,
         bloom_texture_bind_group: &wgpu::BindGroup,
+        planet_shadows_texture_bind_group: &wgpu::BindGroup,
         shader_manager: &shader_manager::ShaderManager,
     ) {
         if let Some(pipeline) = shader_manager.get_pipeline(&self.pipeline_handle) {
@@ -143,6 +146,7 @@ impl Postprocessing {
             render_pass.set_bind_group(0, &textures_bind_group, &[]);
             render_pass.set_bind_group(1, camera_bind_group, &[]);
             render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);
+            render_pass.set_bind_group(3, planet_shadows_texture_bind_group, &[]);
             render_pass.set_pipeline(pipeline);
             fullscreen_quad.draw(&mut render_pass);
         }

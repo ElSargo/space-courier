@@ -1,5 +1,5 @@
 use bevy_ecs::system::Resource;
-use glam::{vec3, Mat4, Vec3};
+use glam::{vec3, Mat4, Vec3, Vec4};
 use wgpu::{util::DeviceExt, Queue};
 
 use std::{cell::RefCell, default::Default};
@@ -17,8 +17,11 @@ pub struct Camera {
 // This is so we can store this in a buffer
 #[derive(Debug, Copy, Clone)]
 pub struct CameraUniformData {
-    pub view_proj: Mat4,
-    pub world_position: Vec3,
+    view_pos: Vec4,
+    view: Mat4,
+    view_proj: Mat4,
+    inv_proj: Mat4,
+    inv_view: Mat4,
 }
 unsafe impl bytemuck::Pod for CameraUniformData {}
 unsafe impl bytemuck::Zeroable for CameraUniformData {}
@@ -34,29 +37,38 @@ impl CameraUniformData {
     pub fn new() -> Self {
         Self {
             view_proj: Mat4::IDENTITY,
-            world_position: Vec3::ZERO,
+            view_pos: Vec4::ZERO,
+            view: Mat4::IDENTITY,
+            inv_proj: Mat4::IDENTITY,
+            inv_view: Mat4::IDENTITY,
         }
     }
 
-    pub fn update_view_proj(&mut self, camera: &Camera) {
-        self.view_proj = camera.build_view_projection_matrix().into();
-        self.world_position = camera.eye;
+    pub fn update(&mut self, camera: &Camera) {
+        let view = camera.view_matrix();
+        let proj = camera.projection_matrix();
+        let view_proj = Camera::build_view_projection_matrix(view, proj);
+        *self = CameraUniformData {
+            view_pos: camera.eye.extend(1.0),
+            view,
+            view_proj,
+            inv_proj: proj.inverse(),
+            inv_view: view.transpose(),
+        }
     }
 }
 
-#[rustfmt::skip]
-pub const OPENGL_TO_WGPU_MATRIX: glam::Mat4 = glam::Mat4::from_cols_array(&[
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 0.5, 0.5,
-    0.0, 0.0, 0.0, 1.0,
-]);
-
 impl Camera {
-    pub fn build_view_projection_matrix(&self) -> glam::Mat4 {
-        let view = Mat4::look_at_lh(self.eye, self.target, self.up);
-        let pr = glam::Mat4::perspective_infinite_reverse_lh(self.fovy, self.aspect, self.znear);
-        return OPENGL_TO_WGPU_MATRIX * pr * view;
+    pub fn build_view_projection_matrix(view: Mat4, proj: Mat4) -> glam::Mat4 {
+        return proj * view;
+    }
+
+    pub fn projection_matrix(&self) -> Mat4 {
+        glam::Mat4::perspective_infinite_reverse_lh(self.fovy, self.aspect, self.znear)
+    }
+
+    pub fn view_matrix(&self) -> Mat4 {
+        Mat4::look_at_lh(self.eye, self.target, self.up)
     }
 }
 
@@ -77,8 +89,7 @@ impl CameraUniform {
     pub fn update(&self, camera: &Camera, queue: &Queue) {
         {
             let mut this = self.uniform.borrow_mut();
-            this.view_proj = camera.build_view_projection_matrix().into();
-            this.world_position = camera.eye;
+            this.update(camera);
         };
         queue.write_buffer(
             &self.buffer,
@@ -89,7 +100,7 @@ impl CameraUniform {
 
     pub fn setup(camera: &Camera, device: &wgpu::Device) -> Self {
         let camera_uniform = RefCell::new(CameraUniformData::new());
-        camera_uniform.borrow_mut().update_view_proj(camera);
+        camera_uniform.borrow_mut().update(camera);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),

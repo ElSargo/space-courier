@@ -10,8 +10,11 @@
 // };
 
 struct Camera {
+    view_pos: vec4<f32>,
+    view: mat4x4<f32>,
     view_proj: mat4x4<f32>,
-    world_position: vec3<f32>,
+    inv_proj: mat4x4<f32>,
+    inv_view: mat4x4<f32>,
 };
 
 struct VertexInput {
@@ -62,7 +65,7 @@ fn vs_main(
     let vert_position = model_matrix * vec4(vert.position, 1.0);
     out.world_position = vert_position.xyz;
     out.world_normal =  rotation_matrix * vert.normal;
-    out.distance = distance(vert_position.xyz, camera.world_position);
+    out.distance = distance(vert_position.xyz, camera.view_pos.xyz);
     out.clip_position =  camera.view_proj * vert_position;
     out.uv = vert.uv;
     return out;
@@ -76,7 +79,7 @@ fn fresnel(rd: vec3<f32>,  normal: vec3<f32>,amount: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let rd = normalize(in.world_position - camera.world_position);
+    let rd = normalize(in.world_position - camera.view_pos.xyz);
     let nor = normalize(in.world_normal);
     let dis = length(in.world_position * 0.005);
     let sun = normalize(-in.world_position);

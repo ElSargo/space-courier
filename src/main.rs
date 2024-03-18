@@ -435,11 +435,18 @@ impl State {
 
         let mut shader_manager = ShaderManager::new(gpu.device.clone()).unwrap();
         let fullscreen_quad = FullscreenQuad::new(&gpu.device, &mut shader_manager);
+        let planet_shadows = PlanetShadows::new(
+            &gpu.device,
+            &config,
+            &mut shader_manager,
+            &view_textures_bind_group_layout,
+        );
         let post = Postprocessing::new(
             &gpu.device,
             &config,
             &fullscreen_quad,
             &view_textures_bind_group_layout,
+            &planet_shadows.result_texture_bind_group_layout,
             &mut shader_manager,
         );
         let bloom = Bloom::new(
@@ -482,12 +489,6 @@ impl State {
                     RawArrowInstance::desc(),
                 )
             }),
-        );
-        let planet_shadows = PlanetShadows::new(
-            &gpu.device,
-            &config,
-            &camera_gpu_stuff.bind_group_layout,
-            &mut shader_manager,
         );
         let sun_shader = shader_manager.load_shader("./src/sun.wgsl");
         let cgs = camera_gpu_stuff.clone();
@@ -574,6 +575,7 @@ impl State {
             );
             self.bloom
                 .resize(&self.config, &self.gpu.device, &self.view_texture.view);
+            self.planet_shadows.resize(&self.config, &self.gpu.device);
         }
     }
 
@@ -681,6 +683,9 @@ impl State {
                 &self.gpu.queue,
             );
         }
+        self.planet_shadows
+            .update(&mut self.ecs.world, &self.gpu.device, &self.gpu.queue);
+
         self.ecs.world.resource_mut::<ButtonInput>().tick();
     }
 
@@ -819,7 +824,12 @@ impl State {
         }
 
         {
-            // self.planet_shadows.draw(&mut encoder);
+            self.planet_shadows.draw(
+                &mut encoder,
+                &self.shader_manager,
+                &self.view_textures_bind_group,
+                &self.camera_gpu_stuff.bind_group,
+            );
         }
 
         self.bloom.draw(
@@ -846,6 +856,7 @@ impl State {
                     .1
                     .min(self.bloom.up_texture_bind_groups.len() - 1)]
             },
+            &self.planet_shadows.result_texture_bind_group,
             &self.shader_manager,
         );
 

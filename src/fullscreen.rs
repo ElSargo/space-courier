@@ -10,20 +10,16 @@ use crate::shader_manager::{ShaderHandle, ShaderManager};
 
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [-1.0, -1.0, 0.0],
-        uv: [0.0, 1.0],
+        position: [-1.0, -1.0],
     },
     Vertex {
-        position: [1.0, -1.0, 0.0],
-        uv: [1.0, 1.0],
+        position: [1.0, -1.0],
     },
     Vertex {
-        position: [-1.0, 1.0, 0.0],
-        uv: [0.0, 0.0],
+        position: [-1.0, 1.0],
     },
     Vertex {
-        position: [1.0, 1.0, 0.0],
-        uv: [1.0, 0.0],
+        position: [1.0, 1.0],
     },
 ];
 
@@ -32,13 +28,11 @@ const INDICES: &[u16] = &[0, 1, 2, 1, 2, 3];
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Vertex {
-    position: [f32; 3],
-    uv: [f32; 2],
+    position: [f32; 2],
 }
 
 impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
+    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x2 ];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {

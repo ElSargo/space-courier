@@ -23,7 +23,12 @@ pub struct InstanceBuffer {
 
 #[allow(dead_code)]
 impl InstanceBuffer {
-    pub fn new(label: Option<String>, usages: BufferUsages, device: &Device) -> Self {
+    pub fn new<S: ToOwned<Owned = String>>(
+        label: Option<S>,
+        usages: BufferUsages,
+        device: &Device,
+    ) -> Self {
+        let label = label.map(|s| s.to_owned());
         let buffer = device.create_buffer(&BufferDescriptor {
             label: label.as_ref().map(|x| x.as_str()),
             size: 0,
