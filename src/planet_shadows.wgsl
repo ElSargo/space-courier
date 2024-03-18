@@ -63,7 +63,6 @@ struct Ray {
 
 struct ICone {
     near: f32,
-    midL: f32,
     far: f32,
     hit: bool
 };
@@ -74,7 +73,7 @@ fn lines_closest_points(ao: vec3<f32>, ad: vec3<f32>, bo: vec3<f32>, bd: vec3<f3
     let adc = dot(ad,c);
     let bdc = dot(bd,c);
     let aa = dot(ad,ad);
-    let bb = dot(bd,db);
+    let bb = dot(bd,bd);
     let aabb = aa*bb - adb*adb;
     let a  = ( -adb*bdc + adc*bb ) / aabb;
     let b = ( adb*adc - bdc*aa ) / aabb;
@@ -84,6 +83,7 @@ fn lines_closest_points(ao: vec3<f32>, ad: vec3<f32>, bo: vec3<f32>, bd: vec3<f3
 
 
 fn cone(s: Cone, r: Ray) -> ICone {
+    var out = ICone(-1.0,-1.0, false);
     let co = r.o - s.c;
 
     let a = dot(r.d, s.v) * dot(r.d, s.v) - s.cosa * s.cosa;
@@ -91,7 +91,7 @@ fn cone(s: Cone, r: Ray) -> ICone {
     let c = dot(co, s.v) * dot(co, s.v) - dot(co, co) * s.cosa * s.cosa;
 
     var det = b * b - 4. * a * c;
-    if det < 0. { return vec2(-1.0); };
+    if det < 0. { return out; };
 
     det = sqrt(det);
     var t1 = (-b - det) / (2. * a);
@@ -116,15 +116,15 @@ fn cone(s: Cone, r: Ray) -> ICone {
     let t2v = h2 > 0.0;
 
     if t1v && t2v {
-        return vec2(t1, t2);
+        return ICone(t1, t2, true);
     } else if !t1v && t2v {
-        return vec2(t2, 10000.0);
+        return ICone(t2, 10000.0, true);
     } else if !t1v && !t2v {
-        return vec2(-1.0);
+        return out;
     } 
     
     // if h < 0. || h > s.h { return vec2(-1.0); } 
-    return vec2(-1.0);
+    return out;
 }
 
 @vertex
@@ -166,7 +166,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let ro = camera.view_pos.xyz;
     let rd = normalize(in.world_position - ro);
     let depth = textureSample(depth_texture, depth_sampler, screen_uv);
-    let depth_lin = 1. / depth - 100.;
+    let depth_lin = 1. / ( depth - 0.1 );
 
     // var penumbra_cone = cone_intersecttion(ro,rd,0.9,100.0,in.penumbra_origin, in.shadow_dir);
     var umbra = cone(
@@ -181,7 +181,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             rd
         )
     );
-    umbra.y = min(umbra.y, depth_lin);
+    umbra.far = min(umbra.far, depth_lin);
     var penumbra = cone(
         Cone(
             in.penumbra_cosa,
@@ -194,13 +194,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             rd
         )
     );
-    penumbra.y = min(penumbra.y, depth_lin);
+    penumbra.far = min(penumbra.far, depth_lin);
     var fog = 0.0;
-    if (umbra.x > -0.5 && umbra.y > -0.5) && depth_lin > umbra.x {
-        fog += (fog_int(ro, rd, umbra.x) - fog_int(ro, rd, umbra.y)) * 100.0;
+    if umbra.hit {
+        fog += (fog_int(ro, rd, umbra.near) - fog_int(ro, rd, umbra.far)) * 10.0;
     }
-    if (penumbra.x > -0.5 && penumbra.y > -0.5) && depth_lin > penumbra.x {
-        fog += (fog_int(ro, rd, penumbra.x) - fog_int(ro, rd, penumbra.y)) * in.radius * in.radius * 1.0 * pow(1.0 - in.length_coef, 46.0);
+    if penumbra.hit {
+        fog += (fog_int(ro, rd, penumbra.near) - fog_int(ro, rd, penumbra.far)) * in.radius * in.radius * 1.0 * pow(1.0 - in.length_coef, 46.0);
     }
     return vec4(fog);
     
