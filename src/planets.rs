@@ -78,7 +78,7 @@ fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
 
 fn make_planets(mut commands: Commands) {
     let mut rng = thread_rng();
-    for _ in 0..300 {
+    for _ in 0..3 {
         make_planet(&mut rng, &mut commands);
     }
 }
@@ -110,7 +110,7 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
         ..Default::default()
     };
     let forward = transform.forward();
-    let radius = rng.gen_range(0.3..0.9_f32).powi(7) * 10.0;
+    let radius = rng.gen_range(0.3..0.9_f32).powi(4) * 10.0;
     transform.translation = forward * distance;
     transform.scale *= radius;
     let mass = radius * radius * radius * 10.0;

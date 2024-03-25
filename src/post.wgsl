@@ -72,7 +72,10 @@ fn fog_int(ro: vec3<f32>, rd: vec3<f32>, t: f32) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let depth_inv = textureSample(depth_texture, depth_sampler, in.uv);
-    let lin_depth = 1.0/depth_inv;
+    let view_pos = camera.inv_proj * (vec4( in.uv * 2.0 - 1.0, depth_inv, 1.0) );
+    let depth_lin = length(view_pos.xyz / view_pos.w);
+
+    // let lin_depth = length();
     // No chromaitc abbr
     var color = textureSample(color_texture, color_sampler, in.uv).rgb;
     var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
@@ -104,15 +107,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // color = mix( color, vec3(0.04,0.0,0.01), max(0.0,0.1*(1.0-exp(-lin_depth*0.0001) - 0.2*pls.x )));
     
     // return vec4(gamma(bloom),1.0);
-    let fog_col = vec3(5.4,0.75,0.1);
-    // let fog_col = vec3(0.2,5.0,1.2);
-    let fog = max(0.001,10.*(fog_int(camera.view_pos.xyz, ray_direction, lin_depth) - fog_int(camera.view_pos.xyz, ray_direction, 0.0)) + pls.x + sin(in.uv.x*99999.0)/256.0+sin(in.uv.y*99999.0)/256.0+sin((in.uv.x+in.uv.y)*5000.0)/256.0);
-    color = mix(color,fog*fog_col*0.1,1.0-exp(-lin_depth*0.0001));
+    let fog_col = vec3(15.4,0.75,0.1) * 0.1;
+    // let fog_col = vec3(0.2,5.0,1.2) * 0.1;
+    // let fog_col = vec3(0.2,1.0,3.2) * 1.0;
+    let fog = max(0.0, fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0) + pls.x);
+    // + sin(in.uv.x*99999.0)/256.0+sin(in.uv.y*99999.0)/256.0+sin((in.uv.x+in.uv.y)*5000.0)/256.0
+    // - (1.0 + -1.0 / ( 1.0 - pls.x*4.0 ) ) * 4.
+    // color = mix(color,fog*fog_col*0.1,1.0-exp(-depth_lin  * 0.1));
     color = aces_tonemap(color);
+    color = fog*fog_col + color * exp(-depth_lin * 0.001);
     color += bloom;
 
-    // color +=  pls.x  ;
+    // color +=  vec3(pls.x) ;
     
+    // color = vec3(depth_lin - 1.0);
+    // color = vec3(lin_depth*0.0001);
     
 
     // color.r += pls.r;
