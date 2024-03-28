@@ -91,7 +91,7 @@ impl Bloom {
 
         let bloom_shader_handle = shader_manager.load_shader("./src/bloom.wgsl");
 
-        let down_pipeline = shader_manager.add_pipeline(
+        let down_pipeline = shader_manager.add_render_pipeline(
             vec![bloom_shader_handle, fullscreen_quad.shader_handle],
             Box::new(|shader_moules, device| {
                 mk_layout(
@@ -104,7 +104,7 @@ impl Bloom {
                 )
             }),
         );
-        let up_pipeline = shader_manager.add_pipeline(
+        let up_pipeline = shader_manager.add_render_pipeline(
             vec![bloom_shader_handle, fullscreen_quad.shader_handle],
             Box::new(|shader_moules, device| {
                 mk_layout(
@@ -327,7 +327,7 @@ impl Bloom {
     ) {
         let threshold: f32 = 2.0;
         self.update_threshold(queue, threshold);
-        if let Some(pipeline) = shader_manager.get_pipeline(&self.down_pipeline) {
+        if let Some(pipeline) = shader_manager.get_render_pipeline(&self.down_pipeline) {
             for i in 0..self.down_textures.len() {
                 // println!("Down: {:#?}", self.down_textures[i].size());
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -373,7 +373,7 @@ impl Bloom {
         //up  :0 1 2 3 4 5
         //down:0 1 2 3 4 5
 
-        if let Some(pipeline) = shader_manager.get_pipeline(&self.up_pipeline) {
+        if let Some(pipeline) = shader_manager.get_render_pipeline(&self.up_pipeline) {
             for i in (0..self.down_textures.len() - 1).rev() {
                 let view = &self.up_texture_views[i];
                 let down_texture = &self.down_texture_bind_groups[i];

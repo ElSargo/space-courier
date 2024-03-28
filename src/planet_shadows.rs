@@ -106,7 +106,7 @@ impl PlanetShadows {
 
         let shader_handle = shader_manager.load_shader("./src/planet_shadows.wgsl");
 
-        let pipeline = shader_manager.add_pipeline(
+        let pipeline = shader_manager.add_render_pipeline(
             vec![shader_handle],
             Box::new(|shaders, device| {
                 device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -270,7 +270,7 @@ impl PlanetShadows {
         view_textures_bind_group: &BindGroup,
         camera_bind_group: &BindGroup,
     ) {
-        let Some(pipeline) = shader_manager.get_pipeline(&self.pipeline) else {
+        let Some(pipeline) = shader_manager.get_render_pipeline(&self.pipeline) else {
             return;
         };
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
