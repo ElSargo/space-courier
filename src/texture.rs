@@ -7,6 +7,12 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 }
 
+pub struct TexCube {
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub sampler: wgpu::Sampler,
+}
+
 impl Texture {
     pub fn from_bytes(
         device: &wgpu::Device,
