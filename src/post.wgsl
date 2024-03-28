@@ -10,6 +10,8 @@
 
 @group(3) @binding(0) var planet_shadows_texture: texture_2d<f32>;
 
+@group(4) @binding(0) var background: texture_cube<f32>;
+
 struct Camera {
     view_pos: vec4<f32>,
     view: mat4x4<f32>,
@@ -86,8 +88,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_ray_direction = view_pos_homogeneous.xyz / view_pos_homogeneous.w;
     var ray_direction = normalize((camera.inv_view * vec4(view_ray_direction, 0.0)).xyz);
 
-    
+    let bg = textureSample(background, color_sampler, ray_direction).rgb;
 
+    if depth_inv == 0.0 {
+        color = bg;
+    }
 
     //Chromatic abbr
     // var c = in.uv - 0.5;
@@ -107,7 +112,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // color = mix( color, vec3(0.04,0.0,0.01), max(0.0,0.1*(1.0-exp(-lin_depth*0.0001) - 0.2*pls.x )));
     
     // return vec4(gamma(bloom),1.0);
-    let fog_col = vec3(15.4,0.75,0.1) * 0.1;
+    let fog_col = vec3(15.4,0.75,0.1) * 1.1;
     // let fog_col = vec3(0.2,5.0,1.2) * 0.1;
     // let fog_col = vec3(0.2,1.0,3.2) * 1.0;
     let fog = max(0.0, fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0) + pls.x);
@@ -115,7 +120,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // - (1.0 + -1.0 / ( 1.0 - pls.x*4.0 ) ) * 4.
     // color = mix(color,fog*fog_col*0.1,1.0-exp(-depth_lin  * 0.1));
     color = aces_tonemap(color);
-    color = fog*fog_col + color * exp(-depth_lin * 0.001);
+    color = fog*fog_col + color * (exp(-depth_lin * 0.001) * 0.5 + 0.5);
     color += bloom;
 
     // color +=  vec3(pls.x) ;

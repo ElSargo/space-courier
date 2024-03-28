@@ -1,7 +1,10 @@
-@group(0) @binding(0) var diff: texture_2d<f32>;
-@group(0) @binding(1) var diff_sampler: sampler;
+@group(0) @binding(0) var<uniform> camera: Camera;
 
-@group(1) @binding(0) var<uniform> camera: Camera;
+@group(1) @binding(0) var diff: texture_2d<f32>;
+@group(1) @binding(1) var diff_sampler: sampler;
+
+
+@group(2) @binding(0) var background: texture_cube<f32>;
 
 // @group(2) @binding(0) var<uniform> model: Model;
 
@@ -86,7 +89,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dif = max(0.0, dot(nor, sun));
     let frez = fresnel(rd,nor,5.0);
     let refl = reflect(rd,nor);
-    let spe = pow(max(0.0,dot(sun,refl)), 4.0);
+    let spe = pow(max(0.0,dot(sun,refl)), 9.0);
     var col = textureSample(diff, diff_sampler, in.uv).rgb;
     var ems = vec3(0.0);
     if max(abs(col.r - 0.156862), max(
@@ -95,7 +98,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     )) < 0.22 {
         ems += col * 20.0;
     }
-    return vec4<f32>( max(vec3(0.00001),( col + (frez*0.2 + 1.0 ) * spe  ) * vec3(1.4,1.,1.)  / ( dis * dis ) * (dif + 0.01) * 0.5 ) + ems , 1.0)  ;
+    let env = textureSample(background,diff_sampler, refl ).rgb * col;
+    let difs =  max(0.0, dif + 0.01) * 0.5 / ( dis * dis );
+    let scl = vec3(1.4,1.,1.);
+    let spec = (frez*0.2 + 1.0 ) * spe  ;
+    return vec4<f32>(  col * difs + env * (0.2 + frez )+ ems + spec*dif, 1.0)  ;
     // return vec4(0.00001);
     // return vec4(spe*(1.+frez));
     // return vec4(spe);

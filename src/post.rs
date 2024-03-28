@@ -2,7 +2,10 @@ use crate::{
     fullscreen::FullscreenQuad,
     shader_manager::{self, PipelineHandle},
 };
-use wgpu::{BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device, ShaderStages};
+use wgpu::{
+    BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device,
+    ShaderStages,
+};
 
 pub struct Postprocessing {
     pipeline_handle: PipelineHandle,
@@ -15,6 +18,7 @@ impl Postprocessing {
         fullscreen_quad: &FullscreenQuad,
         view_textures_bind_group_layout: &wgpu::BindGroupLayout,
         planet_shadows_texture_bind_group: &wgpu::BindGroupLayout,
+        cube_bind_group_layout: &BindGroupLayout,
         shader_manager: &mut shader_manager::ShaderManager,
     ) -> Self {
         let shader_handle = shader_manager.load_shader("./src/post.wgsl");
@@ -58,6 +62,7 @@ impl Postprocessing {
                     &inverse_camera, // &model_transform_bind_group_layout,
                     &texture_bind_group_layout,
                     &planet_shadows_texture_bind_group,
+                    &cube_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             },
@@ -65,7 +70,7 @@ impl Postprocessing {
         // let pipeline = device.create_render_pipeline(&);
         let vert_fmt = fullscreen_quad.vertex_format;
         let format = config.format.clone();
-        let pipeline_handle = shader_manager.add_pipeline(
+        let pipeline_handle = shader_manager.add_render_pipeline(
             vec![shader_handle, fullscreen_quad.shader_handle],
             Box::new(move |shader_modules, device: &Device| {
                 let targets = [Some(wgpu::ColorTargetState {
@@ -125,8 +130,9 @@ impl Postprocessing {
         bloom_texture_bind_group: &wgpu::BindGroup,
         planet_shadows_texture_bind_group: &wgpu::BindGroup,
         shader_manager: &shader_manager::ShaderManager,
+        cube_bind_group: &BindGroup,
     ) {
-        if let Some(pipeline) = shader_manager.get_pipeline(&self.pipeline_handle) {
+        if let Some(pipeline) = shader_manager.get_render_pipeline(&self.pipeline_handle) {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Ui render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -147,6 +153,7 @@ impl Postprocessing {
             render_pass.set_bind_group(1, camera_bind_group, &[]);
             render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);
             render_pass.set_bind_group(3, planet_shadows_texture_bind_group, &[]);
+            render_pass.set_bind_group(4, cube_bind_group, &[]);
             render_pass.set_pipeline(pipeline);
             fullscreen_quad.draw(&mut render_pass);
         }

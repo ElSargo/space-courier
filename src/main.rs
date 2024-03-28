@@ -1,4 +1,5 @@
 // use crate::model::Vertex;
+mod background;
 mod bloom;
 mod camera;
 mod ecs;
@@ -19,6 +20,7 @@ mod texture;
 mod time;
 mod transform;
 use crate::{camera::Camera, player_controller::PlayerController};
+use background::Background;
 use bevy_ecs::{
     component::Component,
     query::{QueryBuilder, With},
@@ -47,7 +49,7 @@ use texture::Texture;
 use time::Time;
 use transform::Transform;
 use wgpu::{
-    BindGroup, BindGroupLayout, BufferUsages, Color, ShaderModule, TextureFormat,
+    BindGroup, BindGroupLayout, BufferUsages, Color, PipelineLayout, ShaderModule, TextureFormat,
     VertexBufferLayout,
 };
 use winit::{
@@ -199,6 +201,8 @@ struct State {
     bloom_debug: (bool, usize),
     ecs: Ecs,
 
+    background: background::Background,
+
     shader_manager: ShaderManager,
     gilrs: Gilrs,
 }
@@ -230,17 +234,13 @@ impl State {
             .await
             .unwrap();
 
+        let mut limits = wgpu::Limits::downlevel_defaults();
+        limits.max_bind_groups = 5;
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    features: wgpu::Features::empty(),
-                    // WebGL doesn't support all of wgpu's features, so if
-                    // we're building for the web, we'll have to disable some.
-                    limits: if cfg!(target_arch = "wasm32") {
-                        wgpu::Limits::downlevel_webgl2_defaults()
-                    } else {
-                        wgpu::Limits::default()
-                    },
+                    features: wgpu::Features::all_webgpu_mask(),
+                    limits,
                     label: None,
                 },
                 None, // Trace path
@@ -441,12 +441,14 @@ impl State {
             &mut shader_manager,
             &view_textures_bind_group_layout,
         );
+        let background = Background::new(&gpu.device, &mut shader_manager);
         let post = Postprocessing::new(
             &gpu.device,
             &config,
             &fullscreen_quad,
             &view_textures_bind_group_layout,
             &planet_shadows.result_texture_bind_group_layout,
+            &background.texture_cube_bind_group_layout,
             &mut shader_manager,
         );
         let bloom = Bloom::new(
@@ -457,15 +459,23 @@ impl State {
             &mut shader_manager,
         );
         let normal_shader = shader_manager.load_shader("./src/shader.wgsl");
-        let cgs = camera_gpu_stuff.clone();
-        let tbgl = texture_bind_group_layout.clone();
-        let render_pipeline = shader_manager.add_pipeline(
+
+        let normal_layout = Box::leak(Box::new(mk_pipeline_layout(
+            &gpu.device.clone(),
+            "normal",
+            &[
+                &camera_gpu_stuff.bind_group_layout,
+                &texture_bind_group_layout.clone(),
+                &background.texture_cube_bind_group_layout,
+            ],
+        )));
+
+        let render_pipeline = shader_manager.add_render_pipeline(
             vec![normal_shader],
             Box::new(move |shaders, device| {
                 mk_pipeline(
                     &device,
-                    tbgl.clone(),
-                    cgs.clone(),
+                    normal_layout,
                     None,
                     shaders[0],
                     "normal",
@@ -474,15 +484,19 @@ impl State {
             }),
         );
         let gizmo_shader = shader_manager.load_shader("./src/gizmo.wgsl");
-        let tbgl = texture_bind_group_layout.clone();
-        let cgs = camera_gpu_stuff.clone();
-        let gizmo_render_pipeline = shader_manager.add_pipeline(
+        // let tbgl = texture_bind_group_layout.clone();
+        // let cgs = camera_gpu_stuff.clone();
+        let mut gizmo_layout = Some(mk_pipeline_layout(
+            &gpu.device.clone(),
+            "gizmo",
+            &[&camera_gpu_stuff.bind_group_layout],
+        ));
+        let gizmo_render_pipeline = shader_manager.add_render_pipeline(
             vec![gizmo_shader],
             Box::new(move |shaders, device| {
                 mk_pipeline(
                     &device,
-                    tbgl.clone(),
-                    cgs.clone(),
+                    &std::mem::replace(&mut gizmo_layout, None).unwrap(),
                     None,
                     shaders[0],
                     "gizmo",
@@ -492,13 +506,17 @@ impl State {
         );
         let sun_shader = shader_manager.load_shader("./src/sun.wgsl");
         let cgs = camera_gpu_stuff.clone();
-        let sun_render_pipeline = shader_manager.add_pipeline(
+        let mut sun_layout = Some(mk_pipeline_layout(
+            &gpu.device.clone(),
+            "Sun",
+            &[&cgs.bind_group_layout, &texture_bind_group_layout],
+        ));
+        let sun_render_pipeline = shader_manager.add_render_pipeline(
             vec![sun_shader],
             Box::new(move |shaders, device| {
                 mk_pipeline(
                     &device,
-                    texture_bind_group_layout.clone(),
-                    cgs.clone(),
+                    &std::mem::replace(&mut sun_layout, None).unwrap(),
                     None,
                     shaders[0],
                     "sun",
@@ -543,6 +561,7 @@ impl State {
             gilrs: Gilrs::new().unwrap(),
             shader_manager,
             planet_shadows,
+            background,
         }
     }
 
@@ -694,11 +713,6 @@ impl State {
             self.update();
             self.initialized = true;
         }
-        let output = self.surface.get_current_texture()?;
-        let output_view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        // panic!("{}", view.suboptimal);
 
         let mut encoder = self
             .gpu
@@ -707,7 +721,20 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        if let Some(pipeline) = self.shader_manager.get_pipeline(&self.render_pipeline) {
+        {
+            self.background.compute(&mut encoder, &self.shader_manager);
+        }
+
+        let output = self.surface.get_current_texture()?;
+        let output_view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        // panic!("{}", view.suboptimal);
+
+        if let Some(pipeline) = self
+            .shader_manager
+            .get_render_pipeline(&self.render_pipeline)
+        {
             // Planets
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -730,6 +757,9 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
+
+            render_pass.set_bind_group(2, &self.background.texture_cube_bind_group, &[]);
+
             render_pass
                 .set_vertex_buffer(1, self.planet_transform_instance_buffer.buffer.slice(..));
 
@@ -751,7 +781,10 @@ impl State {
             );
         }
 
-        if let Some(pipeline) = self.shader_manager.get_pipeline(&self.sun_render_pipeline) {
+        if let Some(pipeline) = self
+            .shader_manager
+            .get_render_pipeline(&self.sun_render_pipeline)
+        {
             // Sun
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Sun render pass"),
@@ -787,7 +820,7 @@ impl State {
 
         if let Some(pipeline) = self
             .shader_manager
-            .get_pipeline(&self.gizmo_render_pipeline)
+            .get_render_pipeline(&self.gizmo_render_pipeline)
         {
             // Arrow gizmos
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -858,6 +891,7 @@ impl State {
             },
             &self.planet_shadows.result_texture_bind_group,
             &self.shader_manager,
+            &self.background.texture_cube_bind_group,
         );
 
         self.gpu.queue.submit(std::iter::once(encoder.finish()));
@@ -943,28 +977,17 @@ fn make_view_texture(config: &wgpu::SurfaceConfiguration, device: &wgpu::Device)
 
 fn mk_pipeline(
     device: &wgpu::Device,
-    texture_bind_group_layout: Arc<wgpu::BindGroupLayout>,
-    camera_gpu_stuff: Arc<CameraUniform>,
+    layout: &PipelineLayout,
     format: Option<TextureFormat>,
     shader: &ShaderModule,
     label: &str,
     descritptor: VertexBufferLayout,
 ) -> wgpu::RenderPipeline {
     let render_pipeline = {
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some(format!("{label} pipline layout").as_str()),
-                bind_group_layouts: &[
-                    &texture_bind_group_layout,
-                    &camera_gpu_stuff.bind_group_layout,
-                    // &model_transform_bind_group_layout,
-                ],
-                push_constant_ranges: &[],
-            });
         use model::Vertex;
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(format!("{label} Render Pipeline").as_str()),
-            layout: Some(&render_pipeline_layout),
+            layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",                              // 1.
@@ -1010,6 +1033,19 @@ fn mk_pipeline(
         })
     };
     render_pipeline
+}
+
+fn mk_pipeline_layout(
+    device: &wgpu::Device,
+    label: &str,
+    bind_group_layouts: &[&BindGroupLayout],
+) -> wgpu::PipelineLayout {
+    let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(format!("{label} pipline layout").as_str()),
+        bind_group_layouts,
+        push_constant_ranges: &[],
+    });
+    render_pipeline_layout
 }
 
 fn instance_buffer_bytes_from_components<'a>(

@@ -1,4 +1,4 @@
-@group(1) @binding(0) var<uniform> camera: Camera;
+@group(0) @binding(0) var<uniform> camera: Camera;
 struct Camera {
     view_pos: vec4<f32>,
     view: mat4x4<f32>,

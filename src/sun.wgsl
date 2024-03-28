@@ -1,7 +1,8 @@
-@group(0) @binding(0) var diff: texture_2d<f32>;
-@group(0) @binding(1) var diff_sampler: sampler;
+@group(0) @binding(0) var<uniform> camera: Camera;
 
-@group(1) @binding(0) var<uniform> camera: Camera;
+@group(1) @binding(0) var diff: texture_2d<f32>;
+@group(1) @binding(1) var diff_sampler: sampler;
+
 
 // @group(2) @binding(0) var<uniform> model: Model;
 
