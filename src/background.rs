@@ -22,9 +22,10 @@ pub struct Background {
 }
 
 static FORMAT: TextureFormat = wgpu::TextureFormat::Rgba16Float;
+const DIM: u32 = 2048;
 static SIZE: wgpu::Extent3d = wgpu::Extent3d {
-    width: 512,
-    height: 512,
+    width: DIM,
+    height: DIM,
     depth_or_array_layers: 6,
 };
 impl Background {
@@ -159,7 +160,7 @@ impl Background {
 
             pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &self.texture_array_bind_group, &[]);
-            pass.dispatch_workgroups(512 / 16, 512 / 16, 6);
+            pass.dispatch_workgroups(DIM / 16, DIM / 16, 6);
         }
     }
 }

@@ -709,11 +709,6 @@ impl State {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        if !self.initialized {
-            self.update();
-            self.initialized = true;
-        }
-
         let mut encoder = self
             .gpu
             .device
@@ -721,8 +716,12 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        {
-            self.background.compute(&mut encoder, &self.shader_manager);
+        if !self.initialized {
+            self.update();
+            self.initialized = true;
+            {
+                self.background.compute(&mut encoder, &self.shader_manager);
+            }
         }
 
         let output = self.surface.get_current_texture()?;
