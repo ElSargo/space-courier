@@ -309,8 +309,8 @@ fn make_texture(
     let result_texture = device.create_texture(&TextureDescriptor {
         label: Some("Planet shadow texture"),
         size: Extent3d {
-            width: config.width,
-            height: config.height,
+            width: config.width / 4,
+            height: config.height / 4,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,

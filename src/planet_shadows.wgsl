@@ -333,7 +333,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         //     // a += *0.1;
         // }
 
-        fog +=  (fog_int(ro, rd, penumbra.near) - fog_int(ro, rd, penumbra.far)) * (1.0 - a) * 10.0 / max(0.01,radi) ;
+        fog +=  (fog_int(ro, rd, penumbra.near) - fog_int(ro, rd, penumbra.far)) * (1.0 - a) * 1.0 / max(0.01,radi) ;
         // fog += (1.0 - a);
 
     }

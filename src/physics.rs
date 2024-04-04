@@ -13,7 +13,7 @@ pub struct Physics {
     pub mass: f32,
 }
 
-fn apply_velocity(mut boddies: Query<(&mut Transform, &Physics)>, time: Res<Time>) {
+pub fn apply_velocity(mut boddies: Query<(&mut Transform, &Physics)>, time: Res<Time>) {
     for (
         mut transform,
         Physics {

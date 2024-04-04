@@ -877,17 +877,7 @@ impl State {
             &self.fullscreen_quad,
             &self.camera_gpu_stuff.bind_group,
             &self.view_textures_bind_group,
-            if self.bloom_debug.0 {
-                &self.bloom.down_texture_bind_groups[self
-                    .bloom_debug
-                    .1
-                    .min(self.bloom.down_texture_bind_groups.len() - 1)]
-            } else {
-                &self.bloom.up_texture_bind_groups[self
-                    .bloom_debug
-                    .1
-                    .min(self.bloom.up_texture_bind_groups.len() - 1)]
-            },
+            &self.bloom.up_texture_bind_groups[0],
             &self.planet_shadows.result_texture_bind_group,
             &self.shader_manager,
             &self.background.texture_cube_bind_group,

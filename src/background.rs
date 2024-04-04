@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::{os::unix::raw::dev_t, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     shader_manager::{PipelineHandle, ShaderManager},

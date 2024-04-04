@@ -7,7 +7,10 @@ use bevy_ecs::{
 };
 use glam::{vec4, Mat4, Vec3, Vec4};
 
-use crate::{camera::Camera, ecs::Ecs, player_controller::PlayerController, transform::Transform};
+use crate::{
+    camera::Camera, ecs::Ecs, physics::Physics, player_controller::PlayerController,
+    transform::Transform,
+};
 
 #[derive(Debug, Component)]
 pub struct ArrowGizmo {
@@ -77,12 +80,12 @@ impl RawArrowInstance {
 }
 
 pub fn update_arrows(
-    player: Query<(&PlayerController, &Transform), Without<ArrowGizmo>>,
+    player: Query<(&PlayerController, &Transform, &Physics), Without<ArrowGizmo>>,
     mut arrows: Query<&mut Transform, With<ArrowGizmo>>,
     camera: Res<Camera>,
 ) {
-    let (player_controller, ship_transform) = player.single();
-    let vel_dir = player_controller.velocity.normalize_or_zero();
+    let (player_controller, ship_transform, phys) = player.single();
+    let vel_dir = phys.velocity.normalize_or_zero();
     let mut arrows = arrows.iter_mut();
     let mut arrow_transform = arrows.next().unwrap();
     arrow_transform.translation = ship_transform.translation + vel_dir * 0.3;

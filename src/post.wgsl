@@ -81,7 +81,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // No chromaitc abbr
     var color = textureSample(color_texture, color_sampler, in.uv).rgb;
     var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
-    var pls = textureSample(planet_shadows_texture, color_sampler, in.uv).rg;
+
+
+    let dxdy = vec2(dpdx(in.uv.x),dpdy(in.uv.y));
+    var pls = textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 , 0.5 )).rg * 0.25;
+    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 , 0.5 )).rg * 0.25;
+    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 ,-0.5 )).rg * 0.25;
+    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 ,-0.5 )).rg * 0.25;
 
 
     let view_pos_homogeneous = camera.inv_proj * vec4((vec2(in.uv.x,1.0 - in.uv.y) - 0.5)*2.0,1.0,1.0);
@@ -112,10 +118,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // color = mix( color, vec3(0.04,0.0,0.01), max(0.0,0.1*(1.0-exp(-lin_depth*0.0001) - 0.2*pls.x )));
     
     // return vec4(gamma(bloom),1.0);
-    let fog_col = vec3(15.4,0.75,0.1) * 1.1;
-    // let fog_col = vec3(0.2,5.0,1.2) * 0.1;
+    // let fog_col = vec3(15.4,0.75,0.1) * 10.1;
+    let fog_col = vec3(0.2,5.0,1.2) * 0.4;
     // let fog_col = vec3(0.2,1.0,3.2) * 1.0;
-    let fog = max(0.0, fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0) + pls.x);
+    let fog = (fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0)) * (exp(pls.x*500.0)) ;
     // + sin(in.uv.x*99999.0)/256.0+sin(in.uv.y*99999.0)/256.0+sin((in.uv.x+in.uv.y)*5000.0)/256.0
     // - (1.0 + -1.0 / ( 1.0 - pls.x*4.0 ) ) * 4.
     // color = mix(color,fog*fog_col*0.1,1.0-exp(-depth_lin  * 0.1));
