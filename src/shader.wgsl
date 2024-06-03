@@ -98,11 +98,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     )) < 0.22 {
         ems += col * 20.0;
     }
-    let env = textureSample(background,diff_sampler, refl ).rgb * col;
+    // let env = textureSample(background,diff_sampler, refl ).rgb * col;
     let difs =  max(0.0, dif + 0.01) * 0.5 / ( dis * dis );
     let scl = vec3(1.4,1.,1.);
     let spec = (frez*0.2 + 1.0 ) * spe  ;
-    return vec4<f32>(  col * difs + env * (0.2 + frez )+ ems + spec*dif, 1.0)  ;
+    return vec4<f32>(  col * difs + vec3(0.1,0.2,0.15)*(0.0 + frez )*0.2+ ems + spec*dif, 1.0)  ;
     // return vec4(0.00001);
     // return vec4(spe*(1.+frez));
     // return vec4(spe);

@@ -64,6 +64,18 @@ fn noise3(p: vec3f) -> f32 {
     return o4.y * d.y + o4.x * (1. - d.y);
 }
 
+fn nfbm(p: vec3f) -> f32 {
+    var s = p;
+    var a = 0.5;
+    var t = 0.0;
+    for (var i=0;i<10;i += 1) {
+        t += a*noise3(s);
+        s *= 2.0;
+        a *= 0.5;
+    }
+    return t;
+}
+
 
 fn sph(p :vec3<f32> ) -> f32 {
     let base = floor(p) + 0.5;
@@ -150,26 +162,18 @@ fn full(
 
     var c = 0.0;
     var d = 0.0;
-    var m = 10000.0;
+    var m = 0.0;
     var mt = 0.0;
-    for (var t=0.0;t<40.;t+=d) {
-        let s = rd * t;
-        d = sph(s);
-        if (m > d) {
-            m = d;
-            mt = t;
-        }
-        t += d+0.01;
-        // c += 0.01;
-        // if (d < 0.05) {
-        //     c = 1.0;
-        //     // break;
-        // }
-
+    for (var t=0.0;t<10.;t+=0.5) {
+        let d = max(0.0, nfbm(rd * t ) - 0.75 );
+        mt += d;
+        m +=  d*d * 1.0 * exp(-mt*0.1);
     }
     
     // let color = c + 0.01;
     // let color = max(0.0, dot(rd, vec3(1.0,0.0,0.0))) * vec3(1.0);
 
-    textureStore(dst, gid.xy, gid.z, vec4( vec3(0.2,0.3,2.0) * ( exp(-m * 20.0 )  ) , 1.0));
+    let col = mix(vec3(2.6,0.4,0.123), vec3(0.02,0.23,0.3), exp(-m*0.5));
+
+    textureStore(dst, gid.xy, gid.z, vec4( col * sin(m*100.0) * 10.0 * 1. , 1.0));
 }

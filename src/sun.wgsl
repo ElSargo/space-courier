@@ -80,11 +80,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // var col = vec3(0.0);
     // if in.world_position.x > 0.0 {
         // col.r += 1.0;
-        return vec4(0.4,1.5,0.5,1.0)*14.0;
+        // return vec4(0.4,1.5,0.5,1.0)*14.0;
     // }
     // if in.world_position.y > 0.0 {
         // col.g += 1.0;
-        // return vec4(1.4,0.75,0.5,1.0)*14.0;
+        return vec4(1.4,0.75,0.5,1.0)*14.0;
     // }
     // if in.world_position.z > 0.0 {
         // col.b += 1.0;

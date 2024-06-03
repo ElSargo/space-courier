@@ -79,27 +79,27 @@ impl RawArrowInstance {
     }
 }
 
-pub fn update_arrows(
-    player: Query<(&PlayerController, &Transform, &Physics), Without<ArrowGizmo>>,
-    mut arrows: Query<&mut Transform, With<ArrowGizmo>>,
-    camera: Res<Camera>,
-) {
-    let (player_controller, ship_transform, phys) = player.single();
-    let vel_dir = phys.velocity.normalize_or_zero();
-    let mut arrows = arrows.iter_mut();
-    let mut arrow_transform = arrows.next().unwrap();
-    arrow_transform.translation = ship_transform.translation + vel_dir * 0.3;
-    arrow_transform.look_to(vel_dir, camera.up);
+// pub fn update_arrows(
+//     player: Query<(&PlayerController, &Transform, &Physics), Without<ArrowGizmo>>,
+//     mut arrows: Query<&mut Transform, With<ArrowGizmo>>,
+//     camera: Res<Camera>,
+// ) {
+//     let (player_controller, ship_transform, phys) = player.single();
+//     let vel_dir = phys.velocity.normalize_or_zero();
+//     let mut arrows = arrows.iter_mut();
+//     let mut arrow_transform = arrows.next().unwrap();
+//     arrow_transform.translation = ship_transform.translation + vel_dir * 0.3;
+//     arrow_transform.look_to(vel_dir, camera.up);
 
-    let mut arrow_transform = arrows.next().unwrap();
-    let acc_dir = player_controller.debug_acceleration.normalize_or_zero();
-    arrow_transform.translation = ship_transform.translation + acc_dir * 0.3;
-    arrow_transform.look_to(acc_dir, camera.up);
+//     let mut arrow_transform = arrows.next().unwrap();
+//     let acc_dir = player_controller.debug_acceleration.normalize_or_zero();
+//     arrow_transform.translation = ship_transform.translation + acc_dir * 0.3;
+//     arrow_transform.look_to(acc_dir, camera.up);
 
-    let mut arrow_transform = arrows.next().unwrap();
-    arrow_transform.translation = player_controller.camera_target_debug;
-    arrow_transform.look_at(ship_transform.translation, camera.up);
-}
+//     let mut arrow_transform = arrows.next().unwrap();
+//     arrow_transform.translation = player_controller.camera_target_debug;
+//     arrow_transform.look_at(ship_transform.translation, camera.up);
+// }
 
 pub fn init(ecs: &mut Ecs) {
     for color in [
