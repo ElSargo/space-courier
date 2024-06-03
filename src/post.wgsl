@@ -71,6 +71,23 @@ fn fog_int(ro: vec3<f32>, rd: vec3<f32>, t: f32) -> f32 {
     return atan( c / sqrt(d) ) / sqrt(e);
 }
 
+
+fn grid_lines(rd: vec3<f32>, depth_lin: f32) -> f32 {
+    let size = 10.0;
+    let dxyz = 1.0 / rd;
+    let t = -camera.view_pos.y * dxyz.y;
+    // return t - depth_lin;
+    if (t > 0.01 && t < depth_lin) {
+    // return abs(t - depth_lin)*0.001;
+        let x = abs(rd.x * t + camera.view_pos.x) % size;
+        let z = abs(rd.z * t + camera.view_pos.z) % size;
+        return max(0.0,max(abs(x - 5.0),abs(z - 5.0)) - 4.) * exp(-t * 0.001);
+        // return z;
+        
+    }
+    return 0.0;
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let depth_inv = textureSample(depth_texture, depth_sampler, in.uv);
@@ -94,7 +111,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_ray_direction = view_pos_homogeneous.xyz / view_pos_homogeneous.w;
     var ray_direction = normalize((camera.inv_view * vec4(view_ray_direction, 0.0)).xyz);
 
-    let bg = textureSample(background, color_sampler, ray_direction).rgb;
+    let bg = textureSample(background, color_sampler, ray_direction).rgb + pow(abs(sin(ray_direction*33.01)), vec3(400.0));
+
+
 
     if depth_inv == 0.0 {
         color = bg;
@@ -118,9 +137,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // color = mix( color, vec3(0.04,0.0,0.01), max(0.0,0.1*(1.0-exp(-lin_depth*0.0001) - 0.2*pls.x )));
     
     // return vec4(gamma(bloom),1.0);
-    // let fog_col = vec3(15.4,0.75,0.1) * 10.1;
-    let fog_col = vec3(0.2,5.0,1.2) * 0.4;
-    // let fog_col = vec3(0.2,1.0,3.2) * 1.0;
+    // let fog_col = vec3(1.4,0.75,0.1) * 2.1;
+    // let fog_col = vec3(0.2,5.0,1.2) * 0.4;
+    let fog_col = vec3(0.2,1.0,3.2) * 1.0;
     let fog = (fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0)) * (exp(pls.x*500.0)) ;
     // + sin(in.uv.x*99999.0)/256.0+sin(in.uv.y*99999.0)/256.0+sin((in.uv.x+in.uv.y)*5000.0)/256.0
     // - (1.0 + -1.0 / ( 1.0 - pls.x*4.0 ) ) * 4.
@@ -151,7 +170,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //     color = ray_direction;
     // }
 
-    
+    let gl = grid_lines(ray_direction,depth_lin);
+    // return vec4(abs(gl*0.01));
+    color = mix(color, vec3(gl),vec3(0.1) );
     return vec4(gamma(color), 1.0);
 }
 
