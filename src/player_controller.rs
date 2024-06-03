@@ -1,137 +1,153 @@
 use crate::{
     camera::Camera,
     ecs::Ecs,
-    input::{AxisInput, ButtonInput},
-    physics::{self, Physics},
+    input::{AxisInput, ButtonInput, MouseDelta},
     time::Time,
     transform::Transform,
     Ship,
 };
 use bevy_ecs::{
     component::Component,
-    schedule::IntoSystemConfigs,
+    event::EventReader,
     system::{Commands, Query, Res, ResMut},
 };
 
-use glam::{vec3, Quat, Vec3};
+use glam::{vec2, vec3, Quat, Vec2, Vec3};
 use winit::event::VirtualKeyCode;
 
 #[derive(Debug, Component)]
 pub struct PlayerController {
     pub speed: f32,
-    pub acceleration: Vec3,
-    pub rotational_velocity: Vec3,
-    pub rotated_by_mouse: bool,
-
-    pub debug_acceleration: Vec3,
-    pub camera_target_debug: Vec3,
+    pub momentum: f32,
 }
 
 impl PlayerController {
     pub fn new(speed: f32) -> Self {
         Self {
             speed,
-
-            rotated_by_mouse: false,
-            acceleration: Default::default(),
-            rotational_velocity: Default::default(),
-            camera_target_debug: Default::default(),
-            debug_acceleration: std::default::Default::default(),
+            momentum: 0.0,
         }
-    }
-
-    pub fn mouse_motion(&mut self, delta: (f64, f64)) {
-        self.rotated_by_mouse = true;
-        self.rotational_velocity = vec3(delta.1 as f32 / 10.0, delta.0 as f32 / 10.0, 0.0);
-    }
-}
-
-pub fn update_rotational_velocity(
-    mut player_controller: Query<&mut PlayerController>,
-    axis: Res<AxisInput>,
-) {
-    let mut pc = player_controller.single_mut();
-    if !pc.rotated_by_mouse {
-        pc.rotational_velocity.z = -axis.x;
-        pc.rotational_velocity.x = axis.y;
-        pc.rotational_velocity.y = axis.z;
     }
 }
 
 pub fn update<'a>(
-    mut player: Query<(&mut PlayerController, &mut Transform, &mut Physics)>,
+    mut player: Query<(&mut PlayerController, &mut Transform)>,
     mut camera: ResMut<Camera>,
     time: Res<Time>,
     kb: Res<ButtonInput>,
+    mut mouse_events: EventReader<MouseDelta>,
+    axis: Res<AxisInput>,
 ) {
-    let (mut player_controller, mut ship_transform, mut phys) = player.single_mut();
-    let (player_controller, transform) = (&mut *player_controller, &mut *ship_transform);
-    player_controller.acceleration = Vec3::ZERO;
+    let (mut player_controller, mut transform) = player.single_mut();
+    let (player_controller, transform) = (&mut *player_controller, &mut *transform);
 
     if kb.is_down(VirtualKeyCode::W) {
-        player_controller.acceleration += transform.forward() * player_controller.speed
+        player_controller.momentum += player_controller.speed * time.delta_seconds
     }
     if kb.is_down(VirtualKeyCode::S) {
-        player_controller.acceleration += transform.back() * player_controller.speed
+        player_controller.momentum *= 0.95
     }
-    if kb.is_down(VirtualKeyCode::A) {
-        player_controller.acceleration += transform.left() * player_controller.speed
+    let camera_displacement_factor = 1.0;
+    camera.fovy = std::f32::consts::PI * 0.25 * (2.0 - (-player_controller.momentum * 0.1).exp());
+    let mouse_delta: Vec2 = mouse_events
+        .read()
+        .map(|MouseDelta { x, y }| vec2(*x, *y))
+        .sum();
+
+    let mouse_sensitivity = 0.3;
+
+    let cam_transform = Transform::from_mat4(&camera.view_matrix());
+
+    transform.rotation = ((cam_transform.rotation.inverse()
+        * Quat::from_rotation_x(
+            mouse_sensitivity * (mouse_delta.y + axis.y) * time.delta_seconds,
+        ))
+        * cam_transform.rotation)
+        * transform.rotation;
+
+    transform.rotation = ((cam_transform.rotation.inverse()
+        * Quat::from_rotation_y(
+            mouse_sensitivity * (mouse_delta.x + axis.x) * time.delta_seconds,
+        ))
+        * cam_transform.rotation)
+        * transform.rotation;
+
+    // transform.rotation *=
+    //     Quat::from_rotation_z(-mouse_sensitivity * (mouse_delta.x + axis.x) * time.delta_seconds);
+
+    // transform.rotation *= Quat::IDENTITY.lerp(
+    //     Quat::from_mat3a()
+    //     , )
+    // Roll
+    // {
+    //     let roll_rotaion = Quat::from_rotation_z(
+    //         -mouse_sensitivity * (mouse_delta.x + axis.x) * time.delta_seconds,
+    //     );
+
+    //     let focal_point_displacement = transform.down() * camera_displacement_factor;
+    //     let new_focal_point_displacement = roll_rotaion.mul_vec3(focal_point_displacement);
+
+    //     transform.translation += new_focal_point_displacement - focal_point_displacement;
+    //     transform.rotation *= roll_rotaion;
+    // }
+
+    // transform.rotation *=
+    //     Quat::from_rotation_y(mouse_sensitivity * (mouse_delta.x + axis.x) * time.delta_seconds);
+    // transform.rotation = transform.rotation
+    //     * cam_transform.rotation.inverse()
+    //     * (cam_transform.rotation
+    //         * Quat::from_rotation_x(
+    //             -mouse_sensitivity * (mouse_delta.y + axis.y) * time.delta_seconds,
+    //         ));
+
+    //Pitch
+    {
+        let pitch_rotation = Quat::from_rotation_x((mouse_delta.y + axis.y) * time.delta_seconds);
+        // trans
     }
-    if kb.is_down(VirtualKeyCode::D) {
-        player_controller.acceleration += transform.right() * player_controller.speed
-    }
-    if kb.is_down(VirtualKeyCode::E) {
-        player_controller.acceleration += transform.up() * player_controller.speed
-    }
-    if kb.is_down(VirtualKeyCode::Q) {
-        player_controller.acceleration += transform.down() * player_controller.speed
-    }
-    player_controller.debug_acceleration = player_controller.acceleration;
-    // player_controller.acceleration += gravity(ship_transform.translation) * crate::SUN_MASS;
 
-    phys.velocity += player_controller.acceleration * time.delta_seconds;
-    phys.velocity *= 1.0 - time.delta_seconds * 0.1;
-    // transform.translation += player_controller.velocity * time.delta_seconds;
-    camera.eye += phys.velocity * time.delta_seconds;
-    transform.rotation = transform.rotation
-        * Quat::from_euler(
-            glam::EulerRot::XYZ,
-            player_controller.rotational_velocity.x * 3.0 * time.delta_seconds,
-            player_controller.rotational_velocity.y * 3.0 * time.delta_seconds,
-            player_controller.rotational_velocity.z * 3.0 * time.delta_seconds,
-        );
-    if player_controller.rotated_by_mouse {
-        player_controller.rotational_velocity = Vec3::ZERO;
-        player_controller.rotated_by_mouse = false;
-    }
+    // Correct view
 
-    let velocity_magnitude = phys.velocity.length();
-    let target_distance_coef = 0.001 * velocity_magnitude / (1.0 + velocity_magnitude * 0.001);
-    let camera_eye_target = transform.translation
-        + transform
-            .rotation
-            .mul_vec3(vec3(0.1, 0.2, -1. * (target_distance_coef * 5.0 + 0.5)));
+    let camera_alginment_full_rotation = Quat::from_rotation_arc(camera.up, transform.up());
 
-    let speed = 10.0;
+    camera.up = Quat::IDENTITY
+        .lerp(
+            camera_alginment_full_rotation,
+            1.0 - (-1.0 * time.delta_seconds).exp(),
+        )
+        .mul_vec3(camera.up);
 
-    let camera_eye_displacement = camera_eye_target - camera.eye;
+    let frame_translation = player_controller.momentum
+        * player_controller.speed
+        * time.delta_seconds
+        * transform.forward();
+    transform.translation += frame_translation;
 
-    camera.eye += camera_eye_displacement * (time.delta_seconds * speed).min(1.0);
+    let focal_ponit = transform.translation + transform.up() * camera_displacement_factor;
+    let camera_eye_target = focal_ponit + transform.back() * camera_displacement_factor * 4.0;
+    let camera_target_target = focal_ponit
+        + transform.forward()
+            * camera_displacement_factor
+            * 3.0
+            * (player_controller.momentum + 1.0).ln();
 
-    let target = transform.translation + transform.forward() * (target_distance_coef * 20. + 1.0);
-    camera.target = target;
-    player_controller.camera_target_debug = target;
-    camera.up = transform.up();
+    let lerp_factor = 1.0
+        - (-time.delta_seconds
+            * 02.0
+            * (1.0 / (1.1 + cam_transform.forward().dot(transform.forward())) + 1.0))
+            .exp();
+    camera.eye += frame_translation;
+    camera.target += frame_translation;
+    camera.target = camera.target.lerp(camera_target_target, lerp_factor);
+    camera.eye = camera.eye.lerp(camera_eye_target, lerp_factor);
+    // println!("Camera eye: {:#?}", camera.eye);
+
+    // let velocity_magnitude = phys.velocity.length();
 }
 
 fn spawn_player(mut commands: Commands) {
     commands.spawn((
-        PlayerController::new(100.0),
-        Physics {
-            velocity: Default::default(),
-            angular_velocity: Default::default(),
-            mass: 1.0,
-        },
+        PlayerController::new(10.1),
         Transform {
             scale: Vec3::ONE * 0.1,
             translation: vec3(0., 0., -200.),
@@ -144,10 +160,7 @@ fn spawn_player(mut commands: Commands) {
 pub fn init(ecs: &mut Ecs) {
     // ecs.world.spawn(());
     ecs.init.add_systems(spawn_player);
-    ecs.update
-        .add_systems(update_rotational_velocity.before(update));
-    ecs.update
-        .add_systems(update.after(physics::apply_velocity));
-    ecs.update
-        .add_systems(crate::gizmo::update_arrows.after(update));
+    ecs.update.add_systems(update);
+    // ecs.update
+    //     .add_systems(crate::gizmo::update_arrows.after(update));
 }

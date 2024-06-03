@@ -24,6 +24,23 @@ impl Transform {
         Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
     }
 
+    pub fn from_scale_rotation_translation(scale: Vec3, rotation: Quat, translation: Vec3) -> Self {
+        Self {
+            scale,
+            translation,
+            rotation,
+        }
+    }
+
+    pub fn from_mat4(m: &Mat4) -> Self {
+        let (scale, rotation, translation) = m.to_scale_rotation_translation();
+        Self {
+            scale,
+            rotation,
+            translation,
+        }
+    }
+
     pub fn from_position(position: Vec3) -> Self {
         Self {
             translation: position,
@@ -80,5 +97,19 @@ impl Transform {
             .unwrap_or_else(|| up.any_orthonormal_vector());
         let up = back.cross(right);
         self.rotation = Quat::from_mat3(&Mat3::from_cols(right, up, back));
+    }
+
+    pub fn lerp(&self, rhs: &Self, t: f32) -> Self {
+        Self {
+            scale: self.scale.lerp(rhs.scale, t),
+            translation: self.translation.lerp(rhs.translation, t),
+            rotation: self.rotation.lerp(rhs.rotation, t),
+        }
+    }
+
+    pub fn lerp_to(&mut self, rhs: &Self, t: f32) {
+        self.scale = self.scale.lerp(rhs.scale, t);
+        self.translation = self.translation.lerp(rhs.translation, t);
+        self.rotation = self.rotation.lerp(rhs.rotation, t);
     }
 }

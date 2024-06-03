@@ -36,7 +36,7 @@ use gilrs::Gilrs;
 use gizmo::{ArrowGizmo, RawArrowInstance};
 use glam::{vec3, Mat3, Mat4, Quat, Vec3};
 use gpu::{Gpu, InstanceBuffer};
-use input::{AxisInput, ButtonInput};
+use input::{AxisInput, ButtonInput, MouseDelta};
 use model::Model;
 
 use planet_shadows::PlanetShadows;
@@ -86,15 +86,10 @@ pub async fn run() {
         }
         Event::DeviceEvent { event, .. } => match event {
             DeviceEvent::MouseMotion { delta } => {
-                // state
-                //     .ecs
-                //     .world
-                //     .resource_mut::<PlayerController>()
-
-                QueryBuilder::<&mut PlayerController>::new(&mut state.ecs.world)
-                    .build()
-                    .single_mut(&mut state.ecs.world)
-                    .mouse_motion(delta);
+                state.ecs.world.send_event(MouseDelta {
+                    x: delta.0 as f32,
+                    y: delta.1 as f32,
+                });
             }
             _ => {} // DeviceEvent::MouseWheel { delta } => todo!(),
                     // DeviceEvent::Motion { axis, value } => todo!(),
@@ -236,6 +231,7 @@ impl State {
 
         let mut limits = wgpu::Limits::downlevel_defaults();
         limits.max_bind_groups = 5;
+        limits.max_texture_dimension_2d = 8192;
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -486,17 +482,17 @@ impl State {
         let gizmo_shader = shader_manager.load_shader("./src/gizmo.wgsl");
         // let tbgl = texture_bind_group_layout.clone();
         // let cgs = camera_gpu_stuff.clone();
-        let mut gizmo_layout = Some(mk_pipeline_layout(
+        let gizmo_layout = Box::leak(Box::new(mk_pipeline_layout(
             &gpu.device.clone(),
             "gizmo",
             &[&camera_gpu_stuff.bind_group_layout],
-        ));
+        )));
         let gizmo_render_pipeline = shader_manager.add_render_pipeline(
             vec![gizmo_shader],
             Box::new(move |shaders, device| {
                 mk_pipeline(
                     &device,
-                    &std::mem::replace(&mut gizmo_layout, None).unwrap(),
+                    gizmo_layout,
                     None,
                     shaders[0],
                     "gizmo",
@@ -506,17 +502,17 @@ impl State {
         );
         let sun_shader = shader_manager.load_shader("./src/sun.wgsl");
         let cgs = camera_gpu_stuff.clone();
-        let mut sun_layout = Some(mk_pipeline_layout(
+        let sun_layout = Box::leak(Box::new(mk_pipeline_layout(
             &gpu.device.clone(),
             "Sun",
             &[&cgs.bind_group_layout, &texture_bind_group_layout],
-        ));
+        )));
         let sun_render_pipeline = shader_manager.add_render_pipeline(
             vec![sun_shader],
             Box::new(move |shaders, device| {
                 mk_pipeline(
                     &device,
-                    &std::mem::replace(&mut sun_layout, None).unwrap(),
+                    &sun_layout,
                     None,
                     shaders[0],
                     "sun",

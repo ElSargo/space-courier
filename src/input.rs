@@ -1,10 +1,19 @@
 use std::collections::HashMap;
 
-use bevy_ecs::system::Resource;
+use bevy_ecs::{
+    event::{Event, Events},
+    system::Resource,
+};
 use gilrs::Gilrs;
 use winit::event::VirtualKeyCode;
 
 use crate::ecs::Ecs;
+
+#[derive(Debug, Event)]
+pub struct MouseDelta {
+    pub x: f32,
+    pub y: f32,
+}
 
 #[derive(Debug, Clone, Copy)]
 enum KeyState {
@@ -111,4 +120,5 @@ impl AxisInput {
 pub fn init(ecs: &mut Ecs) {
     ecs.world.insert_resource(ButtonInput::new());
     ecs.world.insert_resource(AxisInput::default());
+    ecs.world.init_resource::<Events<MouseDelta>>();
 }
