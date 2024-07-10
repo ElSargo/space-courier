@@ -24,6 +24,10 @@ impl Transform {
         Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
     }
 
+    pub fn to_mat_with_origin(&self, origin: Vec3) -> Mat4 {
+        Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.translation - origin)
+    }
+
     pub fn from_scale_rotation_translation(scale: Vec3, rotation: Quat, translation: Vec3) -> Self {
         Self {
             scale,

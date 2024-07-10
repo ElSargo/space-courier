@@ -1,7 +1,14 @@
 use crate::{
+    background::Background,
+    bloom::Bloom,
+    camera::CameraUniform,
     fullscreen::FullscreenQuad,
-    shader_manager::{self, PipelineHandle},
+    get_all, get_all_shaders,
+    planet_shadows::PlanetShadows,
+    shader_manager::{self, PipelineHandle, ShaderManager},
+    ViewTextureReasources,
 };
+use anymap::AnyMap;
 use wgpu::{
     BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device,
     ShaderStages,
@@ -68,11 +75,18 @@ impl Postprocessing {
             },
         )));
         // let pipeline = device.create_render_pipeline(&);
-        let vert_fmt = fullscreen_quad.vertex_format;
         let format = config.format.clone();
         let pipeline_handle = shader_manager.add_render_pipeline(
             vec![shader_handle, fullscreen_quad.shader_handle],
-            Box::new(move |shader_modules, device: &Device| {
+            Box::new(move |rr, device, shader_manager| {
+                let (FullscreenQuad {
+                    shader_handle: fs_shader_handle,
+                    vertex_format,
+                    ..
+                },) = get_all!(rr, FullscreenQuad).unwrap();
+                let (sm, fs_sm) =
+                    get_all_shaders!(shader_manager, shader_handle, *fs_shader_handle).unwrap();
+
                 let targets = [Some(wgpu::ColorTargetState {
                     // 4.
                     format,
@@ -83,13 +97,13 @@ impl Postprocessing {
                     label: Some("Post Render Pipeline"),
                     layout: Some(pipeline_layout),
                     vertex: wgpu::VertexState {
-                        module: shader_modules[1],
+                        module: &fs_sm,
                         entry_point: "vs_main",
-                        buffers: vert_fmt,
+                        buffers: *vertex_format,
                     },
                     fragment: Some(wgpu::FragmentState {
                         // 3.
-                        module: shader_modules[0],
+                        module: &sm,
                         entry_point: "fs_main",
                         targets: &targets,
                     }),
@@ -119,43 +133,81 @@ impl Postprocessing {
 
         Self { pipeline_handle }
     }
+}
 
-    pub fn draw(
-        &mut self,
-        encoder: &mut wgpu::CommandEncoder,
-        view: wgpu::TextureView,
-        fullscreen_quad: &FullscreenQuad,
-        camera_bind_group: &wgpu::BindGroup,
-        textures_bind_group: &wgpu::BindGroup,
-        bloom_texture_bind_group: &wgpu::BindGroup,
-        planet_shadows_texture_bind_group: &wgpu::BindGroup,
-        shader_manager: &shader_manager::ShaderManager,
-        cube_bind_group: &BindGroup,
-    ) {
-        if let Some(pipeline) = shader_manager.get_render_pipeline(&self.pipeline_handle) {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Ui render pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-            // render_pass.set_bind_group(0,&self.diffuse_bind_group , &[] );
-            // render_pass.set_bind_group(0,&self.view_bind_group, &[] );
-            render_pass.set_bind_group(0, &textures_bind_group, &[]);
-            render_pass.set_bind_group(1, camera_bind_group, &[]);
-            render_pass.set_bind_group(2, bloom_texture_bind_group, &[]);
-            render_pass.set_bind_group(3, planet_shadows_texture_bind_group, &[]);
-            render_pass.set_bind_group(4, cube_bind_group, &[]);
-            render_pass.set_pipeline(pipeline);
-            fullscreen_quad.draw(&mut render_pass);
-        }
+pub fn post_draw_post(
+    encoder: &mut wgpu::CommandEncoder,
+    output_view: wgpu::TextureView,
+    shader_manager: &ShaderManager,
+    rr: &AnyMap,
+) -> Option<()> {
+    let (
+        ViewTextureReasources {
+            view_textures_bind_group,
+            ..
+        },
+        post,
+        fullscreen_quad,
+        CameraUniform {
+            bind_group: camera_bind_group,
+            ..
+        },
+        bloom,
+        PlanetShadows {
+            render_texture_bind_group,
+            ..
+        },
+        Background {
+            texture_cube_bind_group,
+            ..
+        },
+    ) = get_all!(
+        rr,
+        ViewTextureReasources,
+        Postprocessing,
+        FullscreenQuad,
+        CameraUniform,
+        Bloom,
+        PlanetShadows,
+        Background
+    )?;
+
+    // pub fn draw(
+    //     &mut self,
+    //     encoder: &mut wgpu::CommandEncoder,
+    //     view: wgpu::TextureView,
+    //     fullscreen_quad: &FullscreenQuad,
+    //     camera_bind_group: &wgpu::BindGroup,
+    //     textures_bind_group: &wgpu::BindGroup,
+    //     bloom_texture_bind_group: &wgpu::BindGroup,
+    //     planet_shadows_texture_bind_group: &wgpu::BindGroup,
+    //     shader_manager: &shader_manager::ShaderManager,
+    //     cube_bind_group: &BindGroup,
+    // ) {
+    if let Some(pipeline) = shader_manager.get_render_pipeline(&post.pipeline_handle) {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Ui render pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &output_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
+        // render_pass.set_bind_group(0,&self.diffuse_bind_group , &[] );
+        // render_pass.set_bind_group(0,&self.view_bind_group, &[] );
+        render_pass.set_bind_group(0, &view_textures_bind_group, &[]);
+        render_pass.set_bind_group(1, camera_bind_group, &[]);
+        render_pass.set_bind_group(2, &bloom.get_result_bind_group(), &[]);
+        render_pass.set_bind_group(3, render_texture_bind_group, &[]);
+        render_pass.set_bind_group(4, texture_cube_bind_group, &[]);
+        render_pass.set_pipeline(pipeline);
+        fullscreen_quad.draw(&mut render_pass);
     }
+    Some(())
 }

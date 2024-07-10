@@ -1,4 +1,4 @@
-use crate::{ecs::Ecs, physics::Physics, planets::Planet, time::Time, transform::Transform};
+use crate::{ecs::Ecs, physics::Physics, time::Time, transform::Transform};
 use bevy_ecs::system::{Query, Res};
 use glam::Vec3;
 

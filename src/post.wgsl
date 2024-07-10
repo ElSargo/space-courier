@@ -101,17 +101,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 
     let dxdy = vec2(dpdx(in.uv.x),dpdy(in.uv.y));
-    var pls = textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 , 0.5 )).rg * 0.25;
-    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 , 0.5 )).rg * 0.25;
-    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 ,-0.5 )).rg * 0.25;
-    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 ,-0.5 )).rg * 0.25;
+    var pls = textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 , 0.5 )).rg * 0.25 * 4.0;
+    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 , 0.5 )).rg * 0.25 * 4.0;
+    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 ,-0.5 )).rg * 0.25 * 4.0;
+    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 ,-0.5 )).rg * 0.25 * 4.0;
 
 
     let view_pos_homogeneous = camera.inv_proj * vec4((vec2(in.uv.x,1.0 - in.uv.y) - 0.5)*2.0,1.0,1.0);
     let view_ray_direction = view_pos_homogeneous.xyz / view_pos_homogeneous.w;
     var ray_direction = normalize((camera.inv_view * vec4(view_ray_direction, 0.0)).xyz);
 
-    let bg = textureSample(background, color_sampler, ray_direction).rgb + pow(abs(sin(ray_direction*33.01)), vec3(400.0));
+    let bg = textureSample(background, color_sampler, ray_direction).rgb + 0.0*pow(abs(sin(ray_direction*33.01)), vec3(400.0));
 
 
 
@@ -139,9 +139,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // return vec4(gamma(bloom),1.0);
     // let fog_col = vec3(1.4,0.75,0.1) * 2.1;
     // let fog_col = vec3(0.2,5.0,1.2) * 0.4;
-    let fog_col = vec3(0.2,1.0,3.2) * 1.0;
-    let fog = (fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0)) * (exp(pls.x*500.0)) ;
-    // + sin(in.uv.x*99999.0)/256.0+sin(in.uv.y*99999.0)/256.0+sin((in.uv.x+in.uv.y)*5000.0)/256.0
+    let fog_col = vec3(0.2,1.0,3.2) * 10.0;
+    var fog = (fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0)) * (exp(pls.x*500.0)) ;
+    // fog += sin(in.uv.x*9999.0)/256.0+sin(in.uv.y*999.0)/256.0+sin((in.uv.x+in.uv.y)*9000.0)/256.0;
     // - (1.0 + -1.0 / ( 1.0 - pls.x*4.0 ) ) * 4.
     // color = mix(color,fog*fog_col*0.1,1.0-exp(-depth_lin  * 0.1));
     color = aces_tonemap(color);
@@ -172,7 +172,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let gl = grid_lines(ray_direction,depth_lin);
     // return vec4(abs(gl*0.01));
-    color = mix(color, vec3(gl),vec3(0.1) );
+    // color = mix(color, vec3(gl),vec3(0.1) );
     return vec4(gamma(color), 1.0);
 }
 

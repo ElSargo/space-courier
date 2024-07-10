@@ -1,16 +1,9 @@
 use std::mem::size_of;
 
-use bevy_ecs::{
-    component::Component,
-    query::{With, Without},
-    system::{Query, Res},
-};
+use bevy_ecs::component::Component;
 use glam::{vec4, Mat4, Vec3, Vec4};
 
-use crate::{
-    camera::Camera, ecs::Ecs, physics::Physics, player_controller::PlayerController,
-    transform::Transform,
-};
+use crate::{ecs::Ecs, transform::Transform};
 
 #[derive(Debug, Component)]
 pub struct ArrowGizmo {

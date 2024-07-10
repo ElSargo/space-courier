@@ -12,9 +12,7 @@ impl Ecs {
         let world = World::default();
         let init = Schedule::default();
         let update = Schedule::default();
-
         let extract = Schedule::default();
-
         let ecs = Self {
             world,
             update,
@@ -27,5 +25,6 @@ impl Ecs {
 
     pub fn update(&mut self) {
         self.update.run(&mut self.world);
+        self.extract.run(&mut self.world);
     }
 }

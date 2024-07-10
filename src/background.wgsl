@@ -160,6 +160,31 @@ fn full(
     // let c = pow(abs(l - 0.75),4.0) * vec3(0.2,0.5,3.0) * noise3(rd*10.0)  ;
     
 
+    
+        var col = vec3(0.0);
+    
+    for (var s = 40.0; s < 500.0;s *= 1.3) {
+        
+        let fl = rd * s + vec3(3.31231, 18.7872, -2.22134);
+        let ori = round(fl);
+        var di = 10e10;
+        var dcol = vec3(0.0);
+        for (var x=0.0;x<1.5;x+=1.0){
+        for (var y=0.0;y<1.5;y+=1.0){
+        for (var z=0.0;z<1.5;z+=1.0){
+            let disp = vec3(x,y,z);
+            let o = ori + disp;
+            let dl = hash33(o)* - 0.5;
+            let nd = distance(o+dl,fl);
+            if nd < di {
+                di = nd;
+                dcol = hash33(o + vec3(3.31231, 18.7872, -2.22134));
+            }
+        }}}
+        col += vec3(smoothstep(0.1   ,0.0   ,di))*10.0*dcol;
+
+    }
+
     var c = 0.0;
     var d = 0.0;
     var m = 0.0;
@@ -173,7 +198,7 @@ fn full(
     // let color = c + 0.01;
     // let color = max(0.0, dot(rd, vec3(1.0,0.0,0.0))) * vec3(1.0);
 
-    let col = mix(vec3(2.6,0.4,0.123), vec3(0.02,0.23,0.3), exp(-m*0.5));
+    // let col = mix(vec3(2.6,0.4,0.123), vec3(0.02,0.23,0.3), exp(-m*0.5)) * sin(m*100.0) * 10.0 * 1.;
 
-    textureStore(dst, gid.xy, gid.z, vec4( col * sin(m*100.0) * 10.0 * 1. , 1.0));
+    textureStore(dst, gid.xy, gid.z, vec4( col , 1.0));
 }

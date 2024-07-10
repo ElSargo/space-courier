@@ -1,9 +1,10 @@
+use anymap::AnyMap;
 use bevy_ecs::{query::QueryBuilder, system::Resource, world::World};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{vec2, Vec3};
 use wgpu::{
-    util::DeviceExt, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    util::DeviceExt, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BlendComponent, BufferUsages, Color,
     ColorWrites, Device, Extent3d, FrontFace, PipelineLayoutDescriptor, PrimitiveState, Queue,
     RenderPipelineDescriptor, ShaderStages, SurfaceConfiguration, TextureDescriptor,
@@ -11,18 +12,21 @@ use wgpu::{
 };
 
 use crate::{
+    camera::CameraUniform,
+    get_all, get_all_shaders,
     gpu::InstanceBuffer,
     planets::Planet,
     shader_manager::{PipelineHandle, ShaderManager},
     transform::Transform,
+    ViewTextureReasources,
 };
 
 #[derive(Resource)]
 pub struct PlanetShadows {
-    result_texture: wgpu::Texture,
+    render_texture: wgpu::Texture,
     pub result_texture_view: wgpu::TextureView,
-    pub result_texture_bind_group: wgpu::BindGroup,
-    pub result_texture_bind_group_layout: wgpu::BindGroupLayout,
+    pub render_texture_bind_group: wgpu::BindGroup,
+    pub texture_bind_group_layout: wgpu::BindGroupLayout,
     pipeline: PipelineHandle,
     instance_buffer: InstanceBuffer,
     vertex_buffer: wgpu::Buffer,
@@ -108,12 +112,14 @@ impl PlanetShadows {
 
         let pipeline = shader_manager.add_render_pipeline(
             vec![shader_handle],
-            Box::new(|shaders, device| {
+            Box::new(move |__rr, device, shader_manager| {
+                let sm = get_all_shaders!(shader_manager, shader_handle).unwrap().0;
+
                 device.create_render_pipeline(&RenderPipelineDescriptor {
                     label: Some("Planet shadow pipeline"),
                     layout: Some(pipeline_layout),
                     vertex: wgpu::VertexState {
-                        module: shaders[0],
+                        module: &sm,
                         entry_point: "vs_main",
                         buffers: &[Vertex::desc(), RawPlanetShadow::desc()],
                     },
@@ -130,7 +136,7 @@ impl PlanetShadows {
                         alpha_to_coverage_enabled: false, // 4.
                     },
                     fragment: Some(wgpu::FragmentState {
-                        module: &shaders[0],
+                        module: &sm,
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
                             format: TextureFormat::Rg16Float,
@@ -161,7 +167,7 @@ impl PlanetShadows {
             &device,
         );
 
-        let result_texture_bind_group_layout =
+        let texture_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("Planet shadows bind group layout descriptor"),
                 entries: &[BindGroupLayoutEntry {
@@ -176,8 +182,8 @@ impl PlanetShadows {
                 }],
             });
 
-        let (result_texture, result_texture_view, result_texture_bind_group) =
-            make_texture(device, config, &result_texture_bind_group_layout);
+        let (render_texture, render_texture_view, render_texture_bind_group) =
+            make_texture(device, config, &texture_bind_group_layout);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Planet shadow volumes vertex buffer"),
@@ -209,12 +215,12 @@ impl PlanetShadows {
         });
 
         Self {
-            result_texture,
+            render_texture,
             pipeline,
             instance_buffer,
-            result_texture_view,
-            result_texture_bind_group,
-            result_texture_bind_group_layout,
+            result_texture_view: render_texture_view,
+            render_texture_bind_group,
+            texture_bind_group_layout,
             vertex_buffer,
             index_buffer,
         }
@@ -222,11 +228,11 @@ impl PlanetShadows {
 
     pub fn resize(&mut self, config: &SurfaceConfiguration, device: &Device) {
         let (result_texture, result_texture_view, result_texture_bind_group) =
-            make_texture(device, config, &self.result_texture_bind_group_layout);
+            make_texture(device, config, &self.texture_bind_group_layout);
 
-        self.result_texture = result_texture;
+        self.render_texture = result_texture;
         self.result_texture_view = result_texture_view;
-        self.result_texture_bind_group = result_texture_bind_group;
+        self.render_texture_bind_group = result_texture_bind_group;
     }
     pub fn update(&mut self, world: &mut World, device: &Device, queue: &Queue) {
         let instances = QueryBuilder::<(&Transform, &Planet)>::new(world)
@@ -261,44 +267,55 @@ impl PlanetShadows {
         self.instance_buffer
             .write(device, instances.as_slice(), queue);
     }
+}
 
-    pub fn draw(
-        &self,
+pub fn draw_planet_shadows(
+    encoder: &mut wgpu::CommandEncoder,
+    shader_manager: &ShaderManager,
+    rr: &AnyMap,
+) -> Option<()> {
+    let (
+        planet_shadows,
+        ViewTextureReasources {
+            view_textures_bind_group,
+            ..
+        },
+        CameraUniform { bind_group, .. },
+    ) = get_all!(rr, PlanetShadows, ViewTextureReasources, CameraUniform)?;
 
-        encoder: &mut wgpu::CommandEncoder,
-        shader_manager: &ShaderManager,
-        view_textures_bind_group: &BindGroup,
-        camera_bind_group: &BindGroup,
-    ) {
-        let Some(pipeline) = shader_manager.get_render_pipeline(&self.pipeline) else {
-            return;
-        };
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Planet shadow volumes render pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &self.result_texture_view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
+    // : &BindGroup,
+    // : &BindGroup,
+    let pipeline = shader_manager.get_render_pipeline(&planet_shadows.pipeline)?;
+    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("Planet shadow volumes render pass"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: &planet_shadows.result_texture_view,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(Color::BLACK),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+    });
 
-        render_pass.set_bind_group(0, &camera_bind_group, &[]);
-        render_pass.set_bind_group(1, view_textures_bind_group, &[]);
+    render_pass.set_bind_group(0, &bind_group, &[]);
+    render_pass.set_bind_group(1, view_textures_bind_group, &[]);
 
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
+    render_pass.set_vertex_buffer(0, planet_shadows.vertex_buffer.slice(..));
+    render_pass.set_vertex_buffer(1, planet_shadows.instance_buffer.buffer.slice(..));
 
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+    render_pass.set_index_buffer(
+        planet_shadows.index_buffer.slice(..),
+        wgpu::IndexFormat::Uint16,
+    );
 
-        render_pass.set_pipeline(pipeline);
-        render_pass.draw_indexed(0..6, 0, 0..self.instance_buffer.instances);
-    }
+    render_pass.set_pipeline(pipeline);
+    render_pass.draw_indexed(0..6, 0, 0..planet_shadows.instance_buffer.instances);
+
+    Some(())
 }
 
 fn make_texture(
@@ -309,8 +326,8 @@ fn make_texture(
     let result_texture = device.create_texture(&TextureDescriptor {
         label: Some("Planet shadow texture"),
         size: Extent3d {
-            width: config.width / 4,
-            height: config.height / 4,
+            width: config.width / 2,
+            height: config.height / 2,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,

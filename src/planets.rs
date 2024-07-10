@@ -1,17 +1,28 @@
 use bevy_ecs::{
     component::Component,
     entity::Entity,
-    query::{QueryBuilder, With},
-    system::{Commands, Query, Res, Resource},
+    query::With,
+    system::{Commands, Query, Res, ResMut, Resource},
 };
 use glam::{Quat, Vec3};
 use rand::{thread_rng, Rng};
-use std::default::Default;
-use wgpu::{util::DeviceExt, BindGroupLayout};
+use std::{
+    default::Default,
+    sync::{Arc, Mutex},
+};
+use wgpu::BindGroupLayout;
 
 use crate::{
-    ecs::Ecs, gpu::Gpu, gravity::G, input::ButtonInput, instance_buffer_bytes, model::Model,
-    physics::Physics, resources, transform::Transform, SUN_MASS,
+    ecs::Ecs,
+    gpu::{Gpu, InstanceBuffer},
+    gravity::G,
+    input::ButtonInput,
+    instance_buffer_bytes,
+    model::Model,
+    physics::Physics,
+    resources,
+    transform::Transform,
+    SUN_MASS,
 };
 
 #[derive(Default, Debug, Component)]
@@ -23,26 +34,20 @@ pub struct Planet {
     pub mass: f32,
 }
 
-pub async fn init(ecs: &mut Ecs, gpu: &Gpu, texture_bind_group_layout: &BindGroupLayout) {
+pub async fn init(
+    ecs: &mut Ecs,
+    gpu: &Gpu,
+    texture_bind_group_layout: &BindGroupLayout,
+    ib: Arc<Mutex<InstanceBuffer>>,
+) {
     ecs.init.add_systems(make_planets);
     ecs.update.add_systems(remake_planets);
     ecs.update.add_systems(add_planet);
     ecs.update.add_systems(destroy_planets_in_sun);
-
-    let planet_buffer_bytes = instance_buffer_bytes(
-        QueryBuilder::<&Transform, With<Planet>>::new(&mut ecs.world)
-            .build()
-            .iter(&ecs.world),
-    );
+    ecs.extract.add_systems(update_instance_buffer);
 
     ecs.world.insert_resource(PlanetGpuData {
-        instance_buffer: gpu
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&planet_buffer_bytes),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            }),
+        instance_buffer: ib,
         model: resources::load_model(
             "wallmart.obj",
             &gpu.device,
@@ -100,9 +105,9 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
     let mut transform = Transform {
         rotation: Quat::from_euler(
             glam::EulerRot::XYZ,
-            rng.gen_range(-1.8..1.8),
+            rng.gen_range(-0.5..0.5),
             rng.gen_range(0.0..std::f32::consts::TAU),
-            rng.gen_range(-1.8..1.8),
+            rng.gen_range(-0.5..0.5),
             // rng.gen_range(-0.3..0.3),
             // rng.gen_range(0.0..std::f32::consts::TAU),
             // rng.gen_range(-0.3..0.3),
@@ -135,22 +140,34 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
 
 #[derive(Resource)]
 pub struct PlanetGpuData {
-    pub instance_buffer: wgpu::Buffer,
+    pub instance_buffer: Arc<Mutex<InstanceBuffer>>,
     pub model: Model,
 }
 
 pub fn update_instance_buffer(
     transforms: Query<&Transform, With<Planet>>,
     gpu: Res<Gpu>,
-    planet_data: Res<PlanetGpuData>,
+    planet_data: ResMut<PlanetGpuData>,
 ) {
-    let i = transforms.iter();
-    println!("{:#?}", i.size_hint());
-    let bytes = instance_buffer_bytes(i);
-    gpu.queue.write_buffer(
-        &planet_data.instance_buffer,
-        0,
-        bytemuck::cast_slice(&bytes),
-    );
-    println!("Updated buffer")
+    {
+        let planet_instances = instance_buffer_bytes(
+            transforms.iter(), // QueryBuilder::<&Transform, With<Planet>>::new(&mut self.ecs.world)
+                               //     .build()
+                               //     .iter(&self.ecs.world),
+        );
+        planet_data
+            .instance_buffer
+            .lock()
+            .expect("Couldn't lock buffer")
+            .write(&gpu.device, &planet_instances.as_slice(), &gpu.queue);
+    }
+    // let i = transforms.iter();
+    // println!("{:#?}", i.size_hint());
+    // let bytes = instance_buffer_bytes(i);
+    // gpu.queue.write_buffer(
+    //     &planet_data.instance_buffer,
+    //     0,
+    //     bytemuck::cast_slice(&bytes),
+    // );
+    // println!("Updated buffer")
 }

@@ -1,24 +1,30 @@
 #![allow(dead_code)]
 
-use std::sync::Arc;
-
 use crate::{
-    shader_manager::{PipelineHandle, ShaderManager},
+    get_all,
+    shader_manager::{PipelineHandle, ShaderHandle, ShaderManager},
     texture::TexCube,
 };
+use anymap::AnyMap;
+
 use wgpu::{
     BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    CommandEncoder, ComputePassDescriptor, Device, ShaderStages, TextureDescriptor,
+    CommandEncoder, ComputePassDescriptor, Device, PipelineLayout, ShaderStages, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
 };
 
 pub struct Background {
-    texture: TexCube,
+    pub texture: TexCube,
     texture_array_view: TextureView,
     texture_array_bind_group: wgpu::BindGroup,
     pub texture_cube_bind_group: wgpu::BindGroup,
     pub texture_cube_bind_group_layout: wgpu::BindGroupLayout,
     pipeline: PipelineHandle,
+}
+
+struct ConstructorReasources {
+    pipeline_layout: PipelineLayout,
+    shader_handle: ShaderHandle,
 }
 
 static FORMAT: TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -29,7 +35,7 @@ static SIZE: wgpu::Extent3d = wgpu::Extent3d {
     depth_or_array_layers: 6,
 };
 impl Background {
-    pub fn new(device: &Device, shader_manager: &mut ShaderManager) -> Self {
+    pub fn init(device: &Device, shader_manager: &mut ShaderManager, rr: &mut AnyMap) {
         let storage_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Background storage texture layout"),
             entries: &[BindGroupLayoutEntry {
@@ -57,25 +63,40 @@ impl Background {
             }],
         });
 
-        let pipline_layout = Arc::new(device.create_pipeline_layout(
-            &wgpu::PipelineLayoutDescriptor {
-                label: Some("Background full pipeline layout"),
-                bind_group_layouts: &[&storage_layout],
-                push_constant_ranges: &[],
-            },
-        ));
+        let pipline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Background full pipeline layout"),
+            bind_group_layouts: &[&storage_layout],
+            push_constant_ranges: &[],
+        });
 
-        let shader = shader_manager.load_shader("./src/background.wgsl");
+        let shader_handle = shader_manager.load_shader("./src/background.wgsl");
+
+        rr.insert(ConstructorReasources {
+            pipeline_layout: pipline_layout,
+            shader_handle,
+        });
+
         let pipeline = shader_manager.add_compute_pipeline(
-            vec![shader],
-            Box::new(move |shdars, device| {
-                let layout = pipline_layout.clone();
-                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: Some("Background pipeline"),
-                    layout: Some(&layout),
-                    module: shdars[0],
-                    entry_point: "full",
-                })
+            vec![shader_handle],
+            Box::new(|rr, device, shader_manager| {
+                if let Some((ConstructorReasources {
+                    pipeline_layout,
+                    shader_handle,
+                },)) = get_all!(rr, ConstructorReasources)
+                {
+                    if let Some(shader_module) = shader_manager.get_module(*shader_handle) {
+                        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                            label: Some("Background pipeline"),
+                            layout: Some(&pipeline_layout),
+                            module: &shader_module,
+                            entry_point: "full",
+                        })
+                    } else {
+                        panic!()
+                    }
+                } else {
+                    panic!()
+                }
             }),
         );
 
@@ -141,14 +162,16 @@ impl Background {
             sampler,
         };
 
-        Self {
+        let me = Self {
             texture: cube,
             pipeline,
             texture_array_bind_group,
             texture_array_view: view_array,
             texture_cube_bind_group,
             texture_cube_bind_group_layout: cube_layout,
-        }
+        };
+
+        rr.insert(me);
     }
 
     pub fn compute(&self, encoder: &mut CommandEncoder, shader_manager: &ShaderManager) {
