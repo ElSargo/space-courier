@@ -63,12 +63,15 @@ fn vs_main(
 }
 
 fn fog_int(ro: vec3<f32>, rd: vec3<f32>, t: f32) -> f32 {
-    let a = (rd.y * ro.z - ro.y * rd.z);
-    let b = (rd.y * ro.z - ro.y * rd.z);
-    let c = ro.x * rd.x + ro.y * rd.y + ro.z * rd.z + rd.x * rd.x * t + rd.y * rd.y * t + rd.z * rd.z * t ;
-    let d = rd.x * rd.x * ( ro.y * ro.y + ro.z * ro.z ) + a * a - 2.0 * ro.x * rd.x * ( ro.y * rd.y + ro.z * rd.z ) + ro.x * ro.x * ( rd.y * rd.y + rd.z * rd.z ) ;
-    let e =  rd.x * rd.x * ( ro.y * ro.y + ro.z * ro.z ) + b * b - 2.0 * ro.x * rd.x * ( ro.y * rd.y + ro.z * rd.z ) + ro.x * ro.x * ( rd.y * rd.y + rd.z * rd.z ) ;
-    return atan( c / sqrt(d) ) / sqrt(e);
+    // let a = (rd.y * ro.z - ro.y * rd.z);
+    // let b = (rd.y * ro.z - ro.y * rd.z);
+    // let c = ro.x * rd.x + ro.y * rd.y + ro.z * rd.z + rd.x * rd.x * t + rd.y * rd.y * t + rd.z * rd.z * t ;
+    // let d = rd.x * rd.x * ( ro.y * ro.y + ro.z * ro.z ) + a * a - 2.0 * ro.x * rd.x * ( ro.y * rd.y + ro.z * rd.z ) + ro.x * ro.x * ( rd.y * rd.y + rd.z * rd.z ) ;
+    // let e =  rd.x * rd.x * ( ro.y * ro.y + ro.z * ro.z ) + b * b - 2.0 * ro.x * rd.x * ( ro.y * rd.y + ro.z * rd.z ) + ro.x * ro.x * ( rd.y * rd.y + rd.z * rd.z ) ;
+    // return atan( c / sqrt(d) ) / sqrt(e);
+
+
+    return 1.0 - exp(t * -0.01 );
 }
 
 
@@ -96,15 +99,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // let lin_depth = length();
     // No chromaitc abbr
-    var color = textureSample(color_texture, color_sampler, in.uv).rgb;
+    let view_color = textureSample(color_texture, color_sampler, in.uv);
+    var color = view_color.rgb;
     var bloom = textureSample(bloom_texture, color_sampler, in.uv).rgb;
 
 
     let dxdy = vec2(dpdx(in.uv.x),dpdy(in.uv.y));
-    var pls = textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 , 0.5 )).rg * 0.25 * 4.0;
-    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 , 0.5 )).rg * 0.25 * 4.0;
-    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 ,-0.5 )).rg * 0.25 * 4.0;
-    pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 ,-0.5 )).rg * 0.25 * 4.0;
+    // var pls = textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 , 0.5 )).rg * 0.25 * 4.0;
+    // pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 , 0.5 )).rg * 0.25 * 4.0;
+    // pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2(-0.5 ,-0.5 )).rg * 0.25 * 4.0;
+    // pls += textureSample(planet_shadows_texture, color_sampler, in.uv + dxdy * vec2( 0.5 ,-0.5 )).rg * 0.25 * 4.0;
 
 
     let view_pos_homogeneous = camera.inv_proj * vec4((vec2(in.uv.x,1.0 - in.uv.y) - 0.5)*2.0,1.0,1.0);
@@ -140,13 +144,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // let fog_col = vec3(1.4,0.75,0.1) * 2.1;
     // let fog_col = vec3(0.2,5.0,1.2) * 0.4;
     let fog_col = vec3(0.2,1.0,3.2) * 10.0;
-    var fog = (fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0)) * (exp(pls.x*500.0)) ;
+    // var fog = (fog_int(camera.view_pos.xyz, ray_direction, depth_lin) - fog_int(camera.view_pos.xyz, ray_direction, 0.0) ) * 0.1 * (exp(pls.x*1.1)) ;
+    // var fog = -pls.x;
     // fog += sin(in.uv.x*9999.0)/256.0+sin(in.uv.y*999.0)/256.0+sin((in.uv.x+in.uv.y)*9000.0)/256.0;
     // - (1.0 + -1.0 / ( 1.0 - pls.x*4.0 ) ) * 4.
     // color = mix(color,fog*fog_col*0.1,1.0-exp(-depth_lin  * 0.1));
     color = aces_tonemap(color);
-    color = fog*fog_col + color * (exp(-depth_lin * 0.001) * 0.5 + 0.5);
     color += bloom;
+    // color = fog*fog_col + color * (exp(-depth_lin * 0.0001) * 0.5 + 0.5);
 
     // color +=  vec3(pls.x) ;
     
@@ -173,6 +178,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let gl = grid_lines(ray_direction,depth_lin);
     // return vec4(abs(gl*0.01));
     // color = mix(color, vec3(gl),vec3(0.1) );
+
     return vec4(gamma(color), 1.0);
+    // return vec4(gamma(vec3f(view_color.a)), 1.0);
 }
 

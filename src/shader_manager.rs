@@ -251,7 +251,7 @@ impl ShaderManager {
         })
     }
 
-    pub fn load_shader(&self, path: impl Into<PathBuf>) -> ShaderHandle {
+    pub fn load_shader(&mut self, path: impl Into<PathBuf>) -> ShaderHandle {
         let mut p: PathBuf = ".src/main.rs".into();
         p.pop();
         p.push("src/");
@@ -376,33 +376,38 @@ async fn compile_shaders(
 ) {
     while let Some((path, handle)) = incomming.recv().await {
         log!("Compiling ", bright_yellow, "{path:#?}", bright_purple);
-        match tokio::fs::read_to_string(&path).await {
-            Ok(source) => {
-                device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let (outgoing, device) = (outgoing.clone(), device.clone());
+        tokio::task::spawn(async move {
+            match tokio::fs::read_to_string(&path).await {
+                Ok(source) => {
+                    device.push_error_scope(wgpu::ErrorFilter::Validation);
 
-                let shader = device.create_shader_module(ShaderModuleDescriptor {
-                    label: None,
-                    source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
-                });
+                    let shader = device.create_shader_module(ShaderModuleDescriptor {
+                        label: None,
+                        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
+                    });
 
-                if let Some(e) = device.pop_error_scope().await {
-                    match e {
-                        wgpu::Error::OutOfMemory { source } => eprintln!("{source:#?}"),
-                        wgpu::Error::Validation { description, .. } => eprintln!("{description}"),
-                    }
-                } else {
-                    log!("Compiled ", green, "{path:#?}", bright_purple);
-                    let handle = handle.unwrap_or_else(|| path_to_shader_id(&path));
-                    if let Err(e) = outgoing.send((shader, handle)) {
-                        eprintln!("{e:#?}");
-                        panic!("Shader compile error")
-                    }
+                    if let Some(e) = device.pop_error_scope().await {
+                        match e {
+                            wgpu::Error::OutOfMemory { source } => eprintln!("{source:#?}"),
+                            wgpu::Error::Validation { description, .. } => {
+                                eprintln!("{description}")
+                            }
+                        }
+                    } else {
+                        log!("Compiled ", green, "{path:#?}", bright_purple);
+                        let handle = handle.unwrap_or_else(|| path_to_shader_id(&path));
+                        if let Err(e) = outgoing.send((shader, handle)) {
+                            eprintln!("{e:#?}");
+                            panic!("Shader compile error")
+                        }
 
-                    // .expect("Unable to send compiled shaderg to queue");
-                };
+                        // .expect("Unable to send compiled shaderg to queue");
+                    };
+                }
+                Err(e) => eprintln!("{e}"),
             }
-            Err(e) => eprintln!("{e}"),
-        }
+        });
     }
 }
 

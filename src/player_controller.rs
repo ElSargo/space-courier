@@ -1,7 +1,9 @@
 use crate::{
     camera::Camera,
     ecs::Ecs,
+    gravity::gravity_all,
     input::{AxisInput, ButtonInput, MouseDelta},
+    physics::Physics,
     time::Time,
     transform::Transform,
     Ship,
@@ -9,6 +11,7 @@ use crate::{
 use bevy_ecs::{
     component::Component,
     event::EventReader,
+    query::Without,
     system::{Commands, Local, Query, Res, ResMut},
 };
 
@@ -38,9 +41,15 @@ pub fn update<'a>(
     mut mouse_events: EventReader<MouseDelta>,
     axis: Res<AxisInput>,
     look_ahead: Local<Quat>,
+    // bodies: Query<(&Physics, &Transform), Without<PlayerController>>,
 ) {
     let (mut player_controller, mut transform) = player.single_mut();
     let (player_controller, transform) = (&mut *player_controller, &mut *transform);
+
+    // let gravity = gravity_all(transform.translation, bodies.iter()) * time.delta_seconds * -10.0;
+    // transform.translation += gravity;
+    // camera.eye += gravity;
+    // camera.target += gravity;
 
     if kb.is_down(VirtualKeyCode::W) {
         player_controller.momentum += player_controller.speed * time.delta_seconds
@@ -119,6 +128,10 @@ fn spawn_player(mut commands: Commands) {
             translation: vec3(0., 0., -200.),
             rotation: Default::default(),
         },
+        // Physics {
+        //     mass: 1.0,
+        //     ..Default::default()
+        // },
         Ship,
     ));
 }

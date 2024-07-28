@@ -3,15 +3,15 @@ use crate::{
     bloom::Bloom,
     camera::CameraUniform,
     fullscreen::FullscreenQuad,
-    get_all, get_all_shaders,
+    get_all, get_all_shaders, make_view_texture, make_view_textures_bind_group,
     planet_shadows::PlanetShadows,
     shader_manager::{self, PipelineHandle, ShaderManager},
-    ViewTextureReasources,
+    texture, ViewTextureReasources,
 };
 use anymap::AnyMap;
 use wgpu::{
     BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device,
-    ShaderStages,
+    ShaderStages, SurfaceConfiguration,
 };
 
 pub struct Postprocessing {
@@ -210,4 +210,66 @@ pub fn post_draw_post(
         fullscreen_quad.draw(&mut render_pass);
     }
     Some(())
+}
+
+fn init(render_stuff: &mut AnyMap, device: &Device, config: &SurfaceConfiguration) {
+    render_stuff.insert({
+        let view_textures_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        // This should match the filterable field of the
+                        // corresponding Texture entry above.
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Depth,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        // This should match the filterable field of the
+                        // corresponding Texture entry above.
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("post_texture_bind_group_layout"),
+            });
+
+        let color_texture = make_view_texture(&config, &device);
+        let depth_texture =
+            texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+        ViewTextureReasources {
+            view_textures_bind_group: make_view_textures_bind_group(
+                &device,
+                &view_textures_bind_group_layout,
+                &depth_texture,
+                &color_texture,
+            ),
+            view_textures_bind_group_layout,
+            depth_texture,
+            view_texture: color_texture,
+        }
+    });
 }

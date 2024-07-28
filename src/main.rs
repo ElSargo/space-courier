@@ -5,6 +5,7 @@ mod bloom;
 mod camera;
 mod ecs;
 mod fullscreen;
+mod galactic_transform;
 mod gizmo;
 mod gpu;
 mod gravity;
@@ -14,6 +15,7 @@ mod physics;
 mod planet_shadows;
 mod planets;
 mod player_controller;
+mod player_controller_upright;
 mod post;
 mod resources;
 mod shader_manager;
@@ -26,9 +28,9 @@ use bevy_ecs::{
     component::Component,
     query::{QueryBuilder, With},
     system::{Local, Res},
-    world::Mut,
+    world::{Mut, World},
 };
-use bloom::Bloom;
+use bloom::{Bloom, BloomReasoruces};
 use camera::CameraUniform;
 
 use ecs::Ecs;
@@ -49,7 +51,6 @@ use std::{
     mem::size_of,
     sync::{Arc, Mutex},
 };
-mod res_store;
 use texture::Texture;
 use time::Time;
 use transform::Transform;
@@ -180,7 +181,11 @@ struct State {
     // unsafe references to the window's resources.
     window: Window,
 
+    fire_bg: bool,
+
     render_stuff: AnyMap,
+
+    render_world: World,
 
     // planets: Planets,
     planet_model: Model,
@@ -195,9 +200,6 @@ struct State {
     arrow_model: Model,
     gizmo_render_pipeline: PipelineHandle,
 
-    // bloom: Bloom,
-    initialized: bool,
-
     ecs: Ecs,
 
     shader_manager: ShaderManager,
@@ -208,6 +210,7 @@ impl State {
     // Creating some of the wgpu types requires async code
     async fn new(window: Window) -> Self {
         let mut render_stuff = AnyMap::new();
+        let mut render_world = World::new();
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -247,87 +250,27 @@ impl State {
             .await
             .unwrap();
 
-        let surface_caps = surface.get_capabilities(&adapter);
+        let surface_capabilities = surface.get_capabilities(&adapter);
         // Shader code in this tutorial assumes an sRGB surface texture. Using a different
         // one will result in all the colors coming out darker. If you want to support non
         // sRGB surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_caps
+        let surface_format = surface_capabilities
             .formats
             .iter()
             .copied()
             .filter(|f| f.is_srgb())
             .next()
-            .unwrap_or(surface_caps.formats[0]);
+            .unwrap_or(surface_capabilities.formats[0]);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
+            present_mode: surface_capabilities.present_modes[0],
+            alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
         };
         surface.configure(&device, &config);
-
-        render_stuff.insert({
-            let view_textures_bind_group_layout =
-                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            // This should match the filterable field of the
-                            // corresponding Texture entry above.
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                sample_type: wgpu::TextureSampleType::Depth,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 3,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            // This should match the filterable field of the
-                            // corresponding Texture entry above.
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
-                    ],
-                    label: Some("post_texture_bind_group_layout"),
-                });
-
-            let color_texture = make_view_texture(&config, &device);
-            let depth_texture =
-                texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-            ViewTextureReasources {
-                view_textures_bind_group: make_view_textures_bind_group(
-                    &device,
-                    &view_textures_bind_group_layout,
-                    &depth_texture,
-                    &color_texture,
-                ),
-                view_textures_bind_group_layout,
-                depth_texture,
-                view_texture: color_texture,
-            }
-        });
 
         let camera = Camera {
             aspect: config.width as f32 / config.height as f32,
@@ -462,7 +405,12 @@ impl State {
             ));
         }
 
-        Background::init(&gpu.device, &mut shader_manager, &mut render_stuff);
+        Background::init(
+            &gpu.device,
+            &mut shader_manager,
+            &mut render_stuff,
+            &mut ecs,
+        );
 
         if let Some((vt, ps, bg, fsq)) = get_all!(
             render_stuff,
@@ -481,14 +429,9 @@ impl State {
                 &mut shader_manager,
             ));
         }
+        BloomReasoruces::init(&gpu, &config, &mut render_stuff, &mut shader_manager);
 
-        let vt = &get_all!(render_stuff, ViewTextureReasources)
-            .unwrap()
-            .0
-            .view_texture
-            .view;
-
-        Bloom::init(&config, &gpu.device, &vt, &render_stuff);
+        Bloom::init(&config, &gpu.device, &mut render_stuff);
 
         init_normal_pipeline(
             &mut render_stuff,
@@ -559,14 +502,15 @@ impl State {
             // planets,
             planet_transform_instance_buffer: planet_transform_instance_buffer.into(),
 
+            render_world,
             // ship_transforms,
             ship_transform_instance_buffer,
             ship_model,
+            fire_bg: true,
             // arrows,
             arrow_transform_instance_buffer,
             arrow_model,
             gizmo_render_pipeline,
-            initialized: false,
             ecs,
             gpu,
             gilrs: Gilrs::new().unwrap(),
@@ -616,9 +560,8 @@ impl State {
             }
             if let Some(mut bloom) = self.render_stuff.remove::<Bloom>() {
                 if let Some(ViewTextureReasources {
-                    ref mut view_texture,
-                    ..
-                }) = self.render_stuff.get_mut::<ViewTextureReasources>()
+                    ref view_texture, ..
+                }) = self.render_stuff.get::<ViewTextureReasources>()
                 {
                     bloom.resize(
                         &self.config,
@@ -656,6 +599,9 @@ impl State {
                     };
 
                     let pressed = *state == ElementState::Pressed;
+                    if *key == VirtualKeyCode::B {
+                        self.fire_bg = true;
+                    }
 
                     false
                 }
@@ -739,15 +685,12 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        if !self.initialized {
-            self.update();
-            self.initialized = true;
-            {
-                self.render_stuff
-                    .get_mut::<Background>()
-                    .unwrap()
-                    .compute(&mut encoder, &self.shader_manager);
-            }
+        if self.fire_bg {
+            self.fire_bg = false;
+            self.render_stuff
+                .get_mut::<Background>()
+                .unwrap()
+                .compute(&mut encoder, &self.shader_manager);
         }
 
         let output = self.surface.get_current_texture()?;
@@ -790,7 +733,12 @@ impl State {
                     view: &view_rr.view_texture.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(Color::BLACK),
+                        load: wgpu::LoadOp::Clear(Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -935,7 +883,7 @@ impl State {
             );
         }
 
-        planet_shadows::draw_planet_shadows(&mut encoder, &self.shader_manager, &self.render_stuff);
+        // planet_shadows::draw_planet_shadows(&mut encoder, &self.shader_manager, &self.render_stuff);
         bloom::draw_bloom(&mut encoder, &self.shader_manager, &self.render_stuff);
 
         post::post_draw_post(
@@ -1288,6 +1236,24 @@ macro_rules! get_all {
             )
             };
             clj()
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! idx_all {
+    ( $map:expr, $( $x:ty ),* ) => {
+        {
+                (
+                    $(
+
+                        {
+                            let tmp = $map.get::<$x>();
+                            tmp.expect(&format!("Failed to index type {:?}", std::any::type_name::<$x>()))
+                        },
+                    )*
+                )
+
         }
     }
 }

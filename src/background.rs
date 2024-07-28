@@ -1,20 +1,28 @@
 #![allow(dead_code)]
 
+use std::sync::Arc;
+
 use crate::{
+    ecs::Ecs,
     get_all,
+    gpu::Gpu,
     shader_manager::{PipelineHandle, ShaderHandle, ShaderManager},
     texture::TexCube,
+    time::Time,
 };
 use anymap::AnyMap;
 
+use bevy_ecs::system::{Res, Resource};
 use wgpu::{
-    BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    CommandEncoder, ComputePassDescriptor, Device, PipelineLayout, ShaderStages, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
+    util::DeviceExt, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BufferBinding, BufferUsages, CommandEncoder, ComputePassDescriptor,
+    Device, PipelineLayout, ShaderStages, TextureDescriptor, TextureDimension, TextureFormat,
+    TextureUsages, TextureView, TextureViewDescriptor,
 };
 
 pub struct Background {
     pub texture: TexCube,
+    time_buffer: Arc<wgpu::Buffer>,
     texture_array_view: TextureView,
     texture_array_bind_group: wgpu::BindGroup,
     pub texture_cube_bind_group: wgpu::BindGroup,
@@ -35,19 +43,36 @@ static SIZE: wgpu::Extent3d = wgpu::Extent3d {
     depth_or_array_layers: 6,
 };
 impl Background {
-    pub fn init(device: &Device, shader_manager: &mut ShaderManager, rr: &mut AnyMap) {
+    pub fn init(
+        device: &Device,
+        shader_manager: &mut ShaderManager,
+        rr: &mut AnyMap,
+        ecs: &mut Ecs,
+    ) {
         let storage_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Background storage texture layout"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::StorageTexture {
-                    access: wgpu::StorageTextureAccess::WriteOnly,
-                    format: FORMAT,
-                    view_dimension: wgpu::TextureViewDimension::D2Array,
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: FORMAT,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::COMPUTE | ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
         let cube_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Background storage texture layout"),
@@ -137,14 +162,31 @@ impl Background {
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
+        let time_buffer = Arc::new(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Background time buffer"),
+                contents: 0.0_f32.to_ne_bytes().as_slice(),
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            }),
+        );
 
         let texture_array_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Background storage bind group"),
             layout: &storage_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&view_array),
-            }],
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view_array),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer(BufferBinding {
+                        buffer: &time_buffer,
+                        offset: 0,
+                        size: None,
+                    }),
+                },
+            ],
         });
 
         let texture_cube_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -164,6 +206,7 @@ impl Background {
 
         let me = Self {
             texture: cube,
+            time_buffer: time_buffer.clone(),
             pipeline,
             texture_array_bind_group,
             texture_array_view: view_array,
@@ -172,6 +215,9 @@ impl Background {
         };
 
         rr.insert(me);
+
+        ecs.world.insert_resource(TimeBuffer(time_buffer));
+        ecs.extract.add_systems(update_time_buffer);
     }
 
     pub fn compute(&self, encoder: &mut CommandEncoder, shader_manager: &ShaderManager) {
@@ -186,4 +232,14 @@ impl Background {
             pass.dispatch_workgroups(DIM / 16, DIM / 16, 6);
         }
     }
+}
+
+#[derive(Resource)]
+struct TimeBuffer(Arc<wgpu::Buffer>);
+fn update_time_buffer(buf: Res<TimeBuffer>, gpu: Res<Gpu>, time: Res<Time>) {
+    gpu.queue.write_buffer(
+        &buf.as_ref().0,
+        0,
+        (time.since_startup as f32).to_ne_bytes().as_slice(),
+    );
 }

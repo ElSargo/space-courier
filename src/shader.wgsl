@@ -184,6 +184,10 @@ fn cell_m_s(p: vec3f) -> f32 {
 }
 
 
+fn pow2(x: f32) -> f32 {
+    return x*x;
+}
+
 // https://iquilezles.org/articles/dontflip/
 fn reflVec(v: vec3f, r: vec3f) -> vec3f {
     let k = dot(v, r);
@@ -194,17 +198,20 @@ fn reflVec(v: vec3f, r: vec3f) -> vec3f {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pos_realative = in.world_position - camera.view_pos.xyz;
     let rd = normalize(pos_realative);
-    var col = textureSample(diff, diff_sampler, in.uv).rgb;
-    let water_dist = length(col - vec3(0.13725, 0.61961, 1.0));
+
+    let albedo = textureSample(diff, diff_sampler, in.uv).rgb;
+    // let albedo = vec3(0.2);
+
+    // let water_dist = length(col - vec3(0.13725, 0.61961, 1.0));
     let nor_vert = normalize(in.world_normal);
     let nor_flat = normalize(cross(dpdx(in.world_position), dpdy(in.world_position)));
-    let blend_factor = smoothstep(1.0, 0.92, water_dist);
+    // let blend_factor = smoothstep(1.0, 0.92, water_dist);
     var cell =  1.0;
     var cxv = 0.0;
     cxv = cell_s(in.mesh_position * 4.0);
-    cell += mix(1.0 - cxv,cxv,  blend_factor) ;
+    // cell += mix(1.0 - cxv,cxv,  blend_factor) ;
     cxv = cell_s(in.mesh_position * 8.0);
-    cell += mix(1.0 - cxv,cxv,  blend_factor) ;
+    // cell += mix(1.0 - cxv,cxv,  blend_factor) ;
     // cell +=  cell_s(in.mesh_position * 16.0)*0.25;
     let sca_cell = 0.95 + 0.05 * cell;
     let nor_cell = normalize(cross(dpdx(sca_cell * nor_vert), dpdy(sca_cell * nor_vert)));
@@ -215,26 +222,69 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // let nor = normalize(nor_vert + reflVec(cell.grad, nor_vert )*0.3*(1.0-blend_factor)  );
     let nor = nor_vert;
     let dis = length(in.world_position * 0.005);
-    let sun = normalize(-in.world_position);
-    let sdn = dot(nor, sun);
     // let dif = max(0.0, sdn + dot(cell.grad, sun) * abs(sdn) * 0.6  );
-    let dif = max(0.0, dot(nor, sun));
-    let frez = 0.0*fresnel(rd, nor, 5.0);
-    let refl = reflect(rd, nor);
-    let spe = pow(max(0.0, dot(sun, refl)), 1.0)*0.1;
+    let freznel = fresnel(rd, nor, 5.0);
+    let reflect_direction = reflect(rd, nor);
     // var col = vec3(0.5);
     var ems = vec3(0.0);
-    if max(abs(col.r - 0.156862), max(
-        abs(col.g - 0.85883),
-        abs(col.b - 1.0)
+    if max(abs(albedo.r - 0.156862), max(
+        abs(albedo.g - 0.85883),
+        abs(albedo.b - 1.0)
     )) < 0.22 {
-        ems += col * 20.0;
+        ems += albedo* 20.0;
     }
+
+
+    //Light sources
+    var color = vec3(0.0);
+    // Sun
+    {
+        let light_color = vec3(0.75,0.5,1.4);
+        let light_direction = normalize(-in.world_position); 
+        let distance_scaled = length(in.world_position * 0.004);
+        let light_intensity = 1.0 / (distance_scaled  * distance_scaled);
+        let light_dot_normal = dot(nor, light_direction);
+
+        let angle_atenuation = 1.0 - exp(-1.5 * distance_scaled);
+        
+        let diffuse = max(0.0,(1.0 - angle_atenuation)*0.3 +  dot(nor, light_direction)); 
+        let specular = (3.0  * angle_atenuation + 0.5) * pow(max(0.0, dot(light_direction, reflect_direction )), (8.0 + angle_atenuation)) * (0.05 + 0.95 * freznel);
+
+        color += albedo * light_color * light_intensity * diffuse;
+        color += light_intensity * sqrt(light_color) * specular;
+    }
+    // Ecretion disk
+    {
+        let light_color = vec3(1.0,0.75,0.5);
+        let light_direction = vec3(0.0,1.0,0.0); 
+        // let distance_scaled = length(in.world_position * 0.002);
+        let light_intensity = 2.0;
+        let light_dot_normal = dot(nor, light_direction);
+        let diffuse = exp(-2.0*pow2(1.0 +  dot(nor, light_direction) - 2.0)); 
+        let specular = 1.0 * pow(max(0.0, dot(light_direction, reflect_direction )), 3.0) * (0.05 + 0.95 * freznel);
+
+        color += albedo * light_color * light_intensity * diffuse;
+        color += light_intensity * sqrt(light_color) * specular;
+        
+    }
+
+    // Stars / background 
+    {
+        // let light_color = textureSample(background,diff_sampler, reflect_direction).rgb; 
+        // color += freznel * light_color * albedo;
+    }
+
+    // Emission 
+    {
+        color += ems;
+    }
+
+    
     // let env = textureSample(background,diff_sampler, refl ).rgb * col;
-    let difs = max(0.0, dif + 0.01) * 0.5 / (dis * dis);
-    let scl = vec3(1.4, 1., 1.);
-    let spec = (frez * 0.2 + 1.0) * spe  ;
-    let color = col * difs + vec3(0.1, 0.2, 0.15) * (0.0 + frez) * 0.2 + ems + spec * difs;
+    // let difs = max(0.0, dif + 0.01) * 0.5 / (dis * dis) * 1.0 + 0.14 * smoothstep(1.0,0.7, nor.x) * (0.0 + frez);
+    // let scl = vec3(1.4, 1., 1.);
+    // let spec = (frez * 0.2 + 1.0) * spe  ;
+    // let color = col * difs +  ems + spec * difs  ;
 
     return vec4<f32>(color, 1.0)  ;
     // return vec4(0.00001);

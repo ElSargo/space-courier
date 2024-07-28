@@ -1,5 +1,5 @@
 [package]
-name = "learn_wgpu"
+name = "sargospizza"
 version = "0.1.0"
 edition = "2021"
 
@@ -24,6 +24,8 @@ gilrs = "0.10.4"
 bevy_ecs = { version = "0.13.0", features = ["multi-threaded", "bevy_reflect"]}
 notify = {version = "6.1.1", default_features = false, features = [] }
 seahash = "4.1.0"
+dashmap = "6.0.1"
+anymap = "0.12.1"
 
 [build-dependencies]
 color-eyre = "0.5.5"

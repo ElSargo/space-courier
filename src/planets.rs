@@ -119,7 +119,7 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
     transform.translation = forward * distance;
     transform.scale *= radius;
     let mass = radius * radius * radius * 10.0;
-    let velocity = transform.left() * 0.001 / transform.translation.length().sqrt() * SUN_MASS * G
+    let velocity = transform.left() * 0.01 / transform.translation.length().sqrt() * SUN_MASS * G
         / mass.sqrt();
 
     commands

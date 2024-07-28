@@ -95,6 +95,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anymap"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33954243bd79057c2de7338850b85983a44588021f8a5fee574a8888c6de4344"
+
+[[package]]
 name = "arrayref"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -571,6 +577,20 @@ dependencies = [
  "bitflags 2.5.0",
  "libloading 0.8.3",
  "winapi",
+]
+
+[[package]]
+name = "dashmap"
+version = "6.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "804c8821570c3f8b70230c2ba75ffa5c0f9a4189b9a432b6656c536712acae28"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -1178,35 +1198,6 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
-
-[[package]]
-name = "learn_wgpu"
-version = "0.1.0"
-dependencies = [
- "bevy_ecs",
- "bytemuck",
- "cfg-if",
- "color-eyre",
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "fs_extra",
- "gilrs",
- "glam",
- "glob",
- "image",
- "log",
- "notify",
- "rand",
- "seahash",
- "tobj",
- "tokio",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "wgpu",
- "winit",
-]
 
 [[package]]
 name = "libc"
@@ -1849,6 +1840,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "sargospizza"
+version = "0.1.0"
+dependencies = [
+ "anymap",
+ "bevy_ecs",
+ "bytemuck",
+ "cfg-if",
+ "color-eyre",
+ "console_error_panic_hook",
+ "console_log",
+ "dashmap",
+ "env_logger",
+ "fs_extra",
+ "gilrs",
+ "glam",
+ "glob",
+ "image",
+ "log",
+ "notify",
+ "rand",
+ "seahash",
+ "tobj",
+ "tokio",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
