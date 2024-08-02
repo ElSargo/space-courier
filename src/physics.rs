@@ -27,7 +27,6 @@ pub fn apply_velocity(mut boddies: Query<(&mut Transform, &Physics)>, time: Res<
         transform.rotation = transform
             .rotation
             .mul_quat(Quat::IDENTITY.slerp(*angular_velocity, time.delta_seconds.min(1.0)));
-        // transform.rotation = transform.rotation.mul_quat(*angular_velocity);
     }
 }
 
