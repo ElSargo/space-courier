@@ -53,26 +53,38 @@ impl Transform {
     }
 
     pub fn forward(&self) -> Vec3 {
+        Self::forward_of_quat(self.rotation)
+    }
+
+    pub fn forward_of_quat(rotation: Quat) -> Vec3 {
         Vec3 {
-            x: 2.0 * (self.rotation.x * self.rotation.z + self.rotation.w * self.rotation.y),
-            y: 2.0 * (self.rotation.y * self.rotation.z - self.rotation.w * self.rotation.x),
-            z: 1.0 - 2.0 * (self.rotation.x * self.rotation.x + self.rotation.y * self.rotation.y),
+            x: 2.0 * (rotation.x * rotation.z + rotation.w * rotation.y),
+            y: 2.0 * (rotation.y * rotation.z - rotation.w * rotation.x),
+            z: 1.0 - 2.0 * (rotation.x * rotation.x + rotation.y * rotation.y),
         }
     }
 
     pub fn up(&self) -> Vec3 {
+        Self::up_of_quat(self.rotation)
+    }
+
+    pub fn up_of_quat(rotation: Quat) -> Vec3 {
         Vec3 {
-            x: 2.0 * (self.rotation.x * self.rotation.y - self.rotation.w * self.rotation.z),
-            y: 1.0 - 2.0 * (self.rotation.x * self.rotation.x + self.rotation.z * self.rotation.z),
-            z: 2.0 * (self.rotation.y * self.rotation.z + self.rotation.w * self.rotation.x),
+            x: 2.0 * (rotation.x * rotation.y - rotation.w * rotation.z),
+            y: 1.0 - 2.0 * (rotation.x * rotation.x + rotation.z * rotation.z),
+            z: 2.0 * (rotation.y * rotation.z + rotation.w * rotation.x),
         }
     }
 
     pub fn right(&self) -> Vec3 {
+        Self::right_of_quat(self.rotation)
+    }
+
+    pub fn right_of_quat(rotation: Quat) -> Vec3 {
         Vec3 {
-            x: 1.0 - 2.0 * (self.rotation.y * self.rotation.y + self.rotation.z * self.rotation.z),
-            y: 2.0 * (self.rotation.x * self.rotation.y + self.rotation.w * self.rotation.z),
-            z: 2.0 * (self.rotation.x * self.rotation.z - self.rotation.w * self.rotation.y),
+            x: 1.0 - 2.0 * (rotation.y * rotation.y + rotation.z * rotation.z),
+            y: 2.0 * (rotation.x * rotation.y + rotation.w * rotation.z),
+            z: 2.0 * (rotation.x * rotation.z - rotation.w * rotation.y),
         }
     }
 
@@ -80,12 +92,24 @@ impl Transform {
         -self.up()
     }
 
+    pub fn down_of_quat(rotation: Quat) -> Vec3 {
+        -Self::up_of_quat(rotation)
+    }
+
     pub fn left(&self) -> Vec3 {
         -self.right()
     }
 
+    pub fn left_of_quat(rotation: Quat) -> Vec3 {
+        -Self::right_of_quat(rotation)
+    }
+
     pub fn back(&self) -> Vec3 {
         -self.forward()
+    }
+
+    pub fn back_of_quat(rotation: Quat) -> Vec3 {
+        -Self::forward_of_quat(rotation)
     }
 
     pub fn look_at(&mut self, target: Vec3, up: Vec3) {
