@@ -1,6 +1,9 @@
 use anymap::AnyMap;
 
-use notify::{event::AccessMode, recommended_watcher, Event, RecommendedWatcher, Watcher};
+use notify::{
+    event::{AccessMode, MetadataKind},
+    recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher,
+};
 use rand::{thread_rng, Rng};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -8,13 +11,16 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    Mutex,
+};
 use wgpu::{ComputePipeline, Device, RenderPipeline, ShaderModule, ShaderModuleDescriptor};
 
 pub struct ShaderManager {
     gpu_device: Arc<Device>,
-    whatcher: RecommendedWatcher,
-    compile_queue_sender: UnboundedSender<(PathBuf, Option<ShaderHandle>)>,
+    whatcher: Arc<tokio::sync::Mutex<RecommendedWatcher>>,
+    compile_queue_sender: UnboundedSender<(PathBuf, ShaderHandle)>,
     compiled_shaders_queue: UnboundedReceiver<(ShaderModule, ShaderHandle)>,
     shaders: ShaderStorage,
     compute_manager: PipelineManager<wgpu::ComputePipeline>,
@@ -216,21 +222,28 @@ impl ShaderManager {
     pub fn new(device: Arc<Device>) -> Result<Self, notify::Error> {
         let (compile_queue_sender, rcv) = unbounded_channel();
         let cqs = compile_queue_sender.clone();
-        let whatcher = recommended_watcher(move |event| match event {
-            Ok(Event { kind, paths, .. }) => {
-                if let notify::EventKind::Access(notify::event::AccessKind::Close(
-                    AccessMode::Write,
-                )) = kind
-                {
-                    for path in paths {
-                        cqs.send((path, None)).expect(
-                            "Unable to send fs-msg from whatcher to shader loader, channel error",
-                        );
-                    }
+        let mut compile_time_map = HashMap::new();
+
+        let (re_whatch_send, re_whatch_rcv) = unbounded_channel();
+
+        let whatcher = Arc::new(Mutex::new(recommended_watcher(move |event| {
+            println!("Recived event: {:#?}", event);
+            match event {
+                Ok(Event { kind, paths, .. }) if fs_event_is_relevent(kind) => {
+                    send_paths(paths, &mut compile_time_map, &cqs);
                 }
+                Ok(Event {
+                    kind: notify::event::EventKind::Remove(_),
+                    paths,
+                    ..
+                }) => {
+                    re_whatch_send.send(paths).unwrap();
+                }
+                Err(ref e) => eprintln!("Whatcher error: {e}"),
+                _ => {}
             }
-            Err(ref e) => eprintln!("Whatcher error: {e}"),
-        })?;
+        })?));
+        tokio::spawn(re_whatch_paths(re_whatch_rcv, whatcher.clone()));
 
         let (compiled_shaders_queue_sender, compiled_shaders_queue) = unbounded_channel();
 
@@ -261,12 +274,6 @@ impl ShaderManager {
             .canonicalize()
             .expect(&format!("Unable to resolve file path {path:#?}"));
 
-        self.whatcher
-            .watch(&path, notify::RecursiveMode::NonRecursive)
-            .expect("File whatcher failed to accept new path");
-
-        let handle = path_to_shader_id(&path);
-
         log!(
             "Sent ",
             bright_red,
@@ -275,9 +282,20 @@ impl ShaderManager {
             " to queue",
             white
         );
+
+        let handle = path_to_shader_id(&path);
+
         self.compile_queue_sender
-            .send((path, Some(handle)))
+            .send((path.clone(), handle))
             .expect("Unable to send shader to load queue");
+
+        let w = self.whatcher.clone();
+        tokio::spawn(async move {
+            w.lock()
+                .await
+                .watch(&path, notify::RecursiveMode::NonRecursive)
+                .expect("File whatcher failed to accept new path");
+        });
 
         handle
     }
@@ -285,7 +303,7 @@ impl ShaderManager {
     pub fn construct_piplines(&mut self, map: &AnyMap) {
         while let Ok((module, shader_handle)) = self.compiled_shaders_queue.try_recv() {
             match self.shaders.get_mut(shader_handle) {
-                Some(mut ss) => {
+                Some(ss) => {
                     ss.module = module;
                     ss.generation += 1;
                 }
@@ -359,6 +377,58 @@ impl ShaderManager {
     }
 }
 
+async fn re_whatch_paths(
+    mut re_whatch_rcv: UnboundedReceiver<Vec<PathBuf>>,
+    whatcher: Arc<Mutex<notify::INotifyWatcher>>,
+) {
+    while let Some(paths) = re_whatch_rcv.recv().await {
+        {
+            let mut whatcher = whatcher.lock().await;
+            for path in paths {
+                whatcher.watch(&path, RecursiveMode::NonRecursive).unwrap();
+            }
+        }
+    }
+}
+
+fn send_paths(
+    paths: Vec<PathBuf>,
+    compile_time_map: &mut HashMap<ShaderHandle, std::time::Instant>,
+    cqs: &UnboundedSender<(PathBuf, ShaderHandle)>,
+) {
+    let recived_on = std::time::Instant::now();
+    for path in paths {
+        println!("Sending: {:#?}", path);
+
+        let id = path_to_shader_id(&path);
+
+        if let Some(false) = compile_time_map
+            .get(&id)
+            .map(|last_time| recived_on.duration_since(*last_time).as_millis() > 100)
+        {
+            println!("Skipping {:#?}", path);
+            continue;
+        }
+
+        compile_time_map.insert(id, recived_on);
+
+        cqs.send((path, id))
+            .expect("Unable to send fs-msg from whatcher to shader loader, channel error");
+    }
+}
+
+fn fs_event_is_relevent(kind: notify::EventKind) -> bool {
+    matches!(
+        kind,
+        notify::EventKind::Access(notify::event::AccessKind::Close(AccessMode::Write))
+            | notify::EventKind::Modify(
+                notify::event::ModifyKind::Data(notify::event::DataChange::Any)
+                    | notify::event::ModifyKind::Metadata(MetadataKind::WriteTime)
+                    | notify::event::ModifyKind::Name(notify::event::RenameMode::From),
+            )
+    )
+}
+
 /// Stable hash
 fn path_to_shader_id(path: &PathBuf) -> ShaderHandle {
     use std::hash::Hasher;
@@ -370,44 +440,55 @@ fn path_to_shader_id(path: &PathBuf) -> ShaderHandle {
 }
 
 async fn compile_shaders(
-    mut incomming: UnboundedReceiver<(PathBuf, Option<ShaderHandle>)>,
+    mut incomming: UnboundedReceiver<(PathBuf, ShaderHandle)>,
     device: Arc<Device>,
     outgoing: UnboundedSender<(ShaderModule, ShaderHandle)>,
 ) {
     while let Some((path, handle)) = incomming.recv().await {
         log!("Compiling ", bright_yellow, "{path:#?}", bright_purple);
         let (outgoing, device) = (outgoing.clone(), device.clone());
-        tokio::task::spawn(async move {
-            match tokio::fs::read_to_string(&path).await {
-                Ok(source) => {
-                    device.push_error_scope(wgpu::ErrorFilter::Validation);
+        // handle.map(| | )
+        tokio::task::spawn(compile_shader(path, device, handle, outgoing));
+    }
+}
 
-                    let shader = device.create_shader_module(ShaderModuleDescriptor {
-                        label: None,
-                        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
-                    });
+async fn compile_shader(
+    path: PathBuf,
+    device: Arc<Device>,
+    handle: ShaderHandle,
+    outgoing: UnboundedSender<(ShaderModule, ShaderHandle)>,
+) {
+    match tokio::fs::read_to_string(&path).await {
+        Ok(source) => {
+            let shader;
+            {
+                // Catch compile error scope
+                device.push_error_scope(wgpu::ErrorFilter::Validation);
 
-                    if let Some(e) = device.pop_error_scope().await {
-                        match e {
-                            wgpu::Error::OutOfMemory { source } => eprintln!("{source:#?}"),
-                            wgpu::Error::Validation { description, .. } => {
-                                eprintln!("{description}")
-                            }
-                        }
-                    } else {
-                        log!("Compiled ", green, "{path:#?}", bright_purple);
-                        let handle = handle.unwrap_or_else(|| path_to_shader_id(&path));
-                        if let Err(e) = outgoing.send((shader, handle)) {
-                            eprintln!("{e:#?}");
-                            panic!("Shader compile error")
-                        }
+                shader = device.create_shader_module(ShaderModuleDescriptor {
+                    label: None,
+                    source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
+                });
 
-                        // .expect("Unable to send compiled shaderg to queue");
-                    };
+                if let Some(e) = device.pop_error_scope().await {
+                    print_complile_error(e);
+                    return;
                 }
-                Err(e) => eprintln!("{e}"),
             }
-        });
+
+            log!("Compiled ", green, "{path:#?}", bright_purple);
+            outgoing.send((shader, handle)).unwrap();
+        }
+        Err(e) => eprintln!("{e}"),
+    }
+}
+
+fn print_complile_error(e: wgpu::Error) {
+    match e {
+        wgpu::Error::OutOfMemory { source } => eprintln!("{source:#?}"),
+        wgpu::Error::Validation { description, .. } => {
+            eprintln!("{description}")
+        }
     }
 }
 

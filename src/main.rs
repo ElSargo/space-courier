@@ -1,4 +1,4 @@
-// use crate::model::Vertex;
+use crate::model::Vertex;
 use anymap::AnyMap;
 mod background;
 mod bloom;
@@ -15,7 +15,6 @@ mod physics;
 mod planet_shadows;
 mod planets;
 mod player_controller;
-mod player_controller_upright;
 mod post;
 mod resources;
 mod shader_manager;
@@ -210,7 +209,7 @@ impl State {
     // Creating some of the wgpu types requires async code
     async fn new(window: Window) -> Self {
         let mut render_stuff = AnyMap::new();
-        let mut render_world = World::new();
+        let render_world = World::new();
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -309,6 +308,66 @@ impl State {
             },
         ));
 
+        render_stuff.insert({
+            let view_textures_bind_group_layout =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            // This should match the filterable field of the
+                            // corresponding Texture entry above.
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                sample_type: wgpu::TextureSampleType::Depth,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            // This should match the filterable field of the
+                            // corresponding Texture entry above.
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                    ],
+                    label: Some("post_texture_bind_group_layout"),
+                });
+
+            let color_texture = make_view_texture(&config, &device);
+            let depth_texture =
+                texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+            ViewTextureReasources {
+                view_textures_bind_group: make_view_textures_bind_group(
+                    &device,
+                    &view_textures_bind_group_layout,
+                    &depth_texture,
+                    &color_texture,
+                ),
+                view_textures_bind_group_layout,
+                depth_texture,
+                view_texture: color_texture,
+            }
+        });
+
         let planet_model =
             resources::load_model("wallmart.obj", &device, &queue, &texture_bind_group_layout)
                 .await
@@ -320,7 +379,7 @@ impl State {
                 .unwrap();
 
         let ship_model =
-            resources::load_model("nuShip.obj", &device, &queue, &texture_bind_group_layout)
+            resources::load_model("retroShip.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
 
@@ -394,7 +453,7 @@ impl State {
         ecs.init.run(&mut ecs.world);
 
         let mut shader_manager = ShaderManager::new(gpu.device.clone()).unwrap();
-        render_stuff.insert(FullscreenQuad::new(&gpu.device, &mut shader_manager));
+        render_stuff.insert(FullscreenQuad::init(&gpu.device, &mut shader_manager));
 
         if let Some((vt,)) = get_all!(render_stuff, ViewTextureReasources) {
             render_stuff.insert(PlanetShadows::new(

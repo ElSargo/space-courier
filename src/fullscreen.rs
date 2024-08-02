@@ -51,7 +51,7 @@ pub struct FullscreenQuad {
 }
 
 impl FullscreenQuad {
-    pub fn new(device: &wgpu::Device, shader_manager: &mut ShaderManager) -> Self {
+    pub fn init(device: &wgpu::Device, shader_manager: &mut ShaderManager) -> Self {
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("post_buffer_index"),
             contents: cast_slice(INDICES),
