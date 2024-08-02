@@ -92,6 +92,30 @@ fn warp(ro: vec3f, l_ro: f32, rd: vec3f, dt: f32) -> vec3f {
     return normalize(rd + delta_rd);
 }
 
+
+
+
+fn oklab_mix( colA: vec3f, colB: vec3f, h: f32 ) -> vec3f {
+    // https://bottosson.github.io/posts/oklab
+    let kCONEtoLMS = mat3x3<f32>(                
+         0.4121656120,  0.2118591070,  0.0883097947,
+         0.5362752080,  0.6807189584,  0.2818474174,
+         0.0514575653,  0.1074065790,  0.6302613616);
+    let kLMStoCONE = mat3x3<f32>(
+         4.0767245293, -1.2681437731, -0.0041119885,
+        -3.3072168827,  2.6093323231, -0.7034763098,
+         0.2307590544, -0.3411344290,  1.7068625689);
+                    
+    // rgb to cone (arg of pow can't be negative)
+    let lmsA = pow( kCONEtoLMS*colA, vec3(1.0/3.0) );
+    let lmsB = pow( kCONEtoLMS*colB, vec3(1.0/3.0) );
+    // lerp
+    let lms = mix( lmsA, lmsB, h );
+    // gain in the middle (no oaklab anymore, but looks better?)
+ // lms *= 1.0+0.2*h*(1.0-h);
+    // cone to rgb
+    return kLMStoCONE*(lms*lms*lms);
+}
 fn oklch_to_linear_rbg(lch: vec3f) -> vec3f {
     let hcl = lch.zyx * vec3(1.0, 0.33, 1.0);
 
@@ -119,38 +143,73 @@ fn oklch_to_linear_rbg(lch: vec3f) -> vec3f {
     return rgb;
 }
 
+fn blend(a: vec3f, b: vec3f, t: f32) -> vec3f{
+    let delta = a - b;
+    let maxDelta =     max(
+        max(
+            abs(delta.x),
+            abs(delta.y)),
+            abs(delta.z)
+    );
+    let s = sign(delta);
+    let c = a - s*maxDelta*t;
+    
+    let minc = vec3(
+        min(a.x, b.x),
+        min(a.y, b.y),
+        min(a.z, b.z)
+    );
+    
+    let maxc = vec3(
+        max(a.x, b.x),
+        max(a.y, b.y),
+        max(a.z, b.z)
+    );
+    
+    return clamp(c,minc,maxc);
+}
+
 
 fn march_acretion_disk(ro: vec3f, rd: vec3f, thickness: f32) -> vec4f {
 
 
     let a = atan2(ro.x, ro.z) + 2.0 * acos(-1.0);
     let l = length(ro);
+    let blend_factor = (l - start) / (end - start);
 
-    let ring = modf(l * 20.0 ).fract - 0.5;
+    let ring = modf(l * (5.0 + blend_factor * 10.0) ).fract - 0.5;
     let strip = modf(a * 20.0).fract - 0.5;
 
-    let ang = PI / 6.0 ;
-    let period = 20.0 * (1.00);
+    // let ang = PI / 6.0 ;
+    // let period = 20.0 * (1.00);
     
-    let triangle_a = modf(100.0 + (sin(ang) * ro.x + cos(ang) * ro.z) * period  ).fract - 0.5;
-    let triangle_b = modf(100.0 + (sin(-ang) * ro.x + cos(-ang) * ro.z) * period ).fract - 0.5;
+    // let triangle_a = modf(100.0 + (sin(ang) * ro.x + cos(ang) * ro.z) * period  ).fract - 0.5;
+    // let triangle_b = modf(100.0 + (sin(-ang) * ro.x + cos(-ang) * ro.z) * period ).fract - 0.5;
 
     
 
 
-    let light: f32 = max(max(
-        smoothstep(0.04, 0.03, abs(triangle_a)),
-        smoothstep(0.04, 0.03, abs(triangle_b))),
-        // 0.0
-        smoothstep(0.06, 0.04, abs(modf(100.0 + ro.x*20.0).fract)),
+    // let light: f32 = max(max(
+    //     smoothstep(0.04, 0.03, abs(triangle_a)),
+    //     smoothstep(0.04, 0.03, abs(triangle_b))),
+    //     // 0.0
+    //     smoothstep(0.06, 0.04, abs(modf(100.0 + ro.x*20.0).fract)),
         
-    );
+    // );
 
-    let blend = (l - start) / (end - start);
 
-    let color = oklch_to_linear_rbg(vec3(0.75 / length(ro), 0.7, mix(0.0, -0.1, blend)));
+    let ti = thickness * 100000.0 * thickness;
+    let s = smoothstep(-0.2 + blend_factor * 0.5 - ti,-0.19+ ti + blend_factor * 0.5,abs(ring));
 
-    return vec4(mix( color ,  oklch_to_linear_rbg(vec3(1.0,1.8,0.7)), light), 1.0);
+
+    // let color = oklch_to_linear_rbg(vec3(0.0 + 0.75/ length(ro), 0.6 /length(ro) , mix(-0.00, 0.2, sqrt(blend))));
+    let color = blend(
+        vec3(1.0,0.0,0.15),
+        vec3(1.0,0.3,0.03),
+        blend_factor
+    ) * s;
+
+    return vec4( color* mix(nfbm(ro*1000.0),1.0,1.0 - exp(-sqrt(thickness)*100.0)),  1.0 - s) ;
     // + 
     // stars(ro, rd * vec3(1.0, -1.0, 1.0)), 0.0);
 
@@ -203,12 +262,12 @@ fn march_acretion_disk(ro: vec3f, rd: vec3f, thickness: f32) -> vec4f {
 
 
 fn stars(ro: vec3f, rd: vec3f) -> vec3f {
-    var color = vec3(0.0);
-    for (var s = 40.0; s < 1500.0; s *= 1.1) {
+    var color = vec3(0.0002,0.000,0.0005);
+    for (var s = 40.0; s < 100.0; s *= 1.1) {
         let fl = rd * s + vec3(3.31231, 18.7872, -2.22134);
         let ori = round(fl);
         var di = 10e10;
-        var dcol = vec3(0.0);
+        var dcol = 0.0;
         let brightness = abs(rd.y) * 0.15 + 0.25 * nfbm(rd * 4.0) + 0.75;
         for (var x = 0.0; x < 1.5; x += 1.0) {
             for (var y = 0.0; y < 1.5; y += 1.0) {
@@ -221,21 +280,22 @@ fn stars(ro: vec3f, rd: vec3f) -> vec3f {
                     let nd = distance(o + dl, fl);
                     if nd < di {
                         di = nd;
-                        dcol = vec3(0.8, 0.7, 0.4) + vec3(0.2, 0.3, 0.6) * hash33(o + vec3(3.31231, 18.7872, -2.22134)) ;
+                        dcol = hash13(o + vec3(3.31231, 18.7872, -2.22134)) ;
                     }
                 }
             }
         }
-        color += 5.0 * vec3(smoothstep(0.1, 0.0, di)) * 0.3 * dcol ;
+        color += 50.0 * vec3(smoothstep(0.1, 0.0, di)) * 0.3 * blend(vec3(1.0,0.0,0.3), vec3(0.1,0.0,1.0),dcol);
+        // break;
     }
-    return color * abs(rd);
+    return color;
     // return abs(cos(rd*50.0));
 }
 
     
 const bh_rad = 0.2;
 const start: f32 = 0.25;
-const height: f32 = 0.015;
+const height: f32 = 0.0015;
 const end: f32 = 1.5;
 const mid: f32 = (start + end) * 0.5;
 
@@ -375,7 +435,7 @@ fn full(
                 if lp > start && lp < end {
                     let gas = 
                     // vec4(drd * t * 100.0,1.0);
-                    march_acretion_disk(sp, sd, thickness);
+                    march_acretion_disk(sp, sd, length(drd)*t);
                     emsission += gas.rgb * transmission;
                     transmission *= gas.a;
                 }
@@ -385,7 +445,7 @@ fn full(
             prev_l = length_p;
         }
 
-        col += stars(ro + rd * t, d) * black_hole_suck;
+        col += stars(ro + rd * t, d) * black_hole_suck * transmission;
         col = col * transmission + emsission;
         // col += photon_shere_light;
     }

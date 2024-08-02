@@ -1,6 +1,6 @@
 use anymap::AnyMap;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, Color, Device,
     PipelineLayout, ShaderModule, ShaderStages, SurfaceConfiguration, TextureDescriptor,
     TextureFormat, TextureUsages, TextureView, TextureViewDescriptor, VertexBufferLayout,
@@ -273,7 +273,7 @@ impl BloomReasoruces {
             extract_bind_group_layout,
         };
 
-        let threshold: f32 = 2.0;
+        let threshold: f32 = 1.0;
         bloom_reasources.update_threshold(&gpu.queue, threshold);
         rr.insert(bloom_reasources);
     }

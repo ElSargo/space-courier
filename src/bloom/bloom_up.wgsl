@@ -28,7 +28,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     color = mix(
         color,
         textureSample(color_texture, color_sampler, in.uv).rgb,
-        0.7
+        // 0.7
+        0.6
     );
     
     return vec4(color , 1.0);

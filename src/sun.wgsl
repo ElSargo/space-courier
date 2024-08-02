@@ -69,28 +69,41 @@ fn vs_main(
     return out;
 }
 
-// Fragment shader
-fn fresnel(rd: vec3<f32>,  normal: vec3<f32>,amount: f32) -> f32 {
-	return pow((1.0 - max(dot(normal, -rd), 0.0)), amount);
-}
 
+fn blend(a: vec3f, b: vec3f, t: f32) -> vec3f{
+    let delta = a - b;
+    let maxDelta =     max(
+        max(
+            abs(delta.x),
+            abs(delta.y)),
+            abs(delta.z)
+    );
+    let s = sign(delta);
+    let c = a - s*maxDelta*t;
+    
+    let minc = vec3(
+        min(a.x, b.x),
+        min(a.y, b.y),
+        min(a.z, b.z)
+    );
+    
+    let maxc = vec3(
+        max(a.x, b.x),
+        max(a.y, b.y),
+        max(a.z, b.z)
+    );
+    
+    return clamp(c,minc,maxc);
+}
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // var col = vec3(0.0);
-    // if in.world_position.x > 0.0 {
-        // col.r += 1.0;
-        // return vec4(0.4,1.5,0.5,1.0)*14.0;
-    // }
-    // if in.world_position.y > 0.0 {
-        // col.g += 1.0;
-        return vec4(vec3(0.75,0.5,1.4)*104.0,1.0);
-    // }
-    // if in.world_position.z > 0.0 {
-        // col.b += 1.0;
-    //     // return vec4(1.4,0.75,0.5,1.0)*14.0;
-    // }
-    // return vec4(vec3(0.5,0.75,1.4)*1.0,1.0);
-    // return vec4(col,1.0)*1.0;
+
+    let h = in.world_position.y;
+    // let color = blend(vec3(1.0,0.0,0.3), vec3(1.0,0.0,1.0),-0.5+h*0.5);
+    let color = vec3(0.2,0.4,1.0);
+    let threshold = -0.1 - 0.05*h;
+    let alpha = smoothstep(threshold,threshold + 2.1, 0.2 +  sin(h*1.));
+    return vec4(color * alpha * 40.0,alpha);
 }
 
