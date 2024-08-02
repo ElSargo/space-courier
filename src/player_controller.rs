@@ -3,7 +3,9 @@ use std::ops::Deref;
 use crate::{
     camera::Camera,
     ecs::Ecs,
+    gravity::gravity_all,
     input::{AxisInput, ButtonInput, MouseDelta},
+    physics::Physics,
     time::Time,
     transform::Transform,
     Ship,
@@ -11,6 +13,7 @@ use crate::{
 use bevy_ecs::{
     component::Component,
     event::EventReader,
+    query::With,
     schedule::IntoSystemConfigs,
     system::{Commands, Local, Query, Res, ResMut},
 };
@@ -185,8 +188,7 @@ pub fn update_upright_player_controller<'a>(
     let frame_translation = player_controller.momentum
         * player_controller.speed
         * time.delta_seconds
-        * ship_transform.forward()
-        * 0.1;
+        * ship_transform.forward();
     ship_transform.translation += frame_translation;
     player_controller.position = ship_transform.translation
         + ship_transform.back() * 0.2
@@ -285,7 +287,11 @@ pub fn init(ecs: &mut Ecs) {
     // ecs.world.spawn(());
     ecs.init.add_systems(spawn_player);
     // ecs.update.add_systems(update);
-    ecs.update.add_systems(update_upright_pitch_and_yaw);
+    ecs.update.add_systems((
+        update_upright_pitch_and_yaw,
+        apply_velocity,
+        // update_momentum_from_velocity,
+    ));
     ecs.update
         .add_systems(update_upright_player_controller.after(update_upright_pitch_and_yaw));
     ecs.update.add_systems(
@@ -293,4 +299,26 @@ pub fn init(ecs: &mut Ecs) {
     );
     // ecs.update
     //     .add_systems(crate::gizmo::update_arrows.after(update));
+}
+
+pub fn apply_velocity(
+    mut players: Query<(&mut PlayerControllerUpright, &Physics)>,
+    time: Res<Time>,
+) {
+    for (mut pc, Physics { velocity, .. }) in players.iter_mut() {
+        pc.position += *velocity * time.delta_seconds;
+    }
+}
+
+pub fn update_momentum_from_velocity(
+    mut players: Query<&mut PlayerControllerUpright, With<Physics>>,
+    boddies: Query<(&Physics, &Transform)>,
+    time: Res<Time>,
+) {
+    for mut pc in players.iter_mut() {
+        let acceleration = gravity_all(pc.position, boddies.iter());
+        pc.momentum += time.delta_seconds
+            * acceleration.dot(Transform::forward_of_quat(pc.rotation))
+            / pc.speed;
+    }
 }
