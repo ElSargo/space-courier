@@ -1,3 +1,4 @@
+use core::panic;
 use std::io::{BufReader, Cursor};
 
 use wgpu::util::DeviceExt;
@@ -16,6 +17,7 @@ pub async fn load_binary(file_name: &str) -> color_eyre::Result<Vec<u8>> {
     let path = std::path::Path::new(env!("OUT_DIR"))
         .join("res")
         .join(file_name);
+    println!("File name: {file_name}, Path: {path:?}");
     let data = std::fs::read(path)?;
 
     Ok(data)
@@ -56,6 +58,12 @@ pub async fn load_model(
 
     let mut materials = Vec::new();
     for m in obj_materials? {
+        if m.diffuse_texture.is_empty() {
+            panic!(
+                "Error loading {} material, diffuse texture slot empty",
+                m.name
+            );
+        }
         let diffuse_texture = load_texture(&m.diffuse_texture, device, queue).await?;
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout,
