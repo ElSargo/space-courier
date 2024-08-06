@@ -127,13 +127,21 @@ pub fn update<'a>(
 pub fn update_camera_from_upright_player_controller(
     player_query: Query<&mut PlayerControllerUpright>,
     mut camera: ResMut<Camera>,
+    mut cinematic_smoothing: Local<Quat>,
+    time: Res<Time>,
 ) {
     let player_controller = player_query.single();
-    camera.fovy = std::f32::consts::PI * 0.25 * (2.0 - (-player_controller.momentum * 0.1).exp());
+    camera.fovy =
+        std::f32::consts::PI * 0.25 * (1.5 - 0.5 * (-player_controller.momentum * 0.1).exp());
+
+    *cinematic_smoothing = cinematic_smoothing.lerp(
+        player_controller.rotation,
+        1.0 - (-5.0 * (player_controller.momentum + std::f32::consts::E).ln() * time.delta_seconds)
+            .exp(),
+    );
 
     camera.eye = player_controller.position;
-    camera.target =
-        player_controller.position + Transform::forward_of_quat(player_controller.rotation);
+    camera.target = player_controller.position + Transform::forward_of_quat(*cinematic_smoothing);
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {

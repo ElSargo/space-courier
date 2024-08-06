@@ -1,5 +1,5 @@
-use crate::model::Vertex;
 use anymap::AnyMap;
+use ship::{Ship, ShipGpuResources};
 mod background;
 mod bloom;
 mod camera;
@@ -18,9 +18,11 @@ mod player_controller;
 mod post;
 mod resources;
 mod shader_manager;
+mod ship;
 mod texture;
 mod time;
 mod transform;
+mod tri_meash_gen;
 use crate::camera::Camera;
 use background::Background;
 use bevy_ecs::{
@@ -30,13 +32,13 @@ use bevy_ecs::{
     world::{Mut, World},
 };
 use bloom::{Bloom, BloomReasoruces};
-use camera::CameraUniform;
+use camera::{CameraUniform, CameraUniformInner};
 
 use ecs::Ecs;
 use fullscreen::FullscreenQuad;
 use gilrs::Gilrs;
 use gizmo::{ArrowGizmo, RawArrowInstance};
-use glam::{vec3, Mat3, Mat4, Quat, Vec3};
+use glam::{vec3, Mat3, Mat4, Quat, Vec2, Vec3};
 use gpu::{Gpu, InstanceBuffer};
 use input::{AxisInput, ButtonInput, MouseDelta};
 use model::DrawModel;
@@ -186,12 +188,13 @@ struct State {
 
     render_world: World,
 
+    tri_meshes: Vec<tri_meash_gen::TriMesh>,
+
     // planets: Planets,
     planet_model: Model,
     planet_transform_instance_buffer: Arc<Mutex<InstanceBuffer>>,
 
     // ship_transforms: Vec<Transform>,
-    ship_transform_instance_buffer: InstanceBuffer,
     ship_model: Model,
 
     // arrows: ArrowGizmos,
@@ -277,10 +280,14 @@ impl State {
             target: Vec3::ZERO,
             ..Default::default()
         };
+        let mut ecs = Ecs::new().await;
 
-        render_stuff.insert(CameraUniform::setup(&camera, &device));
+        let cam = CameraUniform::setup(&camera, &device);
+        render_stuff.insert(cam.clone());
+        ecs.world.insert_resource(cam);
+        ecs.extract.add_systems(camera::update_camera);
 
-        // let camera_controller = PlayerController::new(100.0);
+        // let camera_controller = PlayerController::new(100.0)
 
         let texture_bind_group_layout = Arc::new(device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
@@ -392,11 +399,7 @@ impl State {
             BufferUsages::VERTEX | BufferUsages::COPY_DST,
             &device,
         )));
-        let ship_transform_instance_buffer = InstanceBuffer::new(
-            Some("Ship instance Buffer".to_owned()),
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            &device,
-        );
+        // let ship_transform_instance_buffer = ;
 
         let sun_transform_buffer_data =
             instance_buffer_bytes_from_components(sun_transforms.iter().map(
@@ -424,8 +427,6 @@ impl State {
             &device,
         );
 
-        let mut ecs = Ecs::new().await;
-
         let gpu = Gpu {
             device: Arc::new(device),
             queue: Arc::new(queue),
@@ -447,6 +448,7 @@ impl State {
         input::init(&mut ecs);
         player_controller::init(&mut ecs);
         gizmo::init(&mut ecs);
+        ship::init(&mut ecs, &mut render_stuff);
 
         ecs.update.add_systems(log_time);
 
@@ -507,6 +509,7 @@ impl State {
             &[&render_stuff
                 .get::<CameraUniform>()
                 .unwrap()
+                .inner
                 .bind_group_layout],
         )));
         let gizmo_render_pipeline = shader_manager.add_render_pipeline(
@@ -539,7 +542,7 @@ impl State {
                             &Box::leak(Box::new(mk_pipeline_layout(
                                 device,
                                 "Sun",
-                                &[&cgs.bind_group_layout, &texture_bind_group_layout],
+                                &[&cgs.inner.bind_group_layout, &texture_bind_group_layout],
                             ))),
                             None,
                             &sm.get_module(sun_shader).unwrap(),
@@ -551,6 +554,17 @@ impl State {
                 sun_model,
             }
         });
+
+        tri_meash_gen::init(&mut shader_manager, &mut render_stuff, &gpu.device);
+
+        let tri_meshes = vec![tri_meash_gen::prepare_mesh(
+            &tri_meash_gen::gen_mesh(100, 100, |p| {
+                let p = p / 100.0 - 0.5;
+                p.length() * 2.0
+            }),
+            &gpu,
+        )];
+
         Self {
             window,
             surface,
@@ -563,7 +577,6 @@ impl State {
 
             render_world,
             // ship_transforms,
-            ship_transform_instance_buffer,
             ship_model,
             fire_bg: true,
             // arrows,
@@ -575,6 +588,7 @@ impl State {
             gilrs: Gilrs::new().unwrap(),
             shader_manager,
             render_stuff,
+            tri_meshes: tri_meshes,
         }
     }
 
@@ -680,26 +694,6 @@ impl State {
         self.shader_manager.construct_piplines(&self.render_stuff);
 
         {
-            let ship_bytes = instance_buffer_bytes(
-                QueryBuilder::<&Transform, With<Ship>>::new(&mut self.ecs.world)
-                    .build()
-                    .iter(&self.ecs.world),
-            );
-            self.ship_transform_instance_buffer.write(
-                &self.gpu.device,
-                &ship_bytes.as_slice(),
-                &self.gpu.queue,
-            );
-        }
-        {
-            // Camera
-            let camera = self.ecs.world.resource();
-            self.render_stuff
-                .get_mut::<CameraUniform>()
-                .unwrap()
-                .update(camera, &self.gpu.queue);
-        }
-        {
             let arrow_instances =
                 QueryBuilder::<(&Transform, &ArrowGizmo)>::new(&mut self.ecs.world)
                     .build()
@@ -766,13 +760,13 @@ impl State {
             Some((
                 view_rr,
                 CameraUniform {
-                    bind_group: camera_bind_group,
-                    ..
+                    inner: camera_uniform,
                 },
                 Background {
                     texture_cube_bind_group,
                     ..
                 },
+                sgr,
             )),
         ) = (
             self.render_stuff.get::<StandardRenderPipeline>().and_then(
@@ -782,9 +776,13 @@ impl State {
                 self.render_stuff,
                 ViewTextureReasources,
                 CameraUniform,
-                Background
+                Background,
+                ShipGpuResources
             ),
         ) {
+            let bind_group = &camera_uniform.bind_group;
+
+            let ship_instance_buffer = sgr.instance_buffer.lock().unwrap();
             // Planets
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -821,19 +819,25 @@ impl State {
             render_pass.draw_model_instanced(
                 &self.planet_model,
                 0..instance_buffer.instances,
-                camera_bind_group,
+                &bind_group,
             );
 
             // Ship as well
-            render_pass.set_vertex_buffer(1, self.ship_transform_instance_buffer.buffer.slice(..));
+            render_pass.set_vertex_buffer(1, ship_instance_buffer.buffer.slice(..));
             render_pass.draw_model_instanced(
                 &self.ship_model,
-                0..self.ship_transform_instance_buffer.instances,
-                camera_bind_group,
+                0..ship_instance_buffer.instances,
+                &bind_group,
             );
             drop(render_pass);
-            let a = instance_buffer;
         }
+
+        tri_meash_gen::draw_meshes(
+            &mut encoder,
+            &self.shader_manager,
+            &self.tri_meshes,
+            &self.render_stuff,
+        );
 
         if let Some((
             sun_rr,
@@ -843,8 +847,7 @@ impl State {
                 ..
             },
             CameraUniform {
-                bind_group: camera_bind_group,
-                ..
+                inner: bind_group, ..
             },
         )) = get_all!(
             self.render_stuff,
@@ -885,7 +888,7 @@ impl State {
                 render_pass.draw_model_instanced(
                     &sun_rr.sun_model,
                     0..sun_rr.sun_transform_instance_buffer.instances,
-                    camera_bind_group,
+                    &bind_group.bind_group,
                 );
             }
         }
@@ -900,8 +903,7 @@ impl State {
                     depth_texture,
                 },
                 CameraUniform {
-                    bind_group: camera_bind_group,
-                    ..
+                    inner: bind_group, ..
                 },
             )),
         ) = (
@@ -938,7 +940,7 @@ impl State {
             render_pass.draw_model_instanced(
                 &self.arrow_model,
                 0..self.arrow_transform_instance_buffer.instances,
-                camera_bind_group,
+                &bind_group.bind_group,
             );
         }
 
@@ -979,6 +981,7 @@ fn init_normal_pipeline(
                 &render_stuff
                     .get::<CameraUniform>()
                     .unwrap()
+                    .inner
                     .bind_group_layout,
                 &texture_bind_group_layout.clone(),
                 &background.texture_cube_bind_group_layout,
@@ -1224,10 +1227,23 @@ impl RawInstance {
             ],
         }
     }
+
+    pub fn from_transform(t: &Transform) -> Self {
+        Self {
+            transform: t.to_mat(),
+            rotation_only: Mat3::from_quat(t.rotation),
+        }
+    }
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    // fn test(x: Vec2) -> f32 {
+    //     x.x.sin() * x.y.cos()
+    // }
+    // let mesh = tri_meash_gen::gen_mesh(5, 5, test);
+    // println!("{:#?}", mesh);
+
     color_eyre::install().unwrap();
     run().await;
 }
@@ -1241,9 +1257,6 @@ async fn main() {
 
 //     rt.handle().spawn(async { run().await });
 // }
-
-#[derive(Component)]
-pub struct Ship;
 
 fn log_time(
     mut current_second: Local<f64>,

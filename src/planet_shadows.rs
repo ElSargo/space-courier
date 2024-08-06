@@ -280,7 +280,7 @@ pub fn draw_planet_shadows(
             view_textures_bind_group,
             ..
         },
-        CameraUniform { bind_group, .. },
+        CameraUniform { inner, .. },
     ) = get_all!(rr, PlanetShadows, ViewTextureReasources, CameraUniform)?;
 
     // : &BindGroup,
@@ -301,7 +301,7 @@ pub fn draw_planet_shadows(
         occlusion_query_set: None,
     });
 
-    render_pass.set_bind_group(0, &bind_group, &[]);
+    render_pass.set_bind_group(0, &inner.bind_group, &[]);
     render_pass.set_bind_group(1, view_textures_bind_group, &[]);
 
     render_pass.set_vertex_buffer(0, planet_shadows.vertex_buffer.slice(..));

@@ -470,7 +470,7 @@ fn create_extract_bind_group(
             BindGroupEntry {
                 binding: 4,
                 resource: wgpu::BindingResource::Buffer(BufferBinding {
-                    buffer: &cam.buffer,
+                    buffer: &cam.inner.buffer,
                     offset: 0,
                     size: None,
                 }),

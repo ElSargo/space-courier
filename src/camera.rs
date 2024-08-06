@@ -1,8 +1,14 @@
-use bevy_ecs::system::Resource;
+use bevy_ecs::system::{Res, ResMut, Resource};
 use glam::{vec3, Mat4, Vec3, Vec4};
 use wgpu::{util::DeviceExt, Queue};
 
-use std::{cell::RefCell, default::Default};
+use std::{
+    cell::RefCell,
+    default::Default,
+    sync::{Arc, Mutex},
+};
+
+use crate::gpu::Gpu;
 
 #[derive(Resource)]
 pub struct Camera {
@@ -26,10 +32,16 @@ pub struct CameraUniformData {
 unsafe impl bytemuck::Pod for CameraUniformData {}
 unsafe impl bytemuck::Zeroable for CameraUniformData {}
 
+#[derive(Resource, Clone)]
 pub struct CameraUniform {
+    pub inner: Arc<CameraUniformInner>,
+}
+
+#[derive(Resource)]
+pub struct CameraUniformInner {
     pub bind_group: wgpu::BindGroup,
     pub buffer: wgpu::Buffer,
-    pub uniform: RefCell<CameraUniformData>,
+    pub uniform: Mutex<CameraUniformData>,
     pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
@@ -88,23 +100,23 @@ impl Default for Camera {
 impl CameraUniform {
     pub fn update(&self, camera: &Camera, queue: &Queue) {
         {
-            let mut this = self.uniform.borrow_mut();
+            let mut this = self.inner.uniform.lock().unwrap();
             this.update(camera);
         };
         queue.write_buffer(
-            &self.buffer,
+            &self.inner.buffer,
             0,
-            bytemuck::cast_slice(&[*self.uniform.borrow()]),
+            bytemuck::cast_slice(&[*self.inner.uniform.lock().unwrap()]),
         )
     }
 
     pub fn setup(camera: &Camera, device: &wgpu::Device) -> Self {
-        let camera_uniform = RefCell::new(CameraUniformData::new());
-        camera_uniform.borrow_mut().update(camera);
+        let camera_uniform = Mutex::new(CameraUniformData::new());
+        camera_uniform.lock().unwrap().update(camera);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[*camera_uniform.borrow()]),
+            contents: bytemuck::cast_slice(&[*camera_uniform.lock().unwrap()]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -132,10 +144,18 @@ impl CameraUniform {
             label: Some("camera_bind_group"),
         });
         CameraUniform {
-            uniform: camera_uniform,
-            buffer: camera_buffer,
-            bind_group: camera_bind_group,
-            bind_group_layout: camera_bind_group_layout,
+            inner: Arc::new(CameraUniformInner {
+                uniform: camera_uniform,
+                buffer: camera_buffer,
+                bind_group: camera_bind_group,
+                bind_group_layout: camera_bind_group_layout,
+            }),
         }
+    }
+}
+
+pub fn update_camera(camera_uniform: ResMut<CameraUniform>, camera: Res<Camera>, gpu: Res<Gpu>) {
+    {
+        camera_uniform.update(&camera, &gpu.queue);
     }
 }

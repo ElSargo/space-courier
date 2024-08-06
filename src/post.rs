@@ -149,7 +149,7 @@ pub fn post_draw_post(
         post,
         fullscreen_quad,
         CameraUniform {
-            bind_group: camera_bind_group,
+            inner: camera_bind_group,
             ..
         },
         bloom,
@@ -202,7 +202,7 @@ pub fn post_draw_post(
         // render_pass.set_bind_group(0,&self.diffuse_bind_group , &[] );
         // render_pass.set_bind_group(0,&self.view_bind_group, &[] );
         render_pass.set_bind_group(0, &view_textures_bind_group, &[]);
-        render_pass.set_bind_group(1, camera_bind_group, &[]);
+        render_pass.set_bind_group(1, &camera_bind_group.bind_group, &[]);
         render_pass.set_bind_group(2, &bloom.get_result_bind_group(), &[]);
         render_pass.set_bind_group(3, render_texture_bind_group, &[]);
         render_pass.set_bind_group(4, texture_cube_bind_group, &[]);

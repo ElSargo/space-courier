@@ -11,6 +11,7 @@
 @group(3) @binding(0) var planet_shadows_texture: texture_2d<f32>;
 
 @group(4) @binding(0) var background: texture_cube<f32>;
+@group(4) @binding(1) var background_sampler: sampler;
 
 const PI: f32 = 3.1415926535897932384626433832795;
 struct Camera {

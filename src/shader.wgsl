@@ -5,6 +5,7 @@
 
 
 @group(2) @binding(0) var background: texture_cube<f32>;
+@group(2) @binding(1) var background_sampler: sampler;
 
 // @group(2) @binding(0) var<uniform> model: Model;
 
