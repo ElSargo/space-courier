@@ -285,7 +285,8 @@ fn stars(ro: vec3f, rd: vec3f) -> vec3f {
                 }
             }
         }
-        color += 50.0 * vec3(smoothstep(0.1, 0.0, di)) * 0.3 * blend(vec3(1.0,0.0,0.3), vec3(0.1,0.0,1.0),dcol);
+        color += exp(min(0.0,rd.y) * 20.0) * vec3(1.0,0.02,0.3) * 0.3;
+        color += 500.0 * vec3(smoothstep(0.1, 0.0, di)) * 0.3 * blend(vec3(1.0,0.0,0.3), vec3(0.1,0.0,1.0),dcol);
         // break;
     }
     return color;
