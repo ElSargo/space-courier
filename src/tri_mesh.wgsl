@@ -8,6 +8,7 @@ const PI: f32 = 3.1415926535897932384626433832795;
 struct Camera {
     view_pos: vec4<f32>,
     view: mat4x4<f32>,
+    proj: mat4x4<f32>,
     view_proj: mat4x4<f32>,
     inv_proj: mat4x4<f32>,
     inv_view: mat4x4<f32>,
@@ -18,22 +19,16 @@ struct VertexInput {
 }
 
 struct InstanceInput {
-    @location(5) model_matrix_0: vec4<f32>,
-    @location(6) model_matrix_1: vec4<f32>,
-    @location(7) model_matrix_2: vec4<f32>,
-    @location(8) model_matrix_3: vec4<f32>,
-
-    @location(9) rotation_only_matrix_0: vec3<f32>,
-    @location(10) rotation_only_matrix_1: vec3<f32>,
-    @location(11) rotation_only_matrix_2: vec3<f32>,
+    @location(0) model_view_proj_0: vec4<f32>,
+    @location(1) model_view_proj_1: vec4<f32>,
+    @location(2) model_view_proj_2: vec4<f32>,
+    @location(3) model_view_proj_3: vec4<f32>,
 };
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) world_position: vec3<f32>,
-    @location(1) distance: f32,
-    @location(2) mesh_position: vec3<f32>,
-    @location(3) index: f32,
+    @location(0) relative_position: vec3<f32>,
+    @location(1) mesh_position: vec3<f32>,
 }
 
 fn drawObject(v: vec3f) -> f32 {
@@ -79,90 +74,80 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    let model_matrix = mat4x4<f32>(
-        instance.model_matrix_0,
-        instance.model_matrix_1,
-        instance.model_matrix_2,
-        instance.model_matrix_3,
+    let model_view_proj_matrix = mat4x4<f32>(
+        instance.model_view_proj_0,
+        instance.model_view_proj_1,
+        instance.model_view_proj_2,
+        instance.model_view_proj_3,
     );
 
-    let rotation_matrix = mat3x3<f32>(
-        instance.rotation_only_matrix_0,
-        instance.rotation_only_matrix_1,
-        instance.rotation_only_matrix_2,
-    );
-
-    // let disp_factor = 2.0;// (0.95+0.05*sin(vert.position*100.0));
-
-    var position = vert.position;
-
-    let ang = PI / 6.0 ;
-    
-    
-    // out.index = modf(position.x).fract; 
-
-    position.y = smoothstep(0.5,1.0,cellTile(position * 0.1)) * 2.0 + 0.0 * abs(0.4 + (sin(position.z * 0.5 + sin(position.x * 0.5))));
-    // position.y = pow(position.y, 3.0) ;
-    out.index = cellTile(position * 0.2) * 1.1;
-    
-    let vert_position = model_matrix * vec4((position - vec3(25.0, 1.0, 25.0)) * 200.0 , 1.0)  ;
-    out.world_position = vert_position.xyz;
-    // out.world_normal = rotation_matrix * vert.normal;
-    out.distance = distance(vert_position.xyz, camera.view_pos.xyz);
+    let vert_position = model_matrix * vec4((vert.position - vec3(50.0, 0.0, 50.0)) * 200.0  - camera.view_pos.xyz, 1.0)   ;
+    out.relative_position = vert_position.xyz;
     out.clip_position = camera.view_proj * vert_position;
-    // out.uv = vert.uv;
-    out.mesh_position = position;
+    out.mesh_position = vert.position;
     return out;
-
 }
 
 fn rot(a: f32) -> mat2x2<f32> {
     let s = sin(a);
     let c = cos(a);
-    return mat2x2(c,s,-s,c);
+    return mat2x2(
+        c, s,
+        -s, c
+    );
 }
 
+
+fn pow2(x: vec3f) -> vec3f {
+    return x*x;
+}
 
 fn fresnel(rd: vec3<f32>, normal: vec3<f32>, amount: f32) -> f32 {
     return pow((1.0 - max(dot(normal, -rd), 0.0)), amount);
 }
+
+fn exp_int(a: f32, b: f32) -> f32 {
+    let e = exp(a * 2.45);
+    return e / ( 1.0 + e) * 1.77;
+}
+
+fn smin( a: f32, b: f32, k: f32 ) -> f32 {
+    let j = k * 4.0;
+    let h = max( k-abs(a-b), 0.0 )/j;
+    return min(a,b) - h*h*k*(1.0/4.0);
+}
+
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 
-    let ang =  1. * PI / 3.0 ;
-    let period = sqrt(3.0) * 0.5;
-    let offset = 0.5;
-    let rd = normalize(in.world_position.xyz - camera.view_pos.xyz);
-    let r = rot(ang);
-    
-    let tri_coord = vec2((in.mesh_position.xz * rot(ang*2.0)).y, (in.mesh_position.xz * rot(ang )).y);
-    let triangle_a = modf(100.5 + tri_coord.x / period  ).fract - 0.5;
-    let triangle_b = modf( 100.5 + tri_coord.y / period ).fract - 0.5;
-    let fake_pos = vec3(in.world_position.x, in.index * 4.0, in.world_position.z);
-    let nor_flat = normalize(cross(dpdx(in.world_position ), dpdy(in.world_position )));
-    // let nor_flat = normalize(cross(dpdx(fake_pos ), dpdy(fake_pos )));
+    let sin_60 = sin(PI / 3.0) ;
+    let period = 2.0 / sqrt(3.0) ;
+    let tri_coord = vec3(in.mesh_position.xz * mat2x2( sin_60, 0.5, sin_60, -0.5 ),in.mesh_position.z);
+    let triangle = abs(fract(0.5 + tri_coord * period) - 0.5);
+    let closest_tri_line = min(triangle.x,min(triangle.y,triangle.z));
+    var aa = fwidth(in.mesh_position.x) + fwidth(in.mesh_position.z) ;
+    // if in.clip_position.x < 900.0 {
+    //     aa = 0.0;
+    // }
+    // let line_signal = smoothstep(0.02 + aa * 1.0,0.01, closest_tri_line) / (1.0 + aa * 100.0);
+    let c = exp(-30. * aa)*0.9 + 0.1;
+    let line_signal = exp(-150.0 * closest_tri_line * c) * pow(c,0.75);
+
+
+    let rd = normalize(in.relative_position.xyz);
+    let nor_flat = normalize(cross(dpdx(in.relative_position), dpdy(in.relative_position)));
     let re = reflect(rd, nor_flat);
+    let bg = textureSample(background, background_sampler, re) * step(0.0, re.y);
 
-    let bg = textureSample(background, background_sampler, re) *step(0.0,re.y);
 
-
-    let light: f32 = max(
-        // 0.0,
-        max(
-        smoothstep(0.02, 0.01, abs(triangle_a)),
-        smoothstep(0.02, 0.01, abs(triangle_b)),
-        ),
-        // 0.0,
-        smoothstep(0.02, 0.01, abs(modf(100.5 + in.mesh_position.z / period).fract - 0.5)),
-        
-    );
     let fr = fresnel(rd, nor_flat, 5.0);
-    let shi = pow(max(0.0,dot(re,rd)), 2.0) * fr;
-    
-    let c = 0.0;
+    let shi = pow(max(0.0, dot(re, rd)), 2.0) * fr;
+
     return vec4(
-    vec3(1.0, 0.3, 0.05) * 0. + light * vec3(1.0,0.0,0.23) * 20.0 * 1.0 + fr * 1.0 * shi * bg.rgb * 3.0, 
+        vec3(1.0, 0.3, 0.05) * 0. + line_signal * vec3(1.0, 0.0, 0.23) * 20.0 * 1.0 + fr * 1.0 * shi * bg.rgb * 3.0, 
     // abs(re),
-    1.0);
+        1.0
+    );
 }

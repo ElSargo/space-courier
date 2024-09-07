@@ -13,6 +13,7 @@ use std::{
 use wgpu::BindGroupLayout;
 
 use crate::{
+    camera::Camera,
     ecs::Ecs,
     gpu::{Gpu, InstanceBuffer},
     gravity::G,
@@ -22,7 +23,6 @@ use crate::{
     physics::Physics,
     resources,
     transform::Transform,
-    SUN_MASS,
 };
 
 #[derive(Default, Debug, Component)]
@@ -119,7 +119,9 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
     transform.translation = forward * distance;
     transform.scale *= radius;
     let mass = radius * radius * radius * 10.0;
-    let velocity = transform.left() * 0.0005 / transform.translation.length().sqrt() * SUN_MASS * G
+    let velocity = transform.left() * 0.0005 / transform.translation.length().sqrt()
+        * crate::sun::SUN_MASS
+        * G
         / mass.sqrt();
 
     commands
@@ -145,6 +147,7 @@ pub struct PlanetGpuData {
 }
 
 pub fn update_instance_buffer(
+    camera: Res<Camera>,
     transforms: Query<&Transform, With<Planet>>,
     gpu: Res<Gpu>,
     planet_data: ResMut<PlanetGpuData>,
@@ -152,7 +155,7 @@ pub fn update_instance_buffer(
     {
         let planet_instances = instance_buffer_bytes(
             transforms.iter(), // QueryBuilder::<&Transform, With<Planet>>::new(&mut self.ecs.world)
-                               //     .build()
+            camera.eye,        //     .build(){
                                //     .iter(&self.ecs.world),
         );
         planet_data

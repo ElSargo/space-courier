@@ -16,6 +16,7 @@
 struct Camera {
     view_pos: vec4<f32>,
     view: mat4x4<f32>,
+    proj: mat4x4<f32>,
     view_proj: mat4x4<f32>,
     inv_proj: mat4x4<f32>,
     inv_view: mat4x4<f32>,
@@ -42,10 +43,11 @@ struct InstanceInput {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
-    @location(1) world_position: vec3<f32>,
+    @location(1) relative_position: vec3<f32>,
     @location(2) world_normal: vec3<f32>,
     @location(3) distance: f32,
     @location(4) mesh_position: vec3<f32>,
+    @location(5) barry: vec2<f32>,
 };
 
 @vertex
@@ -69,12 +71,17 @@ fn vs_main(
 
     let disp_factor = 1.0;// (0.95+0.05*sin(vert.position*100.0));
     let vert_position = model_matrix * vec4(vert.position * disp_factor, 1.0)  ;
-    out.world_position = vert_position.xyz;
+    out.relative_position = vert_position.xyz;
     out.world_normal = rotation_matrix * vert.normal;
     out.distance = distance(vert_position.xyz, camera.view_pos.xyz);
     out.clip_position = camera.view_proj * vert_position;
     out.uv = vert.uv;
     out.mesh_position = vert.position;
+
+    let bi = in_vertex_index - (in_vertex_index / 3u) * 3u;
+
+    out.barry = vec2<f32>( f32(bi == 0u), f32(bi == 1u)  );
+    
     return out;
 }
 
@@ -230,7 +237,8 @@ fn reshape_inner_ring_diffuse(d: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let pos_realative = in.world_position - camera.view_pos.xyz;
+    let pos_realative = in.relative_position;
+    let world_position = in.relative_position + camera.view_pos.xyz;
     let rd = normalize(pos_realative);
     let color_sample = textureSample(diff, diff_sampler, in.uv) ;
     // let color_sample = vec4(0.2,0.2,0.2,1.0) ;
@@ -240,7 +248,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let nor = normalize(in.world_normal);
     // let nor_flat = normalize(cross(dpdx(in.world_position  + disp), dpdy(in.world_position + disp)));
-    let dis = length(in.world_position * 0.005);
+    let dis = length(in.relative_position* 0.005);
     let freznel = fresnel(rd, nor, 5.0);
     let reflect_direction = reflect(rd, nor);
 
@@ -248,9 +256,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var color = vec3(0.0);
     // Sun
         {
-        let light_color = vec3(0.2,0.4,1.0);
-        let light_direction = normalize(-in.world_position);
-        let distance_scaled = length(in.world_position * 0.004);
+        let light_color = vec3(0.2, 0.4, 1.0);
+        let light_direction = normalize(-world_position);
+        let distance_scaled = length(world_position * 0.004);
         let light_intensity = 1.0 / (distance_scaled * distance_scaled);
         let light_dot_normal = dot(nor, light_direction);
 
@@ -264,7 +272,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         color += light_intensity * sqrt(light_color) * specular;
     }
     // Ecretion disk
-    {
+        {
         let light_color = vec3(1.0, 0.3, 0.05);
         let light_direction = vec3(0.0, -1.0, 0.0); 
         // let distance_scaled = length(in.world_position * 0.002);
@@ -293,12 +301,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Emission 
-    {
+        {
         color += ems;
     }
 
+
+    // Stars / background 
+        {
+        let light_color = textureSample(background, diff_sampler, reflect_direction).rgb;
+        color += freznel * light_color   ;
+    }
+
+
+    // return vec4<f32>(color, 1.0)  ;
+
+    let edge = max(
+        max(in.barry.x,in.barry.y ),
+        1.0 - in.barry.x - in.barry.y
+    );
     
-    return vec4<f32>(color, 1.0)  ;
+    return vec4(vec3(1.0 - pow(edge,10.)),1.0);
 }
 
 // Stars / background 
@@ -320,4 +342,3 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 //     color += ( (albedo )* diff + spec*freznel)*0.05;
 // }
-

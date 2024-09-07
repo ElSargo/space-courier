@@ -1,5 +1,6 @@
 use anymap::AnyMap;
 use ship::{Ship, ShipGpuResources};
+use sun::SunRenderReasources;
 mod background;
 mod bloom;
 mod camera;
@@ -19,6 +20,7 @@ mod post;
 mod resources;
 mod shader_manager;
 mod ship;
+mod sun;
 mod texture;
 mod time;
 mod transform;
@@ -26,19 +28,18 @@ mod tri_meash_gen;
 use crate::camera::Camera;
 use background::Background;
 use bevy_ecs::{
-    component::Component,
-    query::{QueryBuilder, With},
+    query::QueryBuilder,
     system::{Local, Res},
     world::{Mut, World},
 };
 use bloom::{Bloom, BloomReasoruces};
-use camera::{CameraUniform, CameraUniformInner};
+use camera::CameraUniform;
 
 use ecs::Ecs;
 use fullscreen::FullscreenQuad;
 use gilrs::Gilrs;
 use gizmo::{ArrowGizmo, RawArrowInstance};
-use glam::{vec3, Mat3, Mat4, Quat, Vec2, Vec3};
+use glam::{vec3, Mat3, Mat4, Quat, Vec2, Vec3, Vec4};
 use gpu::{Gpu, InstanceBuffer};
 use input::{AxisInput, ButtonInput, MouseDelta};
 use model::DrawModel;
@@ -156,14 +157,6 @@ pub async fn run() {
 
 // lib.rs
 use winit::window::Window;
-
-const SUN_MASS: f32 = 20000.0;
-
-struct SunRenderReasources {
-    sun_transform_instance_buffer: InstanceBuffer,
-    sun_render_pipeline: PipelineHandle,
-    sun_model: Model,
-}
 
 struct ViewTextureReasources {
     view_texture: Texture,
@@ -380,41 +373,17 @@ impl State {
                 .await
                 .unwrap();
 
-        let sun_model =
-            resources::load_model("wallmart.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap();
-
         let ship_model =
             resources::load_model("retroShip.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
 
-        let sun_transforms = vec![Transform {
-            scale: Vec3::ONE * 20.0,
-            ..Default::default()
-        }];
         let planet_transform_instance_buffer = Arc::new(Mutex::new(InstanceBuffer::new(
             Some("Planet instance buffer".to_owned()),
             BufferUsages::VERTEX | BufferUsages::COPY_DST,
             &device,
         )));
         // let ship_transform_instance_buffer = ;
-
-        let sun_transform_buffer_data =
-            instance_buffer_bytes_from_components(sun_transforms.iter().map(
-                |Transform {
-                     scale,
-                     translation,
-                     rotation,
-                 }| (*translation, *rotation, *scale),
-            ));
-        let sun_transform_instance_buffer = InstanceBuffer::new_init::<RawInstance>(
-            Some("Sun instance Buffer".to_owned()),
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            &device,
-            bytemuck::cast_slice(&sun_transform_buffer_data),
-        );
 
         let arrow_model =
             resources::load_model("arrow.obj", &device, &queue, &texture_bind_group_layout)
@@ -449,12 +418,20 @@ impl State {
         player_controller::init(&mut ecs);
         gizmo::init(&mut ecs);
         ship::init(&mut ecs, &mut render_stuff);
+        let mut shader_manager = ShaderManager::new(gpu.device.clone()).unwrap();
+        sun::init(
+            &mut ecs,
+            &mut render_stuff,
+            &mut shader_manager,
+            &gpu,
+            &texture_bind_group_layout,
+        )
+        .await;
 
         ecs.update.add_systems(log_time);
 
         ecs.init.run(&mut ecs.world);
 
-        let mut shader_manager = ShaderManager::new(gpu.device.clone()).unwrap();
         render_stuff.insert(FullscreenQuad::init(&gpu.device, &mut shader_manager));
 
         if let Some((vt,)) = get_all!(render_stuff, ViewTextureReasources) {
@@ -527,41 +504,10 @@ impl State {
             }),
         );
 
-        render_stuff.insert({
-            let sun_shader = shader_manager.load_shader("./src/sun.wgsl");
-
-            SunRenderReasources {
-                sun_transform_instance_buffer,
-                sun_render_pipeline: shader_manager.add_render_pipeline(
-                    vec![sun_shader],
-                    Box::new(move |rr: &AnyMap, device: &Device, sm: &ShaderStorage| {
-                        let (cgs,) = get_all!(rr, CameraUniform).unwrap();
-
-                        mk_pipeline(
-                            device,
-                            &Box::leak(Box::new(mk_pipeline_layout(
-                                device,
-                                "Sun",
-                                &[&cgs.inner.bind_group_layout, &texture_bind_group_layout],
-                            ))),
-                            None,
-                            &sm.get_module(sun_shader).unwrap(),
-                            "sun",
-                            RawInstance::desc(),
-                        )
-                    }),
-                ),
-                sun_model,
-            }
-        });
-
         tri_meash_gen::init(&mut shader_manager, &mut render_stuff, &gpu.device);
 
         let tri_meshes = vec![tri_meash_gen::prepare_mesh(
-            &tri_meash_gen::gen_mesh(100, 100, |p| {
-                let p = p / 100.0 - 0.5;
-                p.length() * 2.0
-            }),
+            &tri_meash_gen::gen_mesh(100, 100, terain_height),
             &gpu,
         )];
 
@@ -855,6 +801,9 @@ impl State {
             ViewTextureReasources,
             CameraUniform
         ) {
+            let Ok(sun_ib) = sun_rr.sun_transform_instance_buffer.lock() else {
+                panic!()
+            };
             if let Some(pipeline) = self
                 .shader_manager
                 .get_render_pipeline(&sun_rr.sun_render_pipeline)
@@ -881,13 +830,12 @@ impl State {
                     occlusion_query_set: None,
                     timestamp_writes: None,
                 });
-                render_pass
-                    .set_vertex_buffer(1, sun_rr.sun_transform_instance_buffer.buffer.slice(..));
+                render_pass.set_vertex_buffer(1, sun_ib.buffer.slice(..));
                 render_pass.set_pipeline(pipeline);
 
                 render_pass.draw_model_instanced(
                     &sun_rr.sun_model,
-                    0..sun_rr.sun_transform_instance_buffer.instances,
+                    0..sun_ib.instances,
                     &bind_group.bind_group,
                 );
             }
@@ -983,7 +931,7 @@ fn init_normal_pipeline(
                     .unwrap()
                     .inner
                     .bind_group_layout,
-                &texture_bind_group_layout.clone(),
+                &texture_bind_group_layout,
                 &background.texture_cube_bind_group_layout,
             ],
         ),
@@ -1106,9 +1054,9 @@ fn mk_pipeline(
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList, // 1.
                 strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw, // 2.
-                // cull_mode: Some(wgpu::Face::Back),
-                cull_mode: None,
+                front_face: wgpu::FrontFace::Cw, // 2.
+                cull_mode: Some(wgpu::Face::Back),
+                // cull_mode: None,
                 // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                 polygon_mode: wgpu::PolygonMode::Fill,
                 // Requires Features::DEPTH_CLIP_CONTROL
@@ -1165,10 +1113,13 @@ fn instance_buffer_bytes_from_components<'a>(
         .collect::<Vec<_>>()
 }
 
-fn instance_buffer_bytes<'a>(items: impl Iterator<Item = &'a Transform>) -> Vec<RawInstance> {
+fn instance_buffer_bytes<'a>(
+    items: impl Iterator<Item = &'a Transform>,
+    origin: Vec3,
+) -> Vec<RawInstance> {
     items
         .map(|t| RawInstance {
-            transform: t.to_mat(),
+            transform: t.translated(-origin).to_mat(),
             rotation_only: Mat3::from_quat(t.rotation),
         })
         .collect::<Vec<_>>()
@@ -1184,47 +1135,18 @@ unsafe impl bytemuck::Pod for RawInstance {}
 unsafe impl bytemuck::Zeroable for RawInstance {}
 
 impl RawInstance {
+    const ATTRIBS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+     // Model matrix
+     5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
+     // Model rotation matrix
+     9 => Float32x3, 10 => Float32x3, 11 => Float32x3,
+    ];
+
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: 0,
-                    shader_location: 5,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: size_of::<[f32; 4]>() as wgpu::BufferAddress,
-                    shader_location: 6,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 7,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: size_of::<[f32; 12]>() as wgpu::BufferAddress,
-                    shader_location: 8,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: size_of::<[f32; 16]>() as wgpu::BufferAddress,
-                    shader_location: 9,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: size_of::<[f32; 16 + 3]>() as wgpu::BufferAddress,
-                    shader_location: 10,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: size_of::<[f32; 16 + 6]>() as wgpu::BufferAddress,
-                    shader_location: 11,
-                },
-            ],
+            attributes: &Self::ATTRIBS,
         }
     }
 
@@ -1345,4 +1267,51 @@ macro_rules! get_all_shaders {
             closure()
         }
     }
+}
+
+fn drawObject(v: Vec3) -> f32 {
+    let p = (v.fract() - 0.5).abs();
+    return p.x.max(p.y).max(p.z);
+}
+
+fn cellTile(v: Vec3) -> f32 {
+    let mut p = v;
+    // Draw four overlapping objects (spheres, in this case) at various positions throughout the tile.
+    let mut d = Vec4::ZERO;
+    d.x = drawObject(p - vec3(0.81, 0.62, 0.53));
+    p.x = (p.y - p.x) * 0.7071;
+    p.y = (p.y + p.x) * 0.7071;
+    //p.xy = vec2(p.y*.866025 - p.x*.5, p.y*.5 + p.x*.866025); // Etc.
+    d.y = drawObject(p - vec3(0.39, 0.2, 0.11));
+    p.y = (p.z - p.y) * 0.7071;
+    p.z = (p.z + p.y) * 0.7071;
+    //p.yz = vec2(p.z*.866025 - p.y*.5, p.z*.5 + p.y*.866025); // Etc.
+    d.z = drawObject(p - vec3(0.62, 0.24, 0.06));
+    p.x = (p.z - p.x) * 0.7071;
+    p.z = (p.z + p.x) * 0.7071;
+    //p.xz = vec2(p.z*.866025 - p.x*.5, p.z*.5 + p.x*.866025); // Etc.
+    d.w = drawObject(p - vec3(0.2, 0.82, 0.64));
+
+    // Obtain the minimum, and you're done.
+    d.x = d.x.min(d.y);
+    d.y = d.z.min(d.w);
+
+    return 1. - d.x.min(d.y) * 2.; // Scale between zero and one... roughly.
+
+    // For anyone wanting to experiment with this, the following gives better variance:
+    //const float scale = 1.; // 1 up to 4, or higher, depending on the look you want.
+    // Obviously, for the reverse, you take the one and minus away.
+    //return 1. - min(min(d.x, d.y)*2.*scale, 1.);
+}
+
+fn terain_height(p: Vec2) -> f32 {
+    let position = vec3(p.x, 0.0, p.y);
+    smoothstep(0.5, 1.0, cellTile(position * 0.1)) * 2.0
+        + 0.0 * (0.4 + ((position.z * 0.5 + (position.x * 0.5).sin()).sin())).abs()
+}
+
+#[inline(always)]
+fn smoothstep(min: f32, max: f32, value: f32) -> f32 {
+    let x = ((value - min) / (max - min)).clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
 }

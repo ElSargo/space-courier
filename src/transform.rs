@@ -140,4 +140,12 @@ impl Transform {
         self.translation = self.translation.lerp(rhs.translation, t);
         self.rotation = self.rotation.lerp(rhs.rotation, t);
     }
+
+    pub fn translated(&self, translation: Vec3) -> Self {
+        Self {
+            translation: self.translation + translation,
+            scale: self.scale,
+            rotation: self.rotation,
+        }
+    }
 }

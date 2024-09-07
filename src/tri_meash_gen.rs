@@ -3,7 +3,7 @@ use std::mem::size_of;
 use anymap::AnyMap;
 
 use bytemuck::bytes_of;
-use glam::{vec2, vec3, Vec2, Vec3};
+use glam::{vec2, vec3, Mat4, Vec2, Vec3};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BufferUsages, Device, FragmentState, PipelineLayout, PipelineLayoutDescriptor, TextureFormat,
@@ -37,6 +37,28 @@ pub struct Vertex {
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x3 ];
+
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct InstanceData {
+    position: Mat4,
+}
+
+impl InstanceData {
+    const ATTRIBS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+        // model_view_proj matrix
+        0 => Float32x4, 1 => Float32x4,2 => Float32x4,3 => Float32x4
+        //
+    ];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -114,8 +136,8 @@ pub fn gen_mesh(
             for i in 0..width - 2 {
                 let a = [
                     i + row_previous_idx,
-                    i + row_previous_idx + 1,
                     i + row_short_idx,
+                    i + row_previous_idx + 1,
                     // i + row_short_idx + 1,
                 ];
                 let b = [
@@ -238,9 +260,9 @@ pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList, // 1.
                     strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw, // 2.
-                    // cull_mode: Some(wgpu::Face::Back),
-                    cull_mode: None,
+                    front_face: wgpu::FrontFace::Cw, // 2.
+                    cull_mode: Some(wgpu::Face::Back),
+                    // cull_mode: None,
                     // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                     polygon_mode: wgpu::PolygonMode::Fill,
                     // Requires Features::DEPTH_CLIP_CONTROL

@@ -8,6 +8,7 @@ use bevy_ecs::{
 };
 
 use crate::{
+    camera::Camera,
     ecs::Ecs,
     get_all,
     gpu::{Gpu, InstanceBuffer},
@@ -38,11 +39,12 @@ pub fn init(ecs: &mut Ecs, rr: &mut AnyMap) {
 }
 
 pub fn update_instance_buffer(
+    camera: Res<Camera>,
     transforms: Query<&Transform, With<Ship>>,
     gpu: Res<Gpu>,
     ship_data: ResMut<ShipGpuResources>,
 ) {
-    let ship_bytes = instance_buffer_bytes(transforms.iter());
+    let ship_bytes = instance_buffer_bytes(transforms.iter(), camera.eye);
     ship_data.instance_buffer.lock().unwrap().write(
         &gpu.device,
         &ship_bytes.as_slice(),

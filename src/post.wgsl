@@ -17,6 +17,7 @@ const PI: f32 = 3.1415926535897932384626433832795;
 struct Camera {
     view_pos: vec4<f32>,
     view: mat4x4<f32>,
+    proj: mat4x4<f32>,
     view_proj: mat4x4<f32>,
     inv_proj: mat4x4<f32>,
     inv_view: mat4x4<f32>,
@@ -185,7 +186,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Debug lines
     {
         let gl = grid_lines(ray_direction,depth_lin);
-        color = mix(color, vec3(gl),vec3(0.1) );
+        // color = mix(color, vec3(gl),vec3(0.1) );
         
     }
     

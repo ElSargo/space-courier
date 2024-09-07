@@ -110,7 +110,7 @@ impl Postprocessing {
                     primitive: wgpu::PrimitiveState {
                         topology: wgpu::PrimitiveTopology::TriangleList, // 1.
                         strip_index_format: None,
-                        front_face: wgpu::FrontFace::Ccw, // 2.
+                        front_face: wgpu::FrontFace::Cw, // 2.
                         // cull_mode: Some(wgpu::Face::Back),
                         cull_mode: None,
                         // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE

@@ -25,6 +25,7 @@ pub struct Camera {
 pub struct CameraUniformData {
     view_pos: Vec4,
     view: Mat4,
+    proj: Mat4,
     view_proj: Mat4,
     inv_proj: Mat4,
     inv_view: Mat4,
@@ -50,6 +51,7 @@ impl CameraUniformData {
         Self {
             view_proj: Mat4::IDENTITY,
             view_pos: Vec4::ZERO,
+            proj: Mat4::IDENTITY,
             view: Mat4::IDENTITY,
             inv_proj: Mat4::IDENTITY,
             inv_view: Mat4::IDENTITY,
@@ -63,6 +65,7 @@ impl CameraUniformData {
         *self = CameraUniformData {
             view_pos: camera.eye.extend(1.0),
             view,
+            proj,
             view_proj,
             inv_proj: proj.inverse(),
             inv_view: view.transpose(),
@@ -80,7 +83,7 @@ impl Camera {
     }
 
     pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_at_lh(self.eye, self.target, self.up)
+        Mat4::look_at_lh(Vec3::ZERO, self.target - self.eye, self.up)
     }
 }
 

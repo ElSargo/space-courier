@@ -10,6 +10,7 @@
 struct Camera {
     view_pos: vec4<f32>,
     view: mat4x4<f32>,
+    proj: mat4x4<f32>,
     view_proj: mat4x4<f32>,
     inv_proj: mat4x4<f32>,
     inv_view: mat4x4<f32>,
@@ -103,7 +104,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // let color = blend(vec3(1.0,0.0,0.3), vec3(1.0,0.0,1.0),-0.5+h*0.5);
     let color = vec3(0.2,0.4,1.0);
     let threshold = -0.1 - 0.05*h;
-    let alpha = smoothstep(threshold,threshold + 2.1, 0.2 +  sin(h*1.));
+    // let alpha = smoothstep(threshold,threshold + 2.1, 0.2 +  sin(h*1.));
+    let alpha  =  1.0;
     return vec4(color * alpha * 40.0,alpha);
 }
 
