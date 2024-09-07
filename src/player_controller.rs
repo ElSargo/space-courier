@@ -35,6 +35,7 @@ pub struct PlayerControllerUpright {
 pub struct PlayerController {
     pub speed: f32,
     pub momentum: f32,
+    pub skating: bool,
 }
 
 pub fn update<'a>(
@@ -185,8 +186,10 @@ pub fn update_upright_player_controller<'a>(
     );
 
     // ship_transform.rotation = full_rot;
-    let ship_roll = (player_controller.rotation * Quat::from_rotation_z(*roll_average))
-        * player_controller.rotation.inverse();
+    let ship_roll = (player_controller.rotation
+        * Quat::from_rotation_z(*roll_average)
+        * player_controller.rotation.inverse())
+    .lerp(Quat::IDENTITY, (-0.2 * player_controller.momentum).exp());
 
     ship_transform.rotation = ship_transform.rotation.lerp(
         ship_roll * player_controller.rotation,
@@ -298,13 +301,15 @@ pub fn init(ecs: &mut Ecs) {
     ecs.update.add_systems((
         update_upright_pitch_and_yaw,
         apply_velocity,
-        // update_momentum_from_velocity,
-    ));
-    ecs.update
-        .add_systems(update_upright_player_controller.after(update_upright_pitch_and_yaw));
-    ecs.update.add_systems(
+        bank_player
+            .before(update_upright_player_controller)
+            .before(update_upright_pitch_and_yaw), // update_momentum_from_velocity,
+        update_upright_player_controller.after(update_upright_pitch_and_yaw),
         update_camera_from_upright_player_controller.after(update_upright_player_controller),
-    );
+    ));
+    // ecs.update
+    //     .add_systems();
+    // ecs.update.add_systems();
     // ecs.update
     //     .add_systems(crate::gizmo::update_arrows.after(update));
 }
@@ -315,6 +320,22 @@ pub fn apply_velocity(
 ) {
     for (mut pc, Physics { velocity, .. }) in players.iter_mut() {
         pc.position += *velocity * time.delta_seconds;
+    }
+}
+
+pub fn bank_player(
+    mut players: Query<(&mut PlayerControllerUpright, &mut Transform)>,
+    time: Res<Time>,
+) {
+    for (mut pc, mut tra) in players.iter_mut() {
+        let tra = &mut *tra;
+        if tra.translation.y < 1.0 {
+            tra.translation.y = 1.0;
+            // let rotation_correction =
+            //     Quat::from_rotation_arc(tra.forward(), tra.forward() * vec3(1.0, -1.0, 1.0));
+            // tra.rotation *= rotation_correction;
+            pc.pitch = -pc.pitch.abs();
+        }
     }
 }
 
