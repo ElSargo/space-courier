@@ -5,7 +5,7 @@ use crate::{
     fullscreen::FullscreenQuad,
     get_all, get_all_shaders, make_view_texture, make_view_textures_bind_group,
     planet_shadows::PlanetShadows,
-    shader_manager::{self, PipelineHandle, ShaderManager},
+    shader_manager::{self, PipelineHandle, ShaderManager, SplitPipelineModuleDescriptor},
     texture, ViewTextureReasources,
 };
 use anymap::AnyMap;
@@ -77,15 +77,17 @@ impl Postprocessing {
         // let pipeline = device.create_render_pipeline(&);
         let format = config.format.clone();
         let pipeline_handle = shader_manager.add_render_pipeline(
-            vec![shader_handle, fullscreen_quad.shader_handle],
-            Box::new(move |rr, device, shader_manager| {
+            // vec![shader_handle, fullscreen_quad.shader_handle],
+            SplitPipelineModuleDescriptor {
+                vertex: fullscreen_quad.shader_handle,
+                fragment: shader_handle,
+            },
+            Box::new(move |rr, device, modules| {
                 let (FullscreenQuad {
                     shader_handle: fs_shader_handle,
                     vertex_format,
                     ..
                 },) = get_all!(rr, FullscreenQuad).unwrap();
-                let (sm, fs_sm) =
-                    get_all_shaders!(shader_manager, shader_handle, *fs_shader_handle).unwrap();
 
                 let targets = [Some(wgpu::ColorTargetState {
                     // 4.
@@ -97,13 +99,13 @@ impl Postprocessing {
                     label: Some("Post Render Pipeline"),
                     layout: Some(pipeline_layout),
                     vertex: wgpu::VertexState {
-                        module: &fs_sm,
+                        module: modules.vertex,
                         entry_point: "vs_main",
                         buffers: *vertex_format,
                     },
                     fragment: Some(wgpu::FragmentState {
                         // 3.
-                        module: &sm,
+                        module: modules.fragment,
                         entry_point: "fs_main",
                         targets: &targets,
                     }),

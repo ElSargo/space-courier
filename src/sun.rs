@@ -17,7 +17,9 @@ use crate::{
     instance_buffer_bytes, mk_pipeline, mk_pipeline_layout,
     model::Model,
     resources,
-    shader_manager::{PipelineHandle, ShaderManager, ShaderStorage},
+    shader_manager::{
+        PipelineHandle, ShaderManager, ShaderStorage, UnifiedPipelineModuleDescriptor,
+    },
     transform::Transform,
     RawInstance,
 };
@@ -109,18 +111,9 @@ pub async fn init(
         SunRenderReasources {
             sun_transform_instance_buffer,
             sun_render_pipeline: shader_manager.add_render_pipeline(
-                vec![sun_shader],
-                Box::new(move |_rr: &AnyMap, device: &Device, sm: &ShaderStorage| {
-                    // let (cgs,) = get_all!(rr, CameraUniform).unwrap();
-
-                    mk_pipeline(
-                        device,
-                        &layout,
-                        None,
-                        &sm.get_module(sun_shader).unwrap(),
-                        "sun",
-                        RawInstance::desc(),
-                    )
+                UnifiedPipelineModuleDescriptor { handle: sun_shader },
+                Box::new(move |_rr: &AnyMap, device: &Device, module| {
+                    mk_pipeline(device, &layout, None, &module, "sun", RawInstance::desc())
                 }),
             ),
             sun_model,

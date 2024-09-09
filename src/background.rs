@@ -6,7 +6,10 @@ use crate::{
     ecs::Ecs,
     get_all,
     gpu::Gpu,
-    shader_manager::{PipelineHandle, ShaderHandle, ShaderManager},
+    shader_manager::{
+        PipelineHandle, ShaderHandle, ShaderManager, UnifiedPipelineModuleDescriptor,
+        UnifiedPipelineModuleResorce,
+    },
     texture::TexCube,
     time::Time,
 };
@@ -32,7 +35,6 @@ pub struct Background {
 
 struct ConstructorReasources {
     pipeline_layout: PipelineLayout,
-    shader_handle: ShaderHandle,
 }
 
 static FORMAT: TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -106,30 +108,21 @@ impl Background {
 
         rr.insert(ConstructorReasources {
             pipeline_layout: pipline_layout,
-            shader_handle,
         });
 
         let pipeline = shader_manager.add_compute_pipeline(
-            vec![shader_handle],
-            Box::new(|rr, device, shader_manager| {
-                if let Some((ConstructorReasources {
-                    pipeline_layout,
-                    shader_handle,
-                },)) = get_all!(rr, ConstructorReasources)
-                {
-                    if let Some(shader_module) = shader_manager.get_module(*shader_handle) {
-                        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                            label: Some("Background pipeline"),
-                            layout: Some(&pipeline_layout),
-                            module: &shader_module,
-                            entry_point: "full",
-                        })
-                    } else {
-                        panic!()
-                    }
-                } else {
-                    panic!()
-                }
+            UnifiedPipelineModuleDescriptor {
+                handle: shader_handle,
+            },
+            Box::new(|rr, device, module| {
+                let (ConstructorReasources { pipeline_layout },) =
+                    get_all!(rr, ConstructorReasources).unwrap();
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("Background pipeline"),
+                    layout: Some(&pipeline_layout),
+                    module: &module,
+                    entry_point: "full",
+                })
             }),
         );
 

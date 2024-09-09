@@ -25,7 +25,7 @@ mod texture;
 mod time;
 mod transform;
 mod tri_meash_gen;
-use crate::camera::Camera;
+use crate::{camera::Camera, shader_manager::UnifiedPipelineModuleResorce};
 use background::Background;
 use bevy_ecs::{
     query::QueryBuilder,
@@ -48,7 +48,9 @@ use model::Model;
 use planet_shadows::PlanetShadows;
 
 use post::Postprocessing;
-use shader_manager::{PipelineHandle, ShaderManager, ShaderStorage};
+use shader_manager::{
+    PipelineHandle, ShaderManager, ShaderStorage, UnifiedPipelineModuleDescriptor,
+};
 use std::{
     mem::size_of,
     sync::{Arc, Mutex},
@@ -490,14 +492,15 @@ impl State {
                 .bind_group_layout],
         )));
         let gizmo_render_pipeline = shader_manager.add_render_pipeline(
-            vec![gizmo_shader],
-            Box::new(move |_rr, device, shader_manager| {
-                let (gs,) = get_all_shaders!(shader_manager, gizmo_shader).unwrap();
+            UnifiedPipelineModuleDescriptor {
+                handle: gizmo_shader,
+            },
+            Box::new(move |_rr, device, module| {
                 mk_pipeline(
                     &device,
                     gizmo_layout,
                     None,
-                    &gs,
+                    &module,
                     "gizmo",
                     RawArrowInstance::desc(),
                 )
@@ -534,7 +537,7 @@ impl State {
             gilrs: Gilrs::new().unwrap(),
             shader_manager,
             render_stuff,
-            tri_meshes: tri_meshes,
+            tri_meshes,
         }
     }
 
@@ -938,11 +941,19 @@ fn init_normal_pipeline(
     });
     render_stuff.insert(StandardRenderPipeline {
         handle: shader_manager.add_render_pipeline(
-            vec![normal_shader],
-            Box::new(move |rr, device, shader_manager| {
-                let (ns,) = get_all_shaders!(shader_manager, normal_shader).unwrap();
+            UnifiedPipelineModuleDescriptor {
+                handle: normal_shader,
+            },
+            Box::new(move |rr, device, module| {
                 let (NormalPiplineLayout { layout },) = get_all!(rr, NormalPiplineLayout).unwrap();
-                mk_pipeline(&device, layout, None, &ns, "normal", RawInstance::desc())
+                mk_pipeline(
+                    &device,
+                    layout,
+                    None,
+                    &module,
+                    "normal",
+                    RawInstance::desc(),
+                )
             }),
         ),
     });

@@ -15,7 +15,9 @@ use crate::{
     camera::CameraUniform,
     get_all,
     gpu::{Gpu, InstanceBuffer, InstanceBufferDescriptor},
-    shader_manager::{PipelineHandle, ShaderHandle, ShaderManager},
+    shader_manager::{
+        PipelineHandle, ShaderHandle, ShaderManager, UnifiedPipelineModuleDescriptor,
+    },
     texture,
     transform::Transform,
     RawInstance, ViewTextureReasources,
@@ -227,21 +229,20 @@ pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device
     struct TriMeshShaderResources(ShaderHandle, PipelineLayout);
     rr.insert(TriMeshShaderResources(shader, pipeline_layout));
     let pipeline_handle = shader_manager.add_render_pipeline(
-        vec![shader],
-        Box::new(|rr, device, sm| -> wgpu::RenderPipeline {
+        UnifiedPipelineModuleDescriptor { handle: shader },
+        Box::new(|rr, device, module| -> wgpu::RenderPipeline {
             let (TriMeshShaderResources(shader_handle, pipeline_layout),) =
                 get_all!(rr, TriMeshShaderResources).unwrap();
-            let shader_module = sm.get_module(*shader_handle).unwrap();
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("Tri mesh render pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: VertexState {
-                    module: &shader_module,
+                    module: &module,
                     entry_point: "vs_main",
                     buffers: &[Vertex::desc(), RawInstance::desc()],
                 },
                 fragment: Some(FragmentState {
-                    module: &shader_module,
+                    module: &module,
                     entry_point: "fs_main",
                     targets: &[Some(wgpu::ColorTargetState {
                         // 4.

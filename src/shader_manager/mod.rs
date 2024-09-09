@@ -1,5 +1,5 @@
 use anymap::AnyMap;
-
+mod pipeline_shader_resource;
 use notify::{
     event::{AccessMode, MetadataKind},
     recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher,
@@ -17,6 +17,11 @@ use tokio::sync::{
 };
 use wgpu::{ComputePipeline, Device, RenderPipeline, ShaderModule, ShaderModuleDescriptor};
 
+pub use self::pipeline_shader_resource::{
+    PipelineConstructor, PipelineModuleDescriptor, SplitPipelineModuleDescriptor,
+    SplitPipelineModuleResource, UnifiedPipelineModuleDescriptor, UnifiedPipelineModuleResorce,
+};
+
 pub struct ShaderManager {
     gpu_device: Arc<Device>,
     whatcher: Arc<tokio::sync::Mutex<RecommendedWatcher>>,
@@ -27,16 +32,15 @@ pub struct ShaderManager {
     render_manager: PipelineManager<wgpu::RenderPipeline>,
 }
 
-struct PipelineManager<T> {
+struct PipelineManager<PipelineType> {
     pipelines_requirements: BTreeMap<ShaderHandle, Vec<PipelineHandle>>,
     pipline_reasoureces: BTreeMap<PipelineHandle, Vec<ShaderHandle>>,
-    pipeline_connstructors:
-        BTreeMap<PipelineHandle, Box<dyn FnMut(&AnyMap, &Device, &ShaderStorage) -> T>>,
-    pipelines: BTreeMap<PipelineHandle, StoredPipeline<T>>,
+    pipeline_connstructors: BTreeMap<PipelineHandle, Box<dyn PipelineConstructor<PipelineType>>>,
+    pipelines: BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>,
     pipelines_to_init: BTreeSet<PipelineHandle>,
 }
 
-impl<T> PipelineManager<T> {
+impl<PipelineType> PipelineManager<PipelineType> {
     fn new() -> Self {
         Self {
             pipelines_requirements: BTreeMap::new(),
@@ -50,27 +54,31 @@ impl<T> PipelineManager<T> {
         }
     }
 
-    pub fn add_pipeline(
+    pub fn add_pipeline<const N: usize, R: PipelineModuleDescriptor<N, PipelineType>>(
         &mut self,
-        res: Vec<ShaderHandle>,
-        connstructor: Box<dyn FnMut(&AnyMap, &Device, &ShaderStorage) -> T>,
-    ) -> PipelineHandle {
+        res: R,
+        connstructor: Box<dyn for<'a> Fn(&AnyMap, &Device, R::OutputReasorce<'a>) -> PipelineType>,
+    ) -> PipelineHandle
+    where
+        <R as PipelineModuleDescriptor<N, PipelineType>>::Constructor: 'static,
+    {
         let mut rng = thread_rng();
         let id: u64 = rng.gen();
         let pipeline_handle = PipelineHandle { id };
-        for shader_handle in res.iter() {
+        for shader_handle in res.as_arr() {
             self.pipelines_requirements
-                .entry(*shader_handle)
+                .entry(shader_handle)
                 .or_insert(vec![])
                 .push(pipeline_handle)
         }
         self.pipeline_connstructors
-            .insert(pipeline_handle, connstructor);
-        self.pipline_reasoureces.insert(pipeline_handle, res);
+            .insert(pipeline_handle, R::constructor(connstructor));
+        self.pipline_reasoureces
+            .insert(pipeline_handle, res.as_arr().to_vec());
         pipeline_handle
     }
 
-    pub fn get_pipeline(&self, pipeline_handle: &PipelineHandle) -> Option<&T> {
+    pub fn get_pipeline(&self, pipeline_handle: &PipelineHandle) -> Option<&PipelineType> {
         self.pipelines
             .get(pipeline_handle)
             .map(|sp| &sp.render_pipeline)
@@ -109,7 +117,15 @@ impl<T> PipelineManager<T> {
             if should_recompile {
                 if let Some(constructor) = self.pipeline_connstructors.get_mut(pipline_handle) {
                     // let shader_modules = compiled_shaders.iter().map(|s| &s.module).collect();
-                    let new_pipeline = constructor(&map, gpu_device, shaders);
+                    let new_pipeline = constructor.construct(
+                        compiled_shaders
+                            .iter()
+                            .map(|s| &s.module)
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        &map,
+                        gpu_device,
+                    );
                     // = self
                     //     .gpu_device
                     //     .create_render_pipeline(&new_pipeline_descriptor);
@@ -349,21 +365,44 @@ impl ShaderManager {
         }
     }
 
-    pub fn add_render_pipeline(
+    pub fn add_render_pipeline<
+        const NUM_MODULES: usize,
+        R: PipelineModuleDescriptor<NUM_MODULES, wgpu::RenderPipeline>,
+    >(
         &mut self,
-        res: Vec<ShaderHandle>,
-        connstructor: Box<dyn FnMut(&AnyMap, &Device, &ShaderStorage) -> RenderPipeline>,
-    ) -> PipelineHandle {
+        res: R,
+        connstructor: Box<
+            dyn for<'a> Fn(&AnyMap, &Device, R::OutputReasorce<'a>) -> RenderPipeline,
+        >,
+    ) -> PipelineHandle
+    where
+        <R as PipelineModuleDescriptor<NUM_MODULES, wgpu::RenderPipeline>>::Constructor: 'static,
+    {
         self.render_manager.add_pipeline(res, connstructor)
     }
-
-    pub fn add_compute_pipeline(
+    pub fn add_compute_pipeline<
+        const NUM_MODULES: usize,
+        R: PipelineModuleDescriptor<NUM_MODULES, wgpu::ComputePipeline>,
+    >(
         &mut self,
-        res: Vec<ShaderHandle>,
-        connstructor: Box<dyn FnMut(&AnyMap, &Device, &ShaderStorage) -> ComputePipeline>,
-    ) -> PipelineHandle {
+        res: R,
+        connstructor: Box<
+            dyn for<'a> Fn(&AnyMap, &Device, R::OutputReasorce<'a>) -> ComputePipeline,
+        >,
+    ) -> PipelineHandle
+    where
+        <R as PipelineModuleDescriptor<NUM_MODULES, wgpu::ComputePipeline>>::Constructor: 'static,
+    {
         self.compute_manager.add_pipeline(res, connstructor)
     }
+
+    // pub fn add_compute_pipeline(
+    //     &mut self,
+    //     res: Vec<ShaderHandle>,
+    //     connstructor: Box<dyn FnMut(&AnyMap, &Device, &ShaderStorage) -> ComputePipeline>,
+    // ) -> PipelineHandle {
+    //     self.compute_manager.add_pipeline(res, connstructor)
+    // }
 
     pub fn get_render_pipeline(&self, pipeline_handle: &PipelineHandle) -> Option<&RenderPipeline> {
         self.render_manager.get_pipeline(pipeline_handle)

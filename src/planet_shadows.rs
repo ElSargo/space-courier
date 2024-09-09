@@ -16,7 +16,7 @@ use crate::{
     get_all, get_all_shaders,
     gpu::InstanceBuffer,
     planets::Planet,
-    shader_manager::{PipelineHandle, ShaderManager},
+    shader_manager::{PipelineHandle, ShaderManager, UnifiedPipelineModuleDescriptor},
     transform::Transform,
     ViewTextureReasources,
 };
@@ -111,15 +111,15 @@ impl PlanetShadows {
         let shader_handle = shader_manager.load_shader("./src/planet_shadows.wgsl");
 
         let pipeline = shader_manager.add_render_pipeline(
-            vec![shader_handle],
-            Box::new(move |__rr, device, shader_manager| {
-                let sm = get_all_shaders!(shader_manager, shader_handle).unwrap().0;
-
+            UnifiedPipelineModuleDescriptor {
+                handle: shader_handle,
+            },
+            Box::new(move |__rr, device, module| {
                 device.create_render_pipeline(&RenderPipelineDescriptor {
                     label: Some("Planet shadow pipeline"),
                     layout: Some(pipeline_layout),
                     vertex: wgpu::VertexState {
-                        module: &sm,
+                        module: &module,
                         entry_point: "vs_main",
                         buffers: &[Vertex::desc(), RawPlanetShadow::desc()],
                     },
@@ -136,7 +136,7 @@ impl PlanetShadows {
                         alpha_to_coverage_enabled: false, // 4.
                     },
                     fragment: Some(wgpu::FragmentState {
-                        module: &sm,
+                        module: &module,
                         entry_point: "fs_main",
                         targets: &[Some(wgpu::ColorTargetState {
                             format: TextureFormat::Rg16Float,

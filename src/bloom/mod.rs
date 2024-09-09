@@ -10,10 +10,10 @@ use crate::{
     background::Background,
     camera::CameraUniform,
     fullscreen::FullscreenQuad,
-    get_all, get_all_shaders,
+    get_all,
     gpu::Gpu,
     idx_all, load_shader,
-    shader_manager::{PipelineHandle, ShaderManager},
+    shader_manager::{PipelineHandle, ShaderManager, SplitPipelineModuleDescriptor},
     ViewTextureReasources,
 };
 
@@ -153,19 +153,20 @@ impl BloomReasoruces {
                 },
             )));
             shader_manager.add_render_pipeline(
-                vec![bloom_down_handle, fs_shader],
-                Box::new(move |rr, device, shader_manager| {
+                SplitPipelineModuleDescriptor {
+                    vertex: fs_shader,
+                    fragment: bloom_down_handle,
+                },
+                Box::new(move |rr, device, modules| {
                     let (fsq, dpl) = get_all!(rr, FullscreenQuad, DownPipelineLayout).unwrap();
-                    let (bloom_shader, fs_shader) =
-                        get_all_shaders!(shader_manager, bloom_down_handle, fs_shader).unwrap();
 
                     mk_pipeline(
                         "Bloom down render pipeline",
                         device,
                         &dpl.0,
                         fsq.vertex_format,
-                        &fs_shader,
-                        &bloom_shader,
+                        &modules.vertex,
+                        &modules.fragment,
                     )
                 }),
             )
@@ -186,19 +187,20 @@ impl BloomReasoruces {
             )));
 
             shader_manager.add_render_pipeline(
-                vec![bloom_up_handle, fs_shader],
-                Box::new(move |rr, device, shader_manager| {
+                SplitPipelineModuleDescriptor {
+                    vertex: fs_shader,
+                    fragment: bloom_up_handle,
+                },
+                Box::new(move |rr, device, modules| {
                     let (fsq, upl) = get_all!(rr, FullscreenQuad, UpPipelineLayout).unwrap();
-                    let (bloom_shader, fs_shader) =
-                        get_all_shaders!(shader_manager, bloom_up_handle, fs_shader).unwrap();
 
                     mk_pipeline(
                         "Bloom up render pipeline",
                         device,
                         &upl.0,
                         fsq.vertex_format,
-                        &fs_shader,
-                        &bloom_shader,
+                        &modules.vertex,
+                        &modules.fragment,
                     )
                 }),
             )
@@ -215,19 +217,20 @@ impl BloomReasoruces {
         )));
 
         let extract_pipeline = shader_manager.add_render_pipeline(
-            vec![bloom_extract_handle, fs_shader],
-            Box::new(move |rr, device, shader_manager| {
+            SplitPipelineModuleDescriptor {
+                vertex: fs_shader,
+                fragment: bloom_extract_handle,
+            },
+            Box::new(move |rr, device, modules| {
                 let (fsq, epl) = get_all!(rr, FullscreenQuad, ExtractPipelineLayout).unwrap();
-                let (bloom_shader, fs_shader) =
-                    get_all_shaders!(shader_manager, bloom_extract_handle, fs_shader).unwrap();
 
                 mk_pipeline(
                     "Bloom extract render pipeline",
                     device,
                     &epl.0,
                     fsq.vertex_format,
-                    &fs_shader,
-                    &bloom_shader,
+                    &modules.vertex,
+                    &modules.fragment,
                 )
             }),
         );
