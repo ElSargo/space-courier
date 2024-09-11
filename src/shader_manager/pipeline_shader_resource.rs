@@ -1,31 +1,23 @@
+use std::ops::Deref;
+
 use crate::shader_manager::ShaderHandle;
-use anymap::AnyMap;
-use wgpu::{Device, ShaderModule};
+use bevy_ecs::{
+    system::{Resource, SystemId},
+    world::World,
+};
+use wgpu::{Device, PipelineCacheDescriptor, ShaderModule};
+use winit::monitor;
 
 // Traits
-pub trait PipelineModuleDescriptor<const NUM_MODULES: usize, PipelineType> {
-    type OutputReasorce<'a>: From<[&'a ShaderModule; NUM_MODULES]>;
-    type Constructor: PipelineConstructor<PipelineType>;
-
+pub trait PipelineModuleDescriptor<const NUM_MODULES: usize, PipelineType, OutputResource> {
     fn as_arr(&self) -> [ShaderHandle; NUM_MODULES];
-
     fn constructor(
-        constructor: Box<
-            dyn for<'a, 'b, 'c> Fn(
-                &'a AnyMap,
-                &'b Device,
-                Self::OutputReasorce<'c>,
-            ) -> PipelineType,
-        >,
-    ) -> Box<Self::Constructor>;
+        id: SystemId<OutputResource, PipelineType>,
+    ) -> impl PipelineConstructor<'static, PipelineType>;
 }
-pub trait PipelineConstructor<PipelineType> {
-    fn construct(
-        &mut self,
-        moduels: &[&ShaderModule],
-        map: &AnyMap,
-        device: &Device,
-    ) -> PipelineType;
+
+pub trait PipelineConstructor<'b, PipelineType> {
+    fn construct(&mut self, moduels: &[&ShaderModule], rr: &World) -> PipelineType;
 }
 
 // Split pipeline ( different vert and frag moduels )
@@ -37,8 +29,9 @@ pub struct SplitPipelineModuleResource<'a> {
     pub vertex: &'a ShaderModule,
     pub fragment: &'a ShaderModule,
 }
-pub struct SplitPipelineConstructor<PipelineType> {
-    constructor: Box<dyn Fn(&AnyMap, &Device, SplitPipelineModuleResource) -> PipelineType>,
+
+pub struct SplitPipelineConstructor<'a, PipelineType> {
+    system_id: SystemId<SplitPipelineModuleResource<'a>, PipelineType>,
 }
 
 impl<'a> From<[&'a ShaderModule; 2]> for SplitPipelineModuleResource<'a> {
@@ -50,14 +43,15 @@ impl<'a> From<[&'a ShaderModule; 2]> for SplitPipelineModuleResource<'a> {
     }
 }
 
-impl<PipelineType> PipelineModuleDescriptor<2, PipelineType> for SplitPipelineModuleDescriptor {
-    type OutputReasorce<'a> = SplitPipelineModuleResource<'a>;
-    type Constructor = SplitPipelineConstructor<PipelineType>;
+impl<'a, PipelineType> PipelineModuleDescriptor<2, PipelineType, SplitPipelineModuleResource<'a>>
+    for SplitPipelineModuleDescriptor
+{
+    // type <'a> = SplitPipelineModuleResource<'a>;
 
     fn constructor(
-        constructor: Box<dyn Fn(&AnyMap, &Device, Self::OutputReasorce<'_>) -> PipelineType>,
-    ) -> Box<Self::Constructor> {
-        Box::new(Self::Constructor { constructor })
+        system_id: SystemId<SplitPipelineModuleResource<'a>, PipelineType>,
+    ) -> SplitPipelineConstructor<'_, PipelineType> {
+        SplitPipelineConstructor { system_id }
     }
 
     fn as_arr(&self) -> [ShaderHandle; 2] {
@@ -65,19 +59,18 @@ impl<PipelineType> PipelineModuleDescriptor<2, PipelineType> for SplitPipelineMo
     }
 }
 
-impl<PipelineType> PipelineConstructor<PipelineType> for SplitPipelineConstructor<PipelineType> {
-    fn construct(
-        &mut self,
-        moduels: &[&ShaderModule],
-        map: &AnyMap,
-        device: &Device,
-    ) -> PipelineType {
-        let res = SplitPipelineModuleResource {
-            vertex: moduels[0],
-            fragment: moduels[1],
-        };
-
-        (self.constructor)(map, device, res)
+impl<PipelineType> PipelineConstructor<'_, PipelineType>
+    for SplitPipelineConstructor<'_, PipelineType>
+{
+    fn construct(&mut self, moduels: &[&ShaderModule], rr: &World) -> PipelineType {
+        rr.run_system_with_input(
+            self.system_id,
+            SplitPipelineModuleResource {
+                vertex: moduels[0],
+                fragment: moduels[1],
+            },
+        )
+        .unwrap()
     }
 }
 
@@ -87,33 +80,24 @@ pub struct UnifiedPipelineModuleDescriptor {
     pub handle: ShaderHandle,
 }
 
-pub struct UnifiedPipelineModuleResorce<'a> {
+#[derive(Resource)]
+pub struct UnifiedPipelineModuleResource<'a> {
     pub module: &'a ShaderModule,
 }
 
-pub struct UnifiedPipelineConstructor<PipelineType> {
-    constructor: Box<dyn Fn(&AnyMap, &Device, UnifiedPipelineModuleResorce<'_>) -> PipelineType>,
-}
-impl Into<[ShaderHandle; 1]> for UnifiedPipelineModuleDescriptor {
-    fn into(self) -> [ShaderHandle; 1] {
-        [self.handle]
-    }
+pub struct UnifiedPipelineConstructor<'a, PipelineType> {
+    system_id: SystemId<UnifiedPipelineModuleResource<'a>, PipelineType>,
 }
 
-impl<'a> From<[&'a ShaderModule; 1]> for UnifiedPipelineModuleResorce<'a> {
-    fn from(value: [&'a ShaderModule; 1]) -> Self {
-        Self { module: value[0] }
-    }
-}
-
-impl<PipelineType> PipelineModuleDescriptor<1, PipelineType> for UnifiedPipelineModuleDescriptor {
-    type OutputReasorce<'a> = UnifiedPipelineModuleResorce<'a>;
-    type Constructor = UnifiedPipelineConstructor<PipelineType>;
+impl<'a, PipelineType> PipelineModuleDescriptor<1, PipelineType, UnifiedPipelineModuleResource<'a>>
+    for UnifiedPipelineModuleDescriptor
+{
+    // type <'a> = UnifiedPipelineModuleResource<'a>;
 
     fn constructor(
-        constructor: Box<dyn Fn(&AnyMap, &Device, Self::OutputReasorce<'_>) -> PipelineType>,
-    ) -> Box<Self::Constructor> {
-        Box::new(Self::Constructor { constructor })
+        system_id: SystemId<UnifiedPipelineModuleResource<'a>, PipelineType>,
+    ) -> UnifiedPipelineConstructor<'_, PipelineType> {
+        UnifiedPipelineConstructor { system_id }
     }
 
     fn as_arr(&self) -> [ShaderHandle; 1] {
@@ -121,19 +105,19 @@ impl<PipelineType> PipelineModuleDescriptor<1, PipelineType> for UnifiedPipeline
     }
 }
 
-impl<PipelineType> PipelineConstructor<PipelineType> for UnifiedPipelineConstructor<PipelineType> {
-    fn construct(
-        &mut self,
-        moduels: &[&ShaderModule],
-        map: &AnyMap,
-        device: &Device,
-    ) -> PipelineType {
-        let res = UnifiedPipelineModuleResorce { module: moduels[0] };
-        (self.constructor)(map, device, res)
+impl<PipelineType> PipelineConstructor<'_, PipelineType>
+    for UnifiedPipelineConstructor<'_, PipelineType>
+{
+    fn construct(&mut self, moduels: &[&ShaderModule], rr: &World) -> PipelineType {
+        rr.run_system_with_input(
+            self.system_id,
+            UnifiedPipelineModuleResource { module: moduels[0] },
+        )
+        .unwrap()
     }
 }
 
-impl std::ops::Deref for UnifiedPipelineModuleResorce<'_> {
+impl Deref for UnifiedPipelineModuleResource<'_> {
     type Target = ShaderModule;
 
     fn deref(&self) -> &Self::Target {

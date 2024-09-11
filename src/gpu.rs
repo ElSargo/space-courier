@@ -1,13 +1,32 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use bevy_ecs::system::Resource;
 use wgpu::{util::DeviceExt, BufferDescriptor, BufferUsages, Device, Queue};
 
 #[derive(Resource, Clone)]
-pub struct Gpu {
-    pub device: Arc<wgpu::Device>,
-    pub queue: Arc<wgpu::Queue>,
+pub struct DeviceRes(pub Arc<wgpu::Device>);
+
+impl Deref for DeviceRes {
+    type Target = Device;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
+
+#[derive(Resource, Clone)]
+pub struct QueueRes(pub Arc<wgpu::Queue>);
+
+impl Deref for QueueRes {
+    type Target = Queue;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Resource, Clone)]
+pub struct SurfaceConfRes(pub Arc<wgpu::SurfaceConfiguration>);
 
 pub struct InstanceBufferDescriptor {
     pub label: Option<String>,

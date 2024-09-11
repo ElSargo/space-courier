@@ -5,7 +5,7 @@ use bevy_ecs::{
     system::Resource,
 };
 use gilrs::Gilrs;
-use winit::event::VirtualKeyCode;
+use winit::keyboard::Key;
 
 use crate::ecs::Ecs;
 
@@ -25,7 +25,7 @@ enum KeyState {
 
 #[derive(Resource)]
 pub struct ButtonInput {
-    data: HashMap<VirtualKeyCode, KeyState>,
+    data: HashMap<Key, KeyState>,
 }
 
 #[allow(dead_code)]
@@ -36,7 +36,7 @@ impl ButtonInput {
         }
     }
 
-    pub fn on_key_down(&mut self, key: VirtualKeyCode) {
+    pub fn on_key_down(&mut self, key: Key) {
         let key_state = self.data.entry(key).or_insert(KeyState::JustDown);
         match key_state {
             KeyState::Down | KeyState::JustDown => {}
@@ -46,7 +46,7 @@ impl ButtonInput {
         };
     }
 
-    pub fn on_key_up(&mut self, key: VirtualKeyCode) {
+    pub fn on_key_up(&mut self, key: Key) {
         let key_state = self.data.entry(key).or_insert(KeyState::JustUp);
         match key_state {
             KeyState::Up | KeyState::JustUp => {}
@@ -56,21 +56,21 @@ impl ButtonInput {
         };
     }
 
-    pub fn is_down(&self, key: VirtualKeyCode) -> bool {
+    pub fn is_down(&self, key: Key) -> bool {
         match self.data.get(&key) {
             Some(KeyState::JustDown | KeyState::Down) => true,
             _ => false,
         }
     }
 
-    pub fn just_down(&self, key: VirtualKeyCode) -> bool {
+    pub fn just_down(&self, key: Key) -> bool {
         match self.data.get(&key) {
             Some(KeyState::JustDown) => true,
             _ => false,
         }
     }
 
-    pub fn just_up(&self, key: VirtualKeyCode) -> bool {
+    pub fn just_up(&self, key: Key) -> bool {
         match self.data.get(&key) {
             Some(KeyState::JustUp) => true,
             _ => false,

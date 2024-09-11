@@ -1,25 +1,30 @@
+use crate::shader_manager::UnifiedPipelineModuleResource;
+use crate::DeviceRes;
+use crate::QueueRes;
+use crate::TextureBindGroupLayout;
+use bevy_ecs::prelude::Res;
+use bevy_ecs::system::Commands;
+use bevy_ecs::system::In;
 use std::sync::{Arc, Mutex};
 
 use anymap::AnyMap;
 use bevy_ecs::{
     component::Component,
     query::With,
-    system::{Query, Res, Resource},
+    system::{Query, Resource},
 };
 use glam::Vec3;
-use wgpu::{BindGroupLayout, Device};
+use wgpu::Device;
 
 use crate::{
     camera::{Camera, CameraUniform},
     ecs::Ecs,
     get_all,
-    gpu::{Gpu, InstanceBuffer},
+    gpu::InstanceBuffer,
     instance_buffer_bytes, mk_pipeline, mk_pipeline_layout,
     model::Model,
     resources,
-    shader_manager::{
-        PipelineHandle, ShaderManager, ShaderStorage, UnifiedPipelineModuleDescriptor,
-    },
+    shader_manager::{PipelineHandle, ShaderManagerCtrl, UnifiedPipelineModuleDescriptor},
     transform::Transform,
     RawInstance,
 };
@@ -30,15 +35,17 @@ pub fn update_instance_buffer(
     camera: Res<Camera>,
     transforms: Query<&Transform, With<Sun>>,
     ib: Res<SunIB>,
-    gpu: Res<Gpu>,
+    devicedevice Res<DeviceRes>,
+    QueueRes(queue): Res<QueueRes>,
     // ship_data: ResMut<ShipGpuResources>,
 ) {
     let ship_bytes = instance_buffer_bytes(transforms.iter(), camera.eye);
     ib.0.lock()
         .unwrap()
-        .write(&gpu.device, &ship_bytes.as_slice(), &gpu.queue);
+        .write(&device, &ship_bytes.as_slice(), &queue);
 }
 
+#[derive(Resource)]
 pub struct SunRenderReasources {
     pub sun_transform_instance_buffer: Arc<Mutex<InstanceBuffer>>,
     pub sun_render_pipeline: PipelineHandle,
@@ -51,20 +58,23 @@ pub struct SunIB(Arc<Mutex<InstanceBuffer>>);
 #[derive(Component)]
 pub struct Sun;
 
-pub async fn init(
+pub fn init(
     ecs: &mut Ecs,
-    render_stuff: &mut AnyMap,
-    shader_manager: &mut ShaderManager,
-    gpu: &Gpu,
-    texture_bind_group_layout: &BindGroupLayout,
+    // DeviceRes(device): Res<DeviceRes>,
+    device: Res<DeviceRes>,
+    QueueRes(queue): Res<QueueRes>,
+    shader_manager: Res<ShaderManagerCtrl>,
+    texture_bind_group_layout: Res<TextureBindGroupLayout>,
+    cgs: Res<CameraUniform>,
+    commands: Commands,
 ) {
     let sun_model = resources::load_model(
         "wallmart.obj",
-        &gpu.device,
-        &gpu.queue,
-        &texture_bind_group_layout,
+        &device,
+        &queue,
+        &texture_bind_group_layout.0,
     )
-    .await
+    .block_on()
     .unwrap();
 
     // let sun_transforms = vec![];
@@ -89,32 +99,31 @@ pub async fn init(
         Arc::new(Mutex::new(InstanceBuffer::new_init::<RawInstance>(
             Some("Sun instance Buffer".to_owned()),
             wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            &gpu.device,
+            &device,
             // bytemuck::cast_slice(&sun_transform_buffer_data),
             &[],
         )));
 
     let layout = {
-        let (cgs,) = get_all!(render_stuff, CameraUniform).unwrap();
         Box::leak(Box::new(mk_pipeline_layout(
-            &gpu.device,
+            &device,
             "Sun",
-            &[&cgs.inner.bind_group_layout, &texture_bind_group_layout],
+            &[&cgs.inner.bind_group_layout, &texture_bind_group_layout.0],
         )))
     };
 
     ecs.world
         .insert_resource(SunIB(sun_transform_instance_buffer.clone()));
-    render_stuff.insert({
+    commands.insert_resource({
         let sun_shader = shader_manager.load_shader("./src/sun.wgsl");
 
         SunRenderReasources {
             sun_transform_instance_buffer,
             sun_render_pipeline: shader_manager.add_render_pipeline(
                 UnifiedPipelineModuleDescriptor { handle: sun_shader },
-                Box::new(move |_rr: &AnyMap, device: &Device, module| {
-                    mk_pipeline(device, &layout, None, &module, "sun", RawInstance::desc())
-                }),
+                |In(module): In<UnifiedPipelineModuleResource>, device: Res<DeviceRes>| {
+                    mk_pipeline(&device, &layout, None, &module, "sun", RawInstance::desc())
+                },
             ),
             sun_model,
         }

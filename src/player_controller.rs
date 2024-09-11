@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::{
     camera::Camera,
     ecs::Ecs,
@@ -19,7 +17,7 @@ use bevy_ecs::{
 };
 
 use glam::{vec2, vec3, Quat, Vec2, Vec3};
-use winit::event::VirtualKeyCode;
+use winit::keyboard::Key;
 
 #[derive(Debug, Component)]
 pub struct PlayerControllerUpright {
@@ -56,10 +54,10 @@ pub fn update<'a>(
     // camera.eye += gravity;
     // camera.target += gravity;
 
-    if kb.is_down(VirtualKeyCode::W) {
+    if kb.is_down(Key::W) {
         player_controller.momentum += player_controller.speed * time.delta_seconds
     }
-    if kb.is_down(VirtualKeyCode::S) {
+    if kb.is_down(Key::S) {
         player_controller.momentum *= 0.95
     }
     let camera_displacement_factor = 0.04;
@@ -165,10 +163,10 @@ pub fn update_upright_player_controller<'a>(
     // camera.eye += gravity;
     // camera.target += gravity;
 
-    if kb.is_down(VirtualKeyCode::W) {
+    if kb.is_down(Key::W) {
         player_controller.momentum += player_controller.speed * time.delta_seconds
     }
-    if kb.is_down(VirtualKeyCode::S) {
+    if kb.is_down(Key::S) {
         player_controller.momentum *= 0.95
     }
     let camera_displacement_factor = 0.04;

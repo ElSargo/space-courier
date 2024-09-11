@@ -14,7 +14,7 @@ use crate::{
     background::Background,
     camera::CameraUniform,
     get_all,
-    gpu::{Gpu, InstanceBuffer, InstanceBufferDescriptor},
+    gpu::{InstanceBuffer, InstanceBufferDescriptor},
     shader_manager::{
         PipelineHandle, ShaderHandle, ShaderManager, UnifiedPipelineModuleDescriptor,
     },
@@ -236,10 +236,12 @@ pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("Tri mesh render pipeline"),
                 layout: Some(&pipeline_layout),
+                cache: None,
                 vertex: VertexState {
                     module: &module,
                     entry_point: "vs_main",
                     buffers: &[Vertex::desc(), RawInstance::desc()],
+                    compilation_options: Default::default(),
                 },
                 fragment: Some(FragmentState {
                     module: &module,
@@ -250,6 +252,7 @@ pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device
                         blend: Some(wgpu::BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
+                    ..Default::default()
                 }),
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: texture::Texture::DEPTH_FORMAT,

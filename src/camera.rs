@@ -1,14 +1,16 @@
-use bevy_ecs::system::{Res, ResMut, Resource};
+use bevy_ecs::system::{Commands, Res, ResMut, Resource};
 use glam::{vec3, Mat4, Vec3, Vec4};
 use wgpu::{util::DeviceExt, Queue};
 
 use std::{
-    cell::RefCell,
     default::Default,
     sync::{Arc, Mutex},
 };
 
-use crate::gpu::Gpu;
+use crate::{
+    ecs::Ecs,
+    gpu::{DeviceRes, QueueRes, SurfaceConfRes},
+};
 
 #[derive(Resource)]
 pub struct Camera {
@@ -157,8 +159,34 @@ impl CameraUniform {
     }
 }
 
-pub fn update_camera(camera_uniform: ResMut<CameraUniform>, camera: Res<Camera>, gpu: Res<Gpu>) {
+pub fn update_camera(
+    camera_uniform: ResMut<CameraUniform>,
+    camera: Res<Camera>,
+    QueueRes(queue): Res<QueueRes>,
+) {
     {
-        camera_uniform.update(&camera, &gpu.queue);
+        camera_uniform.update(&camera, &queue);
     }
+}
+
+pub fn init(ecs: &mut Ecs) {
+    ecs.init.add_systems(
+        |SurfaceConfRes(config): Res<SurfaceConfRes>,
+         DeviceRes(device): Res<DeviceRes>,
+         commands: Commands| {
+            let camera = Camera {
+                aspect: config.width as f32 / config.height as f32,
+                eye: vec3(0.0, 0.0, -200.0),
+                target: Vec3::ZERO,
+                ..Default::default()
+            };
+
+            let cam = CameraUniform::setup(&camera, &device);
+
+            commands.insert_resource(cam.clone());
+            ecs.world.insert_resource(cam);
+        },
+    );
+
+    ecs.extract.add_systems(update_camera);
 }

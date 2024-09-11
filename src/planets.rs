@@ -11,11 +11,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 use wgpu::BindGroupLayout;
+use winit::keyboard::Key;
 
 use crate::{
     camera::Camera,
     ecs::Ecs,
-    gpu::{Gpu, InstanceBuffer},
+    gpu::{DeviceRes, InstanceBuffer, QueueRes},
     gravity::G,
     input::ButtonInput,
     instance_buffer_bytes,
@@ -34,9 +35,10 @@ pub struct Planet {
     pub mass: f32,
 }
 
-pub async fn init(
+pub fn init(
     ecs: &mut Ecs,
-    gpu: &Gpu,
+    devicedevice Res<DeviceRes>,
+    QueueRes(queue): Res<QueueRes>,
     texture_bind_group_layout: &BindGroupLayout,
     ib: Arc<Mutex<InstanceBuffer>>,
 ) {
@@ -48,14 +50,9 @@ pub async fn init(
 
     ecs.world.insert_resource(PlanetGpuData {
         instance_buffer: ib,
-        model: resources::load_model(
-            "wallmart.obj",
-            &gpu.device,
-            &gpu.queue,
-            &texture_bind_group_layout,
-        )
-        .await
-        .unwrap(),
+        model: resources::load_model("wallmart.obj", &device, &queue, &texture_bind_group_layout)
+            .block_on()
+            .unwrap(),
     })
 
     // planets.scales[1] = Vec3::ONE;
@@ -66,7 +63,7 @@ fn remake_planets(
     planets: Query<Entity, With<Planet>>,
     mut commands: Commands,
 ) {
-    if kb.just_down(winit::event::VirtualKeyCode::R) {
+    if kb.just_down(Key::R) {
         for e in planets.iter() {
             commands.entity(e).despawn();
         }
@@ -75,7 +72,7 @@ fn remake_planets(
 }
 
 fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
-    if kb.is_down(winit::event::VirtualKeyCode::L) {
+    if kb.is_down(Key::L) {
         let mut rng = thread_rng();
         make_planet(&mut rng, &mut commands);
     }
@@ -149,8 +146,9 @@ pub struct PlanetGpuData {
 pub fn update_instance_buffer(
     camera: Res<Camera>,
     transforms: Query<&Transform, With<Planet>>,
-    gpu: Res<Gpu>,
     planet_data: ResMut<PlanetGpuData>,
+    DeviceRes(device): Res<DeviceRes>,
+    QueueRes(queue): Res<QueueRes>,
 ) {
     {
         let planet_instances = instance_buffer_bytes(
@@ -162,7 +160,7 @@ pub fn update_instance_buffer(
             .instance_buffer
             .lock()
             .expect("Couldn't lock buffer")
-            .write(&gpu.device, &planet_instances.as_slice(), &gpu.queue);
+            .write(&device, &planet_instances.as_slice(), &queue);
     }
     // let i = transforms.iter();
     // println!("{:#?}", i.size_hint());

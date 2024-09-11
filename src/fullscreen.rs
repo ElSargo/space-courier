@@ -1,3 +1,4 @@
+use bevy_ecs::system::Resource;
 use bytemuck::cast_slice;
 use std::mem::size_of;
 
@@ -43,6 +44,7 @@ impl Vertex {
     }
 }
 
+#[derive(Resource)]
 pub struct FullscreenQuad {
     pub mesh_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,

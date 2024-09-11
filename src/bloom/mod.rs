@@ -1,4 +1,8 @@
 use anymap::AnyMap;
+use bevy_ecs::{
+    system::{Commands, In, Res, Resource},
+    world::World,
+};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, Color, Device,
@@ -11,9 +15,11 @@ use crate::{
     camera::CameraUniform,
     fullscreen::FullscreenQuad,
     get_all,
-    gpu::Gpu,
+    gpu::{DeviceRes, QueueRes, SurfaceConfRes},
     idx_all, load_shader,
-    shader_manager::{PipelineHandle, ShaderManager, SplitPipelineModuleDescriptor},
+    shader_manager::{
+        PipelineHandle, ShaderManager, SplitPipelineModuleDescriptor, SplitPipelineModuleResource,
+    },
     ViewTextureReasources,
 };
 
@@ -52,235 +58,6 @@ pub struct Bloom {
 }
 
 impl BloomReasoruces {
-    pub fn init(
-        gpu: &Gpu,
-        config: &SurfaceConfiguration,
-        rr: &mut AnyMap,
-        shader_manager: &mut ShaderManager,
-    ) {
-        let bind_group_layout = gpu
-            .device
-            .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("Bloom bind group layout"),
-                entries: &[
-                    BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-
-        // struct BloomPipelineLayout {
-        //     layout: PipelineLayout,
-        // }
-
-        // let (Background {
-        //     texture_cube_bind_group_layout,
-        //     ..
-        // },) = get_all!(rr, Background).unwrap();
-        // let blay = BloomPipelineLayout {
-        //     layout: gpu
-        //         .device
-        //         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        //             label: Some("bloom pipline layout"),
-        //             bind_group_layouts: &[&bind_group_layout],
-        //             push_constant_ranges: &[],
-        //         }),
-        // };
-
-        // rr.insert(blay);
-
-        let sampler_bind_group_layout =
-            gpu.device
-                .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: Some("Bloom sampler bind group layout"),
-                    entries: &[BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    }],
-                });
-
-        let texture_bind_group_layout =
-            gpu.device
-                .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: Some("Bloom texture bind group layout"),
-                    entries: &[BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    }],
-                });
-
-        let fs_shader = rr.get::<FullscreenQuad>().unwrap().shader_handle;
-
-        let down_pipeline = {
-            let bloom_down_handle = load_shader!(shader_manager, "bloom_down.wgsl");
-            struct DownPipelineLayout(PipelineLayout);
-            rr.insert(DownPipelineLayout(gpu.device.create_pipeline_layout(
-                &wgpu::PipelineLayoutDescriptor {
-                    label: Some("Bloom down render pipeline layout"),
-                    bind_group_layouts: &[&sampler_bind_group_layout, &texture_bind_group_layout],
-                    push_constant_ranges: &[],
-                },
-            )));
-            shader_manager.add_render_pipeline(
-                SplitPipelineModuleDescriptor {
-                    vertex: fs_shader,
-                    fragment: bloom_down_handle,
-                },
-                Box::new(move |rr, device, modules| {
-                    let (fsq, dpl) = get_all!(rr, FullscreenQuad, DownPipelineLayout).unwrap();
-
-                    mk_pipeline(
-                        "Bloom down render pipeline",
-                        device,
-                        &dpl.0,
-                        fsq.vertex_format,
-                        &modules.vertex,
-                        &modules.fragment,
-                    )
-                }),
-            )
-        };
-        let up_pipeline = {
-            let bloom_up_handle = load_shader!(shader_manager, "bloom_up.wgsl");
-            struct UpPipelineLayout(PipelineLayout);
-            rr.insert(UpPipelineLayout(gpu.device.create_pipeline_layout(
-                &wgpu::PipelineLayoutDescriptor {
-                    label: Some("Bloom up render pipeline layout"),
-                    bind_group_layouts: &[
-                        &sampler_bind_group_layout,
-                        &texture_bind_group_layout,
-                        &texture_bind_group_layout,
-                    ],
-                    push_constant_ranges: &[],
-                },
-            )));
-
-            shader_manager.add_render_pipeline(
-                SplitPipelineModuleDescriptor {
-                    vertex: fs_shader,
-                    fragment: bloom_up_handle,
-                },
-                Box::new(move |rr, device, modules| {
-                    let (fsq, upl) = get_all!(rr, FullscreenQuad, UpPipelineLayout).unwrap();
-
-                    mk_pipeline(
-                        "Bloom up render pipeline",
-                        device,
-                        &upl.0,
-                        fsq.vertex_format,
-                        &modules.vertex,
-                        &modules.fragment,
-                    )
-                }),
-            )
-        };
-        let extract_bind_group_layout = extract_bind_group_layout_name(gpu);
-        let bloom_extract_handle = load_shader!(shader_manager, "bloom_extract.wgsl");
-        struct ExtractPipelineLayout(PipelineLayout);
-        rr.insert(ExtractPipelineLayout(gpu.device.create_pipeline_layout(
-            &wgpu::PipelineLayoutDescriptor {
-                label: Some("Bloom extract render pipeline layout"),
-                bind_group_layouts: &[&extract_bind_group_layout],
-                push_constant_ranges: &[],
-            },
-        )));
-
-        let extract_pipeline = shader_manager.add_render_pipeline(
-            SplitPipelineModuleDescriptor {
-                vertex: fs_shader,
-                fragment: bloom_extract_handle,
-            },
-            Box::new(move |rr, device, modules| {
-                let (fsq, epl) = get_all!(rr, FullscreenQuad, ExtractPipelineLayout).unwrap();
-
-                mk_pipeline(
-                    "Bloom extract render pipeline",
-                    device,
-                    &epl.0,
-                    fsq.vertex_format,
-                    &modules.vertex,
-                    &modules.fragment,
-                )
-            }),
-        );
-
-        let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some(&format!("Bloom sampler")),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            compare: None, // 5.
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 100.0,
-            ..Default::default()
-        });
-
-        let sampler_bind_group = gpu.device.create_bind_group(&BindGroupDescriptor {
-            label: Some("Bloom sampler bind group"),
-            layout: &sampler_bind_group_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Sampler(&sampler),
-            }],
-        });
-
-        let threshold_buffer = gpu.device.create_buffer(&BufferDescriptor {
-            label: Some("Threshold buffer"),
-            size: std::mem::size_of::<f32>() as u64,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let bloom_reasources = Self {
-            threshold_buffer,
-            down_pipeline,
-            up_pipeline,
-            sampler,
-            sampler_bind_group,
-            texture_bind_group_layout,
-            extract_pipeline,
-            extract_bind_group_layout,
-        };
-
-        let threshold: f32 = 1.0;
-        bloom_reasources.update_threshold(&gpu.queue, threshold);
-        rr.insert(bloom_reasources);
-    }
-
     fn update_threshold(&self, queue: &wgpu::Queue, threshold: f32) {
         queue.write_buffer(&self.threshold_buffer, 0, &threshold.to_ne_bytes());
     }
@@ -482,64 +259,63 @@ fn create_extract_bind_group(
     })
 }
 
-fn extract_bind_group_layout_name(gpu: &Gpu) -> wgpu::BindGroupLayout {
-    gpu.device
-        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            // @group(0) @binding(0) var color_sampler: sampler;
-            // @group(0) @binding(1) var<uniform> threshold: f32;
-            // @group(0) @binding(2) var background: texture_cube<f32>;
-            // @group(0) @binding(3) var color_texture: texture_2d<f32>;
-            // @group(0) @binding(4) var<uniform> camera: Camera;
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
+fn extract_bind_group_layout_name(DeviceRes(device): DeviceRes) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        // @group(0) @binding(0) var color_sampler: sampler;
+        // @group(0) @binding(1) var<uniform> threshold: f32;
+        // @group(0) @binding(2) var background: texture_cube<f32>;
+        // @group(0) @binding(3) var color_texture: texture_2d<f32>;
+        // @group(0) @binding(4) var<uniform> camera: Camera;
+        entries: &[
+            BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            BindGroupLayoutEntry {
+                binding: 1,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
                 },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
+                count: None,
+            },
+            BindGroupLayoutEntry {
+                binding: 2,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::Cube,
+                    multisampled: false,
                 },
-                BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::Cube,
-                        multisampled: false,
-                    },
-                    count: None,
+                count: None,
+            },
+            BindGroupLayoutEntry {
+                binding: 3,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
                 },
-                BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
+                count: None,
+            },
+            BindGroupLayoutEntry {
+                binding: 4,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
                 },
-                BindGroupLayoutEntry {
-                    binding: 4,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-            label: Some("Bloom extract bind group lauout"),
-        })
+                count: None,
+            },
+        ],
+        label: Some("Bloom extract bind group lauout"),
+    })
 }
 
 fn mk_pipeline(
@@ -557,9 +333,11 @@ fn mk_pipeline(
             module: fullscreen_shader,
             entry_point: "vs_main",
             buffers: vertex_layout,
+            compilation_options: Default::default(),
         },
         fragment: Some(wgpu::FragmentState {
             // 3.
+            compilation_options: Default::default(),
             module: &bloom_shader,
             entry_point: "fs_main",
             targets: &[Some(wgpu::ColorTargetState {
@@ -588,7 +366,8 @@ fn mk_pipeline(
             mask: !0,                         // 3.
             alpha_to_coverage_enabled: false, // 4.
         },
-        multiview: None, // 5.
+        multiview: None,
+        cache: None, // 5.
     })
 }
 
@@ -682,4 +461,238 @@ pub fn draw_bloom(
     Some(())
     // .for_each(|((view, self_texture), prev_texture)| {
     // });
+}
+
+pub fn init(
+    DeviceRes(device): Res<DeviceRes>,
+    QueueRes(queue): Res<QueueRes>,
+    SurfaceConfRes(config): Res<SurfaceConfRes>,
+    FullscreenQuad {
+        shader_handle: fs_shader,
+        ..
+    }: Res<FullscreenQuad>,
+
+    commands: Commands,
+    shader_manager: &mut ShaderManager,
+) {
+    let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("Bloom bind group layout"),
+        entries: &[
+            BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            BindGroupLayoutEntry {
+                binding: 1,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            BindGroupLayoutEntry {
+                binding: 2,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    // struct BloomPipelineLayout {
+    //     layout: PipelineLayout,
+    // }
+
+    // let (Background {
+    //     texture_cube_bind_group_layout,
+    //     ..
+    // },) = get_all!(rr, Background).unwrap();
+    // let blay = BloomPipelineLayout {
+    //     layout: gpu
+    //         .device
+    //         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+    //             label: Some("bloom pipline layout"),
+    //             bind_group_layouts: &[&bind_group_layout],
+    //             push_constant_ranges: &[],
+    //         }),
+    // };
+
+    // rr.insert(blay);
+
+    let sampler_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("Bloom sampler bind group layout"),
+        entries: &[BindGroupLayoutEntry {
+            binding: 0,
+            visibility: ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        }],
+    });
+
+    let texture_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("Bloom texture bind group layout"),
+        entries: &[BindGroupLayoutEntry {
+            binding: 0,
+            visibility: ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        }],
+    });
+
+    let down_pipeline = {
+        let bloom_down_handle = load_shader!(shader_manager, "bloom_down.wgsl");
+        #[derive(Resource)]
+        struct DownPipelineLayout(PipelineLayout);
+        commands.insert_resource(DownPipelineLayout(device.create_pipeline_layout(
+            &wgpu::PipelineLayoutDescriptor {
+                label: Some("Bloom down render pipeline layout"),
+                bind_group_layouts: &[&sampler_bind_group_layout, &texture_bind_group_layout],
+                push_constant_ranges: &[],
+            },
+        )));
+        shader_manager.add_render_pipeline(
+            SplitPipelineModuleDescriptor {
+                vertex: fs_shader,
+                fragment: bloom_down_handle,
+            },
+            move |In(modules): In<SplitPipelineModuleResource>,
+                  DeviceRes(device): Res<DeviceRes>,
+                  fsq: Res<FullscreenQuad>,
+                  dpl: Res<DownPipelineLayout>| {
+                mk_pipeline(
+                    "Bloom down render pipeline",
+                    &device,
+                    &dpl.0,
+                    fsq.vertex_format,
+                    &modules.vertex,
+                    &modules.fragment,
+                )
+            },
+        )
+    };
+    let up_pipeline = {
+        let bloom_up_handle = load_shader!(shader_manager, "bloom_up.wgsl");
+        struct UpPipelineLayout(PipelineLayout);
+        commands.insert_resource(UpPipelineLayout(device.create_pipeline_layout(
+            &wgpu::PipelineLayoutDescriptor {
+                label: Some("Bloom up render pipeline layout"),
+                bind_group_layouts: &[
+                    &sampler_bind_group_layout,
+                    &texture_bind_group_layout,
+                    &texture_bind_group_layout,
+                ],
+                push_constant_ranges: &[],
+            },
+        )));
+
+        shader_manager.add_render_pipeline(
+            SplitPipelineModuleDescriptor {
+                vertex: fs_shader,
+                fragment: bloom_up_handle,
+            },
+            |In(SplitPipelineModuleResource { vertex, fragment }),
+             DeviceRes(device): Res<DeviceRes>,
+             fsq: Res<FullscreenQuad>,
+             upl: Res<UpPipelineLayout>| {
+                mk_pipeline(
+                    "Bloom up render pipeline",
+                    &device,
+                    &upl.0,
+                    fsq.vertex_format,
+                    vertex,
+                    fragment,
+                )
+            },
+        )
+    };
+    let extract_bind_group_layout = extract_bind_group_layout_name(device);
+    let bloom_extract_handle = load_shader!(shader_manager, "bloom_extract.wgsl");
+    struct ExtractPipelineLayout(PipelineLayout);
+    commands.insert_resource(ExtractPipelineLayout(device.create_pipeline_layout(
+        &wgpu::PipelineLayoutDescriptor {
+            label: Some("Bloom extract render pipeline layout"),
+            bind_group_layouts: &[&extract_bind_group_layout],
+            push_constant_ranges: &[],
+        },
+    )));
+
+    let extract_pipeline = shader_manager.add_render_pipeline(
+        SplitPipelineModuleDescriptor {
+            vertex: fs_shader,
+            fragment: bloom_extract_handle,
+        },
+        |In(SplitPipelineModuleDescriptor { vertex, fragment }),
+         fsq: Res<FullscreenQuad>,
+         epl: Res<ExtractPipelineLayout>,
+         DeviceRes(device): Res<DeviceRes>| {
+            // Box::new(move |rr, device, modules| {
+            //     let (fsq, epl) = get_all!(rr, FullscreenQuad, ExtractPipelineLayout).unwrap();
+
+            mk_pipeline(
+                "Bloom extract render pipeline",
+                &device,
+                &epl.0,
+                fsq.vertex_format,
+                &vertex,
+                &fragment,
+            )
+        },
+    );
+
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some(&format!("Bloom sampler")),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        compare: None, // 5.
+        lod_min_clamp: 0.0,
+        lod_max_clamp: 100.0,
+        ..Default::default()
+    });
+
+    let sampler_bind_group = device.create_bind_group(&BindGroupDescriptor {
+        label: Some("Bloom sampler bind group"),
+        layout: &sampler_bind_group_layout,
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Sampler(&sampler),
+        }],
+    });
+
+    let threshold_buffer = device.create_buffer(&BufferDescriptor {
+        label: Some("Threshold buffer"),
+        size: std::mem::size_of::<f32>() as u64,
+        usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    let bloom_reasources = BloomReasoruces {
+        threshold_buffer,
+        down_pipeline,
+        up_pipeline,
+        sampler,
+        sampler_bind_group,
+        texture_bind_group_layout,
+        extract_pipeline,
+        extract_bind_group_layout,
+    };
+
+    let threshold: f32 = 1.0;
+    bloom_reasources.update_threshold(&queue, threshold);
+    commands.insert_resource(bloom_reasources);
 }
