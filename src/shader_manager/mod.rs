@@ -1,27 +1,29 @@
+use notify::Watcher;
 mod pipeline_shader_resource;
 use bevy_ecs::{
     system::{IntoSystem, Resource},
     world::World,
 };
+
 use notify::{
     event::{AccessMode, MetadataKind},
-    recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher,
+    recommended_watcher, Event, RecommendedWatcher, RecursiveMode,
 };
+use pollster::FutureExt;
 use rand::random;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
     os::unix::ffi::OsStrExt,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, RwLock, RwLockReadGuard},
 };
 
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-use tokio::sync::{
-    // mpsc::,
-    Mutex,
-};
-use wgpu::{ComputePipeline, Device, RenderPipeline, ShaderModule, ShaderModuleDescriptor};
+use parking_lot::Mutex;
+use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
 pub use self::pipeline_shader_resource::{
     PipelineConstructor, PipelineModuleDescriptor, SplitPipelineModuleDescriptor,
@@ -29,9 +31,10 @@ pub use self::pipeline_shader_resource::{
 };
 
 type Adder<PipelineType> =
-    Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &World) + Send + Sync>;
+    Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>;
+
 pub struct ShaderManager {
-    whatcher: Arc<tokio::sync::Mutex<RecommendedWatcher>>,
+    whatcher: Arc<Mutex<RecommendedWatcher>>,
     compile_queue_sender: Sender<(PathBuf, ShaderHandle)>,
     compiled_shaders_queue: Receiver<(ShaderModule, ShaderHandle)>,
     shaders: ShaderStorage,
@@ -46,27 +49,54 @@ pub struct ShaderManager {
 struct PipelineManager<PipelineType> {
     pipelines_requirements: BTreeMap<ShaderHandle, Vec<PipelineHandle>>,
     pipline_reasoureces: BTreeMap<PipelineHandle, Vec<ShaderHandle>>,
-    pipeline_connstructors:
-        BTreeMap<PipelineHandle, Box<dyn for<'a> PipelineConstructor<'a, PipelineType>>>,
-    pipelines: BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>,
+    pipeline_connstructors: BTreeMap<PipelineHandle, Box<dyn PipelineConstructor<PipelineType>>>,
+    pipelines: Arc<RwLock<BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>>,
     pipelines_to_init: BTreeSet<PipelineHandle>,
 }
 
 #[derive(Resource, Clone)]
 pub struct ShaderManagerCtrl {
-    whatcher: Arc<tokio::sync::Mutex<RecommendedWatcher>>,
+    whatcher: Arc<Mutex<RecommendedWatcher>>,
     compile_queue_sender: Sender<(PathBuf, ShaderHandle)>,
     compute_creation_queue: Sender<Adder<wgpu::ComputePipeline>>,
     render_creation_queue: Sender<Adder<wgpu::RenderPipeline>>,
 }
 
-impl<PipelineType> PipelineManager<PipelineType> {
-    fn new() -> Self {
+#[derive(Resource)]
+pub struct PipelinesView<PipelineType>(
+    Arc<RwLock<BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>>,
+);
+
+impl<T> Clone for PipelinesView<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+pub struct PipelineView<'a, PipelineType> {
+    guard: RwLockReadGuard<'a, BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>,
+    handle: PipelineHandle,
+}
+
+impl<'a, PipelineType> Deref for PipelineView<'a, PipelineType> {
+    type Target = PipelineType;
+
+    fn deref(&self) -> &Self::Target {
+        self.guard.get(&self.handle).map(|sp|&sp.render_pipeline).expect(
+            "\
+Pipeline dereferenced without being created, something is broken with the shader manager, 
+this shouldn't happen since the manager validates that the pipeline exists before returning the view"
+        )
+    }
+}
+
+impl<PipelineType: 'static> PipelineManager<PipelineType> {
+    fn new(pipelines: Arc<RwLock<BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>>) -> Self {
         Self {
             pipelines_requirements: BTreeMap::new(),
             pipelines_to_init: BTreeSet::new(),
 
-            pipelines: BTreeMap::new(),
+            pipelines,
 
             pipeline_connstructors: BTreeMap::new(),
 
@@ -76,15 +106,15 @@ impl<PipelineType> PipelineManager<PipelineType> {
 
     pub fn add_pipeline<
         const N: usize,
-        OutputResource,
+        OutputResource: 'static,
         R: PipelineModuleDescriptor<N, PipelineType, OutputResource> + Send + Sync,
         M,
     >(
         &mut self,
         res: R,
-        connstructor: impl IntoSystem<OutputResource, PipelineType, M>,
+        connstructor: impl IntoSystem<OutputResource, PipelineType, M> + 'static,
         pipeline_handle: PipelineHandle,
-        rr: &World,
+        rr: &mut World,
     ) {
         for shader_handle in res.as_arr() {
             self.pipelines_requirements
@@ -92,25 +122,29 @@ impl<PipelineType> PipelineManager<PipelineType> {
                 .or_insert(vec![])
                 .push(pipeline_handle)
         }
-        self.pipeline_connstructors.insert(
-            pipeline_handle,
-            Box::new(R::constructor(rr.register_system(connstructor))),
-        );
+        let sys = rr.register_system(connstructor);
+        self.pipeline_connstructors
+            .insert(pipeline_handle, Box::new(R::constructor(sys)));
         self.pipline_reasoureces
             .insert(pipeline_handle, res.as_arr().to_vec());
     }
 
-    pub fn get_pipeline(&self, pipeline_handle: &PipelineHandle) -> Option<&PipelineType> {
-        self.pipelines
-            .get(pipeline_handle)
-            .map(|sp| &sp.render_pipeline)
+    pub fn get_pipeline<'a>(
+        &'a self,
+        pipeline_handle: &PipelineHandle,
+    ) -> Option<PipelineView<'a, PipelineType>> {
+        let guard = self.pipelines.read().unwrap();
+        guard.contains_key(pipeline_handle).then_some(PipelineView {
+            guard,
+            handle: *pipeline_handle,
+        })
     }
 
     fn proccess_pipline(
         &mut self,
         pipline_handle: &PipelineHandle,
         shaders: &ShaderStorage,
-        rr: &World,
+        rr: &mut World,
     ) {
         self.pipelines_to_init.remove(pipline_handle);
         if let Some(reasources) = self.pipline_reasoureces.get(pipline_handle) {
@@ -128,12 +162,12 @@ impl<PipelineType> PipelineManager<PipelineType> {
                 .map(|s| s.generation)
                 .collect::<Vec<_>>();
 
-            let should_recompile = if let Some(cached_pipeline) = self.pipelines.get(pipline_handle)
-            {
-                shader_generations != cached_pipeline.generations
-            } else {
-                true
-            };
+            let should_recompile =
+                if let Some(cached_pipeline) = self.pipelines.read().unwrap().get(pipline_handle) {
+                    shader_generations != cached_pipeline.generations
+                } else {
+                    true
+                };
 
             if should_recompile {
                 if let Some(constructor) = self.pipeline_connstructors.get_mut(pipline_handle) {
@@ -141,21 +175,22 @@ impl<PipelineType> PipelineManager<PipelineType> {
                     let new_pipeline = constructor.construct(
                         compiled_shaders
                             .iter()
-                            .map(|s| &s.module)
+                            .map(|s| s.module.clone())
                             .collect::<Vec<_>>()
                             .as_slice(),
-                        &rr,
+                        rr,
                     );
                     // = self
                     //     .gpu_device
                     //     .create_render_pipeline(&new_pipeline_descriptor);
-                    match self.pipelines.get_mut(pipline_handle) {
+                    let mut guard = self.pipelines.write().unwrap();
+                    match guard.get_mut(pipline_handle) {
                         Some(stored_pipeline) => {
                             stored_pipeline.render_pipeline = new_pipeline;
                             stored_pipeline.generations = shader_generations;
                         }
                         None => {
-                            self.pipelines.insert(
+                            guard.insert(
                                 *pipline_handle,
                                 StoredPipeline {
                                     render_pipeline: new_pipeline,
@@ -169,7 +204,12 @@ impl<PipelineType> PipelineManager<PipelineType> {
         }
     }
 
-    fn recompile_dependants(&mut self, shader: ShaderHandle, shaders: &ShaderStorage, rr: &World) {
+    fn recompile_dependants(
+        &mut self,
+        shader: ShaderHandle,
+        shaders: &ShaderStorage,
+        rr: &mut World,
+    ) {
         if let Some(pipelines_to_reconstruct) = self.pipelines_requirements.get(&shader).cloned() {
             for pipline_handle in pipelines_to_reconstruct {
                 self.proccess_pipline(&pipline_handle, &shaders, rr);
@@ -184,7 +224,7 @@ pub struct ShaderHandle {
 }
 
 struct StoredShader {
-    module: ShaderModule,
+    module: Arc<ShaderModule>,
     generation: u64,
 }
 
@@ -225,8 +265,8 @@ pub struct ShaderStorage {
     shaders: HashMap<ShaderHandle, StoredShader>,
 }
 impl ShaderStorage {
-    pub fn get_module<'a>(&'a self, handle: ShaderHandle) -> Option<&'a wgpu::ShaderModule> {
-        self.shaders.get(&handle).map(|s| &s.module)
+    pub fn get_module<'a>(&'a self, handle: ShaderHandle) -> Option<Arc<wgpu::ShaderModule>> {
+        self.shaders.get(&handle).map(|s| s.module.clone())
     }
 
     fn new() -> Self {
@@ -249,7 +289,17 @@ impl ShaderStorage {
 }
 
 impl ShaderManager {
-    pub fn new(device: Arc<Device>) -> Result<(Self, ShaderManagerCtrl), notify::Error> {
+    pub fn new(
+        device: Arc<Device>,
+    ) -> Result<
+        (
+            Self,
+            ShaderManagerCtrl,
+            PipelinesView<wgpu::RenderPipeline>,
+            PipelinesView<wgpu::ComputePipeline>,
+        ),
+        notify::Error,
+    > {
         let (compile_queue_sender, rcv) = channel();
         let cqs = compile_queue_sender.clone();
         let mut compile_time_map = HashMap::new();
@@ -273,28 +323,31 @@ impl ShaderManager {
                 _ => {}
             }
         })?));
-        tokio::spawn(re_whatch_paths(re_whatch_rcv, whatcher.clone()));
+
+        let wt = whatcher.clone();
+        std::thread::spawn(move || re_whatch_paths(re_whatch_rcv, wt));
 
         let (compiled_shaders_queue_sender, compiled_shaders_queue) = channel();
 
-        tokio::spawn(compile_shaders(
-            rcv,
-            device.clone(),
-            compiled_shaders_queue_sender,
-        ));
+        std::thread::spawn(move || {
+            compile_shaders(rcv, device.clone(), compiled_shaders_queue_sender)
+        });
 
         let (compute_queue_send, compute_queue_rcv) = channel();
         let (render_queue_send, render_queue_rcv) = channel();
 
+        let render_pipelines = Arc::new(RwLock::new(BTreeMap::new()));
+        let compute_pipelines = Arc::new(RwLock::new(BTreeMap::new()));
+
         Ok((
             Self {
-                whatcher,
-                compile_queue_sender,
+                whatcher: whatcher.clone(),
+                compile_queue_sender: compile_queue_sender.clone(),
                 compiled_shaders_queue,
                 shaders: ShaderStorage::new(), // constructors: HashMap::new(),
-                compute_manager: PipelineManager::new(),
+                compute_manager: PipelineManager::new(compute_pipelines.clone()),
                 compute_creation_queue: compute_queue_rcv,
-                render_manager: PipelineManager::new(),
+                render_manager: PipelineManager::new(render_pipelines.clone()),
                 render_creation_queue: render_queue_rcv,
             },
             ShaderManagerCtrl {
@@ -303,37 +356,39 @@ impl ShaderManager {
                 compute_creation_queue: compute_queue_send,
                 render_creation_queue: render_queue_send,
             },
+            PipelinesView(render_pipelines),
+            PipelinesView(compute_pipelines),
         ))
     }
 
-    pub fn construct_piplines(&mut self, rr: &World) {
+    pub fn construct_piplines(&mut self, rr: &mut World) {
         while let Ok((module, shader_handle)) = self.compiled_shaders_queue.try_recv() {
             match self.shaders.get_mut(shader_handle) {
                 Some(ss) => {
-                    ss.module = module;
+                    ss.module = module.into();
                     ss.generation += 1;
                 }
                 None => {
                     self.shaders.insert(
                         shader_handle,
                         StoredShader {
-                            module,
+                            module: module.into(),
                             generation: 0,
                         },
                     );
                 }
             }
 
-            fn process_pipelines<PipelineType>(
+            fn process_pipelines<PipelineType: 'static>(
                 render_manager: &mut PipelineManager<PipelineType>,
-                render_creation_queue: Receiver<
-                    Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &World) + Send + Sync>,
+                render_creation_queue: &Receiver<
+                    Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>,
                 >,
                 shaders: &ShaderStorage,
-                rr: &World,
+                rr: &mut World,
                 shader_handle: ShaderHandle,
             ) {
-                while let Ok(f) = render_creation_queue.recv() {
+                while let Ok(f) = render_creation_queue.try_recv() {
                     f(render_manager, rr);
                 }
                 render_manager.recompile_dependants(shader_handle, &shaders, rr);
@@ -344,40 +399,29 @@ impl ShaderManager {
 
             process_pipelines(
                 &mut self.render_manager,
-                self.render_creation_queue,
+                &self.render_creation_queue,
                 &self.shaders,
                 rr,
                 shader_handle,
             );
             process_pipelines(
                 &mut self.compute_manager,
-                self.compute_creation_queue,
+                &self.compute_creation_queue,
                 &self.shaders,
                 rr,
                 shader_handle,
             );
         }
     }
-
-    pub fn get_render_pipeline(&self, pipeline_handle: &PipelineHandle) -> Option<&RenderPipeline> {
-        self.render_manager.get_pipeline(pipeline_handle)
-    }
-
-    pub fn get_compute_pipeline(
-        &self,
-        pipeline_handle: &PipelineHandle,
-    ) -> Option<&ComputePipeline> {
-        self.compute_manager.get_pipeline(pipeline_handle)
-    }
 }
 
-async fn re_whatch_paths(
+fn re_whatch_paths(
     re_whatch_rcv: Receiver<Vec<PathBuf>>,
     whatcher: Arc<Mutex<notify::INotifyWatcher>>,
 ) {
     while let Ok(paths) = re_whatch_rcv.recv() {
         {
-            let mut whatcher = whatcher.lock().await;
+            let mut whatcher = whatcher.lock();
             for path in paths {
                 whatcher.watch(&path, RecursiveMode::NonRecursive).unwrap();
             }
@@ -433,7 +477,7 @@ fn path_to_shader_id(path: &PathBuf) -> ShaderHandle {
     }
 }
 
-async fn compile_shaders(
+fn compile_shaders(
     incomming: Receiver<(PathBuf, ShaderHandle)>,
     device: Arc<Device>,
     outgoing: Sender<(ShaderModule, ShaderHandle)>,
@@ -442,29 +486,28 @@ async fn compile_shaders(
         log!("Compiling ", bright_yellow, "{path:#?}", bright_purple);
         let (outgoing, device) = (outgoing.clone(), device.clone());
         // handle.map(| | )
-        tokio::task::spawn(compile_shader(path, device, handle, outgoing));
+        std::thread::spawn(move || compile_shader(path, device, handle, outgoing));
     }
 }
 
-async fn compile_shader(
+fn compile_shader(
     path: PathBuf,
     device: Arc<Device>,
     handle: ShaderHandle,
     outgoing: Sender<(ShaderModule, ShaderHandle)>,
 ) {
-    match tokio::fs::read_to_string(&path).await {
+    match std::fs::read_to_string(&path) {
         Ok(source) => {
             let shader;
             {
                 // Catch compile error scope
                 device.push_error_scope(wgpu::ErrorFilter::Validation);
-
                 shader = device.create_shader_module(ShaderModuleDescriptor {
                     label: None,
                     source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
                 });
 
-                if let Some(e) = device.pop_error_scope().await {
+                if let Some(e) = device.pop_error_scope().block_on() {
                     print_complile_error(e);
                     return;
                 }
@@ -484,21 +527,21 @@ fn print_complile_error(e: wgpu::Error) {
             eprintln!("{description}")
         }
         wgpu::Error::Internal {
-            source,
-            description,
+            source: _,
+            description: _,
         } => todo!(),
     }
 }
 
-// #[macro_export]
-// macro_rules! load_shader {
-//     ( $sm:expr, $path:expr) => {{
-//         let mut path: std::path::PathBuf = file!().into();
-//         path.pop();
-//         path.push($path);
-//         $sm.load_shader(path)
-//     }};
-// }
+#[macro_export]
+macro_rules! load_shader {
+    ( $sm:expr, $path:expr) => {{
+        let mut path: std::path::PathBuf = file!().into();
+        path.pop();
+        path.push($path);
+        $sm.load_shader(path)
+    }};
+}
 
 impl ShaderManagerCtrl {
     pub fn load_shader(&self, path: impl Into<PathBuf>) -> ShaderHandle {
@@ -527,9 +570,8 @@ impl ShaderManagerCtrl {
             .expect("Unable to send shader to load queue");
 
         let w = self.whatcher.clone();
-        tokio::spawn(async move {
+        std::thread::spawn(move || {
             w.lock()
-                .await
                 .watch(&path, notify::RecursiveMode::NonRecursive)
                 .expect("File whatcher failed to accept new path");
         });
@@ -537,41 +579,97 @@ impl ShaderManagerCtrl {
         handle
     }
 
-    pub fn add_render_pipeline<
-        const NUM_MODULES: usize,
-        OutputResource,
-        R: PipelineModuleDescriptor<NUM_MODULES, wgpu::RenderPipeline, OutputResource> + Send + Sync,
-        M,
-    >(
-        &mut self,
+    pub fn add_render_pipeline<'a, const NUM_MODULES: usize, OutputResource, R, M>(
+        &'a self,
         res: R,
-        connstructor: impl IntoSystem<OutputResource, wgpu::RenderPipeline, M> + Send + Sync,
-    ) -> PipelineHandle {
+        connstructor: impl IntoSystem<OutputResource, wgpu::RenderPipeline, M> + Send + Sync + 'static,
+    ) -> PipelineHandle
+    where
+        OutputResource: 'a + 'static,
+        R: PipelineModuleDescriptor<NUM_MODULES, wgpu::RenderPipeline, OutputResource>
+            + Send
+            + Sync
+            + 'static,
+    {
         let pipeline_handle = PipelineHandle { id: random() };
         self.render_creation_queue.send(Box::new(
-            |render_manager: &mut PipelineManager<wgpu::RenderPipeline>, rr| {
+            move |render_manager: &mut PipelineManager<wgpu::RenderPipeline>, rr| {
                 render_manager.add_pipeline(res, connstructor, pipeline_handle, rr)
             },
         ));
         pipeline_handle
     }
-    pub fn add_compute_pipeline<
-        const NUM_MODULES: usize,
-        OutputResource,
-        R: PipelineModuleDescriptor<NUM_MODULES, wgpu::ComputePipeline, OutputResource> + Send + Sync,
-        M,
-    >(
-        &mut self,
+    pub fn add_compute_pipeline<'a, const NUM_MODULES: usize, OutputResource, R, M>(
+        &'a self,
         res: R,
-        connstructor: impl IntoSystem<OutputResource, wgpu::ComputePipeline, M> + Send + Sync,
-    ) -> PipelineHandle {
+        connstructor: impl IntoSystem<OutputResource, wgpu::ComputePipeline, M> + Send + Sync + 'static,
+    ) -> PipelineHandle
+    where
+        OutputResource: 'a + 'static,
+        R: PipelineModuleDescriptor<NUM_MODULES, wgpu::ComputePipeline, OutputResource>
+            + Send
+            + Sync
+            + 'static,
+    {
         let pipeline_handle = PipelineHandle { id: random() };
+
         self.compute_creation_queue.send(Box::new(
-            |compute_manager: &mut PipelineManager<wgpu::ComputePipeline>, rr| {
+            move |compute_manager: &mut PipelineManager<wgpu::ComputePipeline>, rr| {
                 compute_manager.add_pipeline(res, connstructor, pipeline_handle, rr)
             },
         ));
 
         pipeline_handle
+    }
+}
+
+impl<PipelineType> PipelinesView<PipelineType> {
+    // pub fn get_render_pipeline(
+    //     &self,
+    //     pipeline_handle: &PipelineHandle,
+    // ) -> Option<PipelineView<RenderPipeline>> {
+    //     self.render_manager.get_pipeline(pipeline_handle)
+    // }
+
+    // pub fn get_compute_pipeline(
+    //     &self,
+    //     pipeline_handle: &PipelineHandle,
+    // ) -> Option<PipelineView<ComputePipeline>> {
+    //     self.compute_manager.get_pipeline(pipeline_handle)
+    // }
+
+    pub fn get(&self, handle: &PipelineHandle) -> Option<PipelineView<PipelineType>> {
+        let guard = self.0.read().unwrap();
+        guard.contains_key(handle).then_some(PipelineView {
+            guard,
+            handle: *handle,
+        })
+    }
+}
+
+#[derive(Resource)]
+pub struct Marker<T, Id>(T, PhantomData<Id>);
+
+impl<T, I> Marker<T, I> {
+    pub fn new(value: T) -> Self {
+        Self(value, PhantomData)
+    }
+
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T, I> Deref for Marker<T, I> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T, I> DerefMut for Marker<T, I> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }

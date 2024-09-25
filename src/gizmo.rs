@@ -1,9 +1,16 @@
+#![allow(dead_code)]
+
 use std::mem::size_of;
 
-use bevy_ecs::component::Component;
+use bevy_ecs::{component::Component, query::With};
 use glam::{vec4, Mat4, Vec3, Vec4};
+use wgpu::VertexAttribute;
 
-use crate::{ecs::Ecs, transform::Transform};
+use crate::{
+    ecs::Initailiser,
+    gpu::{pack_buffers, Packable},
+    transform::Transform,
+};
 
 #[derive(Debug, Component)]
 pub struct ArrowGizmo {
@@ -28,7 +35,7 @@ pub struct ArrowGizmo {
 // }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Component, Debug, Copy, Clone)]
 pub struct RawArrowInstance {
     pub transform: Mat4,
     pub color: Vec4,
@@ -37,37 +44,12 @@ unsafe impl bytemuck::Pod for RawArrowInstance {}
 unsafe impl bytemuck::Zeroable for RawArrowInstance {}
 
 impl RawArrowInstance {
+    const ATRIBS: &'static [VertexAttribute] = &wgpu::vertex_attr_array![ 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, ];
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: 0,
-                    shader_location: 5,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: size_of::<[f32; 4]>() as wgpu::BufferAddress,
-                    shader_location: 6,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 7,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: size_of::<[f32; 12]>() as wgpu::BufferAddress,
-                    shader_location: 8,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x4,
-                    offset: size_of::<[f32; 16]>() as wgpu::BufferAddress,
-                    shader_location: 9,
-                },
-            ],
+            attributes: Self::ATRIBS,
         }
     }
 }
@@ -94,7 +76,9 @@ impl RawArrowInstance {
 //     arrow_transform.look_at(ship_transform.translation, camera.up);
 // }
 
-pub fn init(ecs: &mut Ecs) {
+#[derive(Component)]
+pub struct ArrowBufferMarker;
+pub fn init(ecs: &mut Initailiser) {
     for color in [
         vec4(1.0, 0.5, 0.25, 1.0),
         vec4(0.2, 0.5, 1.0, 1.0),
@@ -108,5 +92,38 @@ pub fn init(ecs: &mut Ecs) {
             ArrowGizmo { color },
         ));
     }
+
+    ecs.prepare_buffers.add_systems(
+        pack_buffers::<(&Transform, &ArrowGizmo), RawArrowInstance, (), With<ArrowBufferMarker>>,
+    );
     // ecs.update.add_systems(update_arrows);
 }
+
+impl Packable for (&Transform, &ArrowGizmo) {
+    type Raw = RawArrowInstance;
+
+    fn pack(&self, eye: Vec3) -> Self::Raw {
+        Self::Raw {
+            transform: self.0.translated(-eye).to_mat(),
+            color: self.1.color,
+        }
+    }
+}
+
+// {
+//             let arrow_instances =
+//                 QueryBuilder::<(&Transform, &ArrowGizmo)>::new(&mut self.ecs.world)
+//                     .build()
+//                     .iter(&self.ecs.world)
+//                     .map(|(transform, gizmo)| RawArrowInstance {
+//                         transform: transform.to_mat(),
+//                         color: gizmo.color,
+//                     })
+//                     .collect::<Vec<_>>();
+
+//             self.arrow_transform_instance_buffer.write(
+//                 &self.gpu.device,
+//                 &arrow_instances.as_slice(),
+//                 &self.gpu.queue,
+//             );
+//         }

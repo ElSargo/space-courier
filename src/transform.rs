@@ -2,6 +2,8 @@
 use bevy_ecs::component::Component;
 use glam::{Mat3, Mat4, Quat, Vec3};
 
+use crate::{gpu::Packable, RawInstance};
+
 #[derive(Debug, Clone, Component)]
 pub struct Transform {
     pub scale: Vec3,
@@ -147,5 +149,13 @@ impl Transform {
             scale: self.scale,
             rotation: self.rotation,
         }
+    }
+}
+
+impl Packable for &Transform {
+    type Raw = RawInstance;
+
+    fn pack(&self, eye: Vec3) -> Self::Raw {
+        RawInstance::from_transform(&self.translated(-eye))
     }
 }

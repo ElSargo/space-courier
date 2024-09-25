@@ -1,33 +1,41 @@
+use crate::fullscreen::FullscreenQuad;
 use crate::{
     background::Background,
     bloom::Bloom,
     camera::CameraUniform,
-    fullscreen::FullscreenQuad,
-    get_all, get_all_shaders, make_view_texture, make_view_textures_bind_group,
+    ecs::Initailiser,
+    gpu::{OutputTextureResource, ScreenFormat, RD},
     planet_shadows::PlanetShadows,
-    shader_manager::{self, PipelineHandle, ShaderManager, SplitPipelineModuleDescriptor},
-    texture, ViewTextureReasources,
-};
-use anymap::AnyMap;
-use wgpu::{
-    BindGroup, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, Device,
-    ShaderStages, SurfaceConfiguration,
+    shader_manager::{
+        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleDescriptor,
+        SplitPipelineModuleResource,
+    },
+    ViewTextureReasources,
 };
 
+use bevy_ecs::{
+    schedule::IntoSystemConfigs,
+    system::{Commands, In, Res, ResMut, Resource},
+};
+use wgpu::{
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, CommandEncoder, RenderPipeline, ShaderStages,
+};
+
+#[derive(Resource)]
 pub struct Postprocessing {
     pipeline_handle: PipelineHandle,
 }
 
 impl Postprocessing {
     pub fn new(
-        device: &Device,
-        config: &wgpu::SurfaceConfiguration,
-        fullscreen_quad: &FullscreenQuad,
-        view_textures_bind_group_layout: &wgpu::BindGroupLayout,
-        planet_shadows_texture_bind_group: &wgpu::BindGroupLayout,
-        cube_bind_group_layout: &BindGroupLayout,
-        shader_manager: &mut shader_manager::ShaderManager,
-    ) -> Self {
+        device: RD,
+        fullscreen_quad: Res<FullscreenQuad>,
+        view_textures_bind_group_layout: Res<ViewTextureReasources>,
+        planet_shadows: Option<Res<PlanetShadows>>,
+        bg: Res<Background>,
+        shader_manager: Res<ShaderManagerCtrl>,
+        mut commands: Commands,
+    ) {
         let shader_handle = shader_manager.load_shader("./src/post.wgsl");
 
         // let post_shader = device.create_shader_module(wgpu::include_wgsl!());
@@ -61,37 +69,41 @@ impl Postprocessing {
                 }],
             });
 
-        let pipeline_layout = Box::leak(Box::new(device.create_pipeline_layout(
-            &wgpu::PipelineLayoutDescriptor {
+        let pipeline_layout = Box::leak(Box::new(
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("post pipline layout"),
-                bind_group_layouts: &[
-                    &view_textures_bind_group_layout,
-                    &inverse_camera, // &model_transform_bind_group_layout,
-                    &texture_bind_group_layout,
-                    &planet_shadows_texture_bind_group,
-                    &cube_bind_group_layout,
-                ],
+                bind_group_layouts: [
+                    Some(&view_textures_bind_group_layout.view_textures_bind_group_layout),
+                    Some(&inverse_camera), // &model_transform_bind_group_layout,
+                    Some(&texture_bind_group_layout),
+                    Some(&bg.texture_cube_bind_group_layout),
+                    planet_shadows
+                        .as_ref()
+                        .map(|pl| &pl.texture_bind_group_layout),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .as_slice(),
                 push_constant_ranges: &[],
-            },
-        )));
+            }),
+        ));
         // let pipeline = device.create_render_pipeline(&);
-        let format = config.format.clone();
+        // let format = Box::leak(Box::new(resolution.format.clone()));
         let pipeline_handle = shader_manager.add_render_pipeline(
             // vec![shader_handle, fullscreen_quad.shader_handle],
             SplitPipelineModuleDescriptor {
                 vertex: fullscreen_quad.shader_handle,
                 fragment: shader_handle,
             },
-            Box::new(move |rr, device, modules| {
-                let (FullscreenQuad {
-                    shader_handle: fs_shader_handle,
-                    vertex_format,
-                    ..
-                },) = get_all!(rr, FullscreenQuad).unwrap();
-
+            // Box::new(move |rr, device, modules| {
+            |In(SplitPipelineModuleResource { vertex, fragment }),
+             fsq: Res<FullscreenQuad>,
+             format: Res<ScreenFormat>,
+             device: RD| {
                 let targets = [Some(wgpu::ColorTargetState {
                     // 4.
-                    format,
+                    format: **format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })];
@@ -99,15 +111,17 @@ impl Postprocessing {
                     label: Some("Post Render Pipeline"),
                     layout: Some(pipeline_layout),
                     vertex: wgpu::VertexState {
-                        module: modules.vertex,
+                        module: &vertex,
                         entry_point: "vs_main",
-                        buffers: *vertex_format,
+                        buffers: fsq.vertex_format,
+                        compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         // 3.
-                        module: modules.fragment,
+                        module: &fragment,
                         entry_point: "fs_main",
                         targets: &targets,
+                        compilation_options: Default::default(),
                     }),
                     primitive: wgpu::PrimitiveState {
                         topology: wgpu::PrimitiveTopology::TriangleList, // 1.
@@ -128,67 +142,31 @@ impl Postprocessing {
                         mask: !0,                         // 3.
                         alpha_to_coverage_enabled: false, // 4.
                     },
-                    multiview: None, // 5.
+                    multiview: None,
+                    cache: None, // 5.
                 })
-            }),
+            },
         );
 
-        Self { pipeline_handle }
+        commands.insert_resource(Self { pipeline_handle });
     }
 }
 
-pub fn post_draw_post(
-    encoder: &mut wgpu::CommandEncoder,
-    output_view: wgpu::TextureView,
-    shader_manager: &ShaderManager,
-    rr: &AnyMap,
-) -> Option<()> {
-    let (
-        ViewTextureReasources {
-            view_textures_bind_group,
-            ..
-        },
-        post,
-        fullscreen_quad,
-        CameraUniform {
-            inner: camera_bind_group,
-            ..
-        },
-        bloom,
-        PlanetShadows {
-            render_texture_bind_group,
-            ..
-        },
-        Background {
-            texture_cube_bind_group,
-            ..
-        },
-    ) = get_all!(
-        rr,
-        ViewTextureReasources,
-        Postprocessing,
-        FullscreenQuad,
-        CameraUniform,
-        Bloom,
-        PlanetShadows,
-        Background
-    )?;
-
-    // pub fn draw(
-    //     &mut self,
-    //     encoder: &mut wgpu::CommandEncoder,
-    //     view: wgpu::TextureView,
-    //     fullscreen_quad: &FullscreenQuad,
-    //     camera_bind_group: &wgpu::BindGroup,
-    //     textures_bind_group: &wgpu::BindGroup,
-    //     bloom_texture_bind_group: &wgpu::BindGroup,
-    //     planet_shadows_texture_bind_group: &wgpu::BindGroup,
-    //     shader_manager: &shader_manager::ShaderManager,
-    //     cube_bind_group: &BindGroup,
-    // ) {
-    if let Some(pipeline) = shader_manager.get_render_pipeline(&post.pipeline_handle) {
+pub fn draw_post(
+    mut encoder: ResMut<Marker<CommandEncoder, Postprocessing>>,
+    output_view: Res<OutputTextureResource>,
+    render_pipelines: Res<PipelinesView<RenderPipeline>>,
+    vtr: Res<ViewTextureReasources>,
+    post: Res<Postprocessing>,
+    fsq: Res<FullscreenQuad>,
+    camera_uniform: Res<CameraUniform>,
+    br: Res<Bloom>,
+    pl: Option<Res<PlanetShadows>>,
+    bg: Res<Background>,
+) {
+    if let Some(pipeline) = render_pipelines.get(&post.pipeline_handle) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Ui render pass"),
+            label: Some("Post render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &output_view,
                 resolve_target: None,
@@ -201,77 +179,27 @@ pub fn post_draw_post(
             occlusion_query_set: None,
             timestamp_writes: None,
         });
-        // render_pass.set_bind_group(0,&self.diffuse_bind_group , &[] );
-        // render_pass.set_bind_group(0,&self.view_bind_group, &[] );
-        render_pass.set_bind_group(0, &view_textures_bind_group, &[]);
-        render_pass.set_bind_group(1, &camera_bind_group.bind_group, &[]);
-        render_pass.set_bind_group(2, &bloom.get_result_bind_group(), &[]);
-        render_pass.set_bind_group(3, render_texture_bind_group, &[]);
-        render_pass.set_bind_group(4, texture_cube_bind_group, &[]);
-        render_pass.set_pipeline(pipeline);
-        fullscreen_quad.draw(&mut render_pass);
+        render_pass.set_bind_group(0, &vtr.view_textures_bind_group, &[]);
+        render_pass.set_bind_group(1, &camera_uniform.inner.bind_group, &[]);
+        render_pass.set_bind_group(2, &br.get_result_bind_group(), &[]);
+        render_pass.set_bind_group(3, &bg.texture_cube_bind_group, &[]);
+        if let Some(pl) = pl {
+            render_pass.set_bind_group(4, &pl.render_texture_bind_group, &[]);
+        }
+        render_pass.set_pipeline(&pipeline);
+        // println!("Post drawn");
+        fsq.draw(&mut render_pass);
+    } else {
+        // println!("No post pipeline");
     }
-    Some(())
 }
 
-fn init(render_stuff: &mut AnyMap, device: &Device, config: &SurfaceConfiguration) {
-    render_stuff.insert({
-        let view_textures_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above.
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Depth,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above.
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("post_texture_bind_group_layout"),
-            });
-
-        let color_texture = make_view_texture(&config, &device);
-        let depth_texture =
-            texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-        ViewTextureReasources {
-            view_textures_bind_group: make_view_textures_bind_group(
-                &device,
-                &view_textures_bind_group_layout,
-                &depth_texture,
-                &color_texture,
-            ),
-            view_textures_bind_group_layout,
-            depth_texture,
-            view_texture: color_texture,
-        }
-    });
+pub fn init_mod(initialiser: &mut Initailiser) {
+    initialiser.init.add_systems(
+        Postprocessing::new
+            .after(crate::fullscreen::init_fsq)
+            .after(crate::bloom::init_res)
+            .after(crate::background::init_background),
+    );
+    initialiser.render.add_systems(draw_post);
 }

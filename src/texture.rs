@@ -1,6 +1,8 @@
 use color_eyre::Result;
 use image::GenericImageView;
 
+use crate::gpu::ScreenResolution;
+
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
@@ -26,13 +28,13 @@ impl Texture {
 
     pub fn create_depth_texture(
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
+        resolution: &ScreenResolution,
         label: &str,
     ) -> Self {
         let size = wgpu::Extent3d {
             // 2.
-            width: config.width,
-            height: config.height,
+            width: resolution.width,
+            height: resolution.height,
             depth_or_array_layers: 1,
         };
         let desc = wgpu::TextureDescriptor {

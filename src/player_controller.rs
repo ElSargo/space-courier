@@ -1,12 +1,12 @@
 use crate::{
     camera::Camera,
-    ecs::Ecs,
+    ecs::Initailiser,
     gravity::gravity_all,
     input::{AxisInput, ButtonInput, MouseDelta},
     physics::Physics,
+    ship::Ship,
     time::Time,
     transform::Transform,
-    Ship,
 };
 use bevy_ecs::{
     component::Component,
@@ -54,10 +54,10 @@ pub fn update<'a>(
     // camera.eye += gravity;
     // camera.target += gravity;
 
-    if kb.is_down(Key::W) {
+    if kb.is_down(Key::Character("W".into())) {
         player_controller.momentum += player_controller.speed * time.delta_seconds
     }
-    if kb.is_down(Key::S) {
+    if kb.is_down(Key::Character("S".into())) {
         player_controller.momentum *= 0.95
     }
     let camera_displacement_factor = 0.04;
@@ -163,10 +163,10 @@ pub fn update_upright_player_controller<'a>(
     // camera.eye += gravity;
     // camera.target += gravity;
 
-    if kb.is_down(Key::W) {
+    if kb.is_down(Key::Character("W".into())) | kb.is_down(Key::Character("w".into())) {
         player_controller.momentum += player_controller.speed * time.delta_seconds
     }
-    if kb.is_down(Key::S) {
+    if kb.is_down(Key::Character("S".into())) {
         player_controller.momentum *= 0.95
     }
     let camera_displacement_factor = 0.04;
@@ -292,7 +292,7 @@ fn update_upright_pitch_and_yaw(
     }
 }
 
-pub fn init(ecs: &mut Ecs) {
+pub fn init_mod(ecs: &mut Initailiser) {
     // ecs.world.spawn(());
     ecs.init.add_systems(spawn_player);
     // ecs.update.add_systems(update);

@@ -4,7 +4,7 @@ use bevy_ecs::{
 };
 use glam::{Quat, Vec3};
 
-use crate::{ecs::Ecs, time::Time, transform::Transform};
+use crate::{ecs::Initailiser, time::Time, transform::Transform};
 
 #[derive(Component, Debug, Default)]
 pub struct Physics {
@@ -30,6 +30,6 @@ pub fn apply_velocity(mut boddies: Query<(&mut Transform, &Physics)>, time: Res<
     }
 }
 
-pub async fn init(ecs: &mut Ecs) {
+pub fn init_mod(ecs: &mut Initailiser) {
     ecs.update.add_systems(apply_velocity);
 }

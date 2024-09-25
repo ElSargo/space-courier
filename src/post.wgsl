@@ -8,10 +8,11 @@
 
 @group(2) @binding(0) var bloom_texture: texture_2d<f32>;
 
-@group(3) @binding(0) var planet_shadows_texture: texture_2d<f32>;
+@group(3) @binding(0) var background: texture_cube<f32>;
+@group(3) @binding(1) var background_sampler: sampler;
 
-@group(4) @binding(0) var background: texture_cube<f32>;
-@group(4) @binding(1) var background_sampler: sampler;
+@group(4) @binding(0) var planet_shadows_texture: texture_2d<f32>;
+
 
 const PI: f32 = 3.1415926535897932384626433832795;
 struct Camera {
@@ -203,7 +204,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // color = 1.0 - exp(-color * 1.0);
    
 
-    return vec4(gamma(color), 1.0);
+    return vec4(gamma(color ), 1.0);
+    // return vec4(1.0,0.0,1.0,1.0);
     // return vec4(gamma(vec3f(view_color.a)), 1.0);
 }
 

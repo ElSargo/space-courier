@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use bevy_ecs::{
-    event::{Event, Events},
-    system::Resource,
+    event::{Event, EventReader, Events},
+    system::{Res, ResMut, Resource},
 };
 use gilrs::Gilrs;
 use winit::keyboard::Key;
 
-use crate::ecs::Ecs;
+use crate::{ecs::Initailiser, time::Time};
 
 #[derive(Debug, Event)]
 pub struct MouseDelta {
@@ -15,17 +15,16 @@ pub struct MouseDelta {
     pub y: f32,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum KeyState {
-    Up,
-    JustDown,
-    Down,
-    JustUp,
+#[derive(Debug, Clone, Copy, Default)]
+struct KeyState {
+    down: bool,
+    tick: u64,
 }
 
 #[derive(Resource)]
 pub struct ButtonInput {
     data: HashMap<Key, KeyState>,
+    current_tick: u64,
 }
 
 #[allow(dead_code)]
@@ -33,57 +32,62 @@ impl ButtonInput {
     pub fn new() -> Self {
         Self {
             data: HashMap::new(),
+            current_tick: 0,
         }
     }
 
-    pub fn on_key_down(&mut self, key: Key) {
-        let key_state = self.data.entry(key).or_insert(KeyState::JustDown);
-        match key_state {
-            KeyState::Down | KeyState::JustDown => {}
-            KeyState::Up | KeyState::JustUp => {
-                *key_state = KeyState::JustDown;
-            }
-        };
-    }
+    // pub fn on_key_down(&mut self, key: Key) {
+    //     let key_state = self.data.entry(key).or_insert(KeyState::JustDown);
+    //     match key_state {
+    //         KeyState::Down | KeyState::JustDown => {}
+    //         KeyState::Up | KeyState::JustUp => {
+    //             *key_state = KeyState::JustDown;
+    //         }
+    //     };
+    // }
 
-    pub fn on_key_up(&mut self, key: Key) {
-        let key_state = self.data.entry(key).or_insert(KeyState::JustUp);
-        match key_state {
-            KeyState::Up | KeyState::JustUp => {}
-            KeyState::Down | KeyState::JustDown => {
-                *key_state = KeyState::JustUp;
-            }
-        };
+    // pub fn on_key_up(&mut self, key: Key) {
+    //     let key_state = self.data.entry(key).or_insert(KeyState::JustUp);
+    //     match key_state {
+    //         KeyState::Up | KeyState::JustUp => {}
+    //         KeyState::Down | KeyState::JustDown => {
+    //             *key_state = KeyState::JustUp;
+    //         }
+    //     };
+    // }
+
+    pub fn update(mut this: ResMut<Self>, time: Res<Time>, mut keys: EventReader<KeyEvent>) {
+        this.current_tick = time.tick;
+        for e in keys.read() {
+            let entry = this
+                .data
+                .entry(e.0.logical_key.clone())
+                .or_insert(KeyState::default());
+
+            entry.tick = time.tick;
+            entry.down = e.0.state.is_pressed();
+        }
     }
 
     pub fn is_down(&self, key: Key) -> bool {
         match self.data.get(&key) {
-            Some(KeyState::JustDown | KeyState::Down) => true,
+            Some(KeyState { down, .. }) => *down,
             _ => false,
         }
     }
 
     pub fn just_down(&self, key: Key) -> bool {
         match self.data.get(&key) {
-            Some(KeyState::JustDown) => true,
+            Some(KeyState { down, tick }) => *down && *tick == self.current_tick,
             _ => false,
         }
     }
 
     pub fn just_up(&self, key: Key) -> bool {
         match self.data.get(&key) {
-            Some(KeyState::JustUp) => true,
-            _ => false,
-        }
-    }
+            Some(KeyState { down, tick }) => !down && *tick == self.current_tick,
 
-    /// Call at the end of update
-    pub fn tick(&mut self) {
-        for (_, state) in self.data.iter_mut() {
-            *state = match state {
-                KeyState::JustDown | KeyState::Down => KeyState::Down,
-                KeyState::JustUp | KeyState::Up => KeyState::Up,
-            }
+            _ => false,
         }
     }
 }
@@ -117,8 +121,13 @@ impl AxisInput {
     }
 }
 
-pub fn init(ecs: &mut Ecs) {
+pub fn init_mod(ecs: &mut Initailiser) {
+    ecs.update.add_systems(ButtonInput::update);
     ecs.world.insert_resource(ButtonInput::new());
     ecs.world.insert_resource(AxisInput::default());
     ecs.world.init_resource::<Events<MouseDelta>>();
+    ecs.world.init_resource::<Events<KeyEvent>>();
 }
+
+#[derive(Debug, Event)]
+pub struct KeyEvent(pub winit::event::KeyEvent);

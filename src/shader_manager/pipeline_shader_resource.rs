@@ -1,23 +1,22 @@
-use std::ops::Deref;
+use std::{ops::Deref, sync::Arc};
 
 use crate::shader_manager::ShaderHandle;
 use bevy_ecs::{
     system::{Resource, SystemId},
     world::World,
 };
-use wgpu::{Device, PipelineCacheDescriptor, ShaderModule};
-use winit::monitor;
+use wgpu::ShaderModule;
 
 // Traits
 pub trait PipelineModuleDescriptor<const NUM_MODULES: usize, PipelineType, OutputResource> {
     fn as_arr(&self) -> [ShaderHandle; NUM_MODULES];
     fn constructor(
         id: SystemId<OutputResource, PipelineType>,
-    ) -> impl PipelineConstructor<'static, PipelineType>;
+    ) -> impl for<'a> PipelineConstructor<PipelineType> + 'static;
 }
 
-pub trait PipelineConstructor<'b, PipelineType> {
-    fn construct(&mut self, moduels: &[&ShaderModule], rr: &World) -> PipelineType;
+pub trait PipelineConstructor<PipelineType>: Send + Sync {
+    fn construct(&mut self, moduels: &[Arc<ShaderModule>], rr: &mut World) -> PipelineType;
 }
 
 // Split pipeline ( different vert and frag moduels )
@@ -25,32 +24,33 @@ pub struct SplitPipelineModuleDescriptor {
     pub vertex: ShaderHandle,
     pub fragment: ShaderHandle,
 }
-pub struct SplitPipelineModuleResource<'a> {
-    pub vertex: &'a ShaderModule,
-    pub fragment: &'a ShaderModule,
+pub struct SplitPipelineModuleResource {
+    pub vertex: Arc<ShaderModule>,
+    pub fragment: Arc<ShaderModule>,
 }
 
-pub struct SplitPipelineConstructor<'a, PipelineType> {
-    system_id: SystemId<SplitPipelineModuleResource<'a>, PipelineType>,
+pub struct SplitPipelineConstructor<PipelineType> {
+    system_id: SystemId<SplitPipelineModuleResource, PipelineType>,
 }
 
-impl<'a> From<[&'a ShaderModule; 2]> for SplitPipelineModuleResource<'a> {
-    fn from(value: [&'a ShaderModule; 2]) -> Self {
+impl<'a> From<[Arc<ShaderModule>; 2]> for SplitPipelineModuleResource {
+    fn from(value: [Arc<ShaderModule>; 2]) -> Self {
         Self {
-            vertex: &value[0],
-            fragment: &value[1],
+            vertex: value[0].clone(),
+            fragment: value[1].clone(),
         }
     }
 }
 
-impl<'a, PipelineType> PipelineModuleDescriptor<2, PipelineType, SplitPipelineModuleResource<'a>>
+impl<'a, PipelineType: 'static>
+    PipelineModuleDescriptor<2, PipelineType, SplitPipelineModuleResource>
     for SplitPipelineModuleDescriptor
 {
-    // type <'a> = SplitPipelineModuleResource<'a>;
+    // type <'a> = SplitPipelineModuleResource;
 
     fn constructor(
-        system_id: SystemId<SplitPipelineModuleResource<'a>, PipelineType>,
-    ) -> SplitPipelineConstructor<'_, PipelineType> {
+        system_id: SystemId<SplitPipelineModuleResource, PipelineType>,
+    ) -> SplitPipelineConstructor<PipelineType> {
         SplitPipelineConstructor { system_id }
     }
 
@@ -59,15 +59,15 @@ impl<'a, PipelineType> PipelineModuleDescriptor<2, PipelineType, SplitPipelineMo
     }
 }
 
-impl<PipelineType> PipelineConstructor<'_, PipelineType>
-    for SplitPipelineConstructor<'_, PipelineType>
+impl<PipelineType: 'static> PipelineConstructor<PipelineType>
+    for SplitPipelineConstructor<PipelineType>
 {
-    fn construct(&mut self, moduels: &[&ShaderModule], rr: &World) -> PipelineType {
+    fn construct(&mut self, moduels: &[Arc<ShaderModule>], rr: &mut World) -> PipelineType {
         rr.run_system_with_input(
             self.system_id,
             SplitPipelineModuleResource {
-                vertex: moduels[0],
-                fragment: moduels[1],
+                vertex: moduels[0].clone(),
+                fragment: moduels[1].clone(),
             },
         )
         .unwrap()
@@ -81,22 +81,23 @@ pub struct UnifiedPipelineModuleDescriptor {
 }
 
 #[derive(Resource)]
-pub struct UnifiedPipelineModuleResource<'a> {
-    pub module: &'a ShaderModule,
+pub struct UnifiedPipelineModuleResource {
+    pub module: Arc<ShaderModule>,
 }
 
-pub struct UnifiedPipelineConstructor<'a, PipelineType> {
-    system_id: SystemId<UnifiedPipelineModuleResource<'a>, PipelineType>,
+pub struct UnifiedPipelineConstructor<PipelineType> {
+    system_id: SystemId<UnifiedPipelineModuleResource, PipelineType>,
 }
 
-impl<'a, PipelineType> PipelineModuleDescriptor<1, PipelineType, UnifiedPipelineModuleResource<'a>>
+impl<'a, PipelineType: 'static>
+    PipelineModuleDescriptor<1, PipelineType, UnifiedPipelineModuleResource>
     for UnifiedPipelineModuleDescriptor
 {
     // type <'a> = UnifiedPipelineModuleResource<'a>;
 
     fn constructor(
-        system_id: SystemId<UnifiedPipelineModuleResource<'a>, PipelineType>,
-    ) -> UnifiedPipelineConstructor<'_, PipelineType> {
+        system_id: SystemId<UnifiedPipelineModuleResource, PipelineType>,
+    ) -> UnifiedPipelineConstructor<PipelineType> {
         UnifiedPipelineConstructor { system_id }
     }
 
@@ -105,22 +106,24 @@ impl<'a, PipelineType> PipelineModuleDescriptor<1, PipelineType, UnifiedPipeline
     }
 }
 
-impl<PipelineType> PipelineConstructor<'_, PipelineType>
-    for UnifiedPipelineConstructor<'_, PipelineType>
+impl<PipelineType: 'static> PipelineConstructor<PipelineType>
+    for UnifiedPipelineConstructor<PipelineType>
 {
-    fn construct(&mut self, moduels: &[&ShaderModule], rr: &World) -> PipelineType {
+    fn construct(&mut self, moduels: &[Arc<ShaderModule>], rr: &mut World) -> PipelineType {
         rr.run_system_with_input(
             self.system_id,
-            UnifiedPipelineModuleResource { module: moduels[0] },
+            UnifiedPipelineModuleResource {
+                module: moduels[0].clone(),
+            },
         )
         .unwrap()
     }
 }
 
-impl Deref for UnifiedPipelineModuleResource<'_> {
+impl Deref for UnifiedPipelineModuleResource {
     type Target = ShaderModule;
 
     fn deref(&self) -> &Self::Target {
-        self.module
+        &self.module
     }
 }

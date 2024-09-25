@@ -1,4 +1,4 @@
-use bevy_ecs::system::Resource;
+use bevy_ecs::system::{Commands, Res, Resource};
 use bytemuck::cast_slice;
 use std::mem::size_of;
 
@@ -7,7 +7,11 @@ use wgpu::{
     BufferUsages, RenderPass, VertexBufferLayout,
 };
 
-use crate::shader_manager::{ShaderHandle, ShaderManager};
+use crate::{
+    ecs::Initailiser,
+    gpu::RD,
+    shader_manager::{ShaderHandle, ShaderManagerCtrl},
+};
 
 const VERTICES: &[Vertex] = &[
     Vertex {
@@ -53,7 +57,7 @@ pub struct FullscreenQuad {
 }
 
 impl FullscreenQuad {
-    pub fn init(device: &wgpu::Device, shader_manager: &mut ShaderManager) -> Self {
+    pub fn init(device: &wgpu::Device, shader_manager: &ShaderManagerCtrl) -> Self {
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("post_buffer_index"),
             contents: cast_slice(INDICES),
@@ -92,4 +96,14 @@ impl FullscreenQuad {
     //         buffers: &self.vertex_format, // 2.
     //     }
     // }
+}
+
+pub fn init_fsq(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands) {
+    let fs = FullscreenQuad::init(&device, shader_manager.as_ref());
+
+    commands.insert_resource(fs);
+}
+
+pub fn init_mod(ecs: &mut Initailiser) {
+    ecs.init.add_systems(init_fsq);
 }

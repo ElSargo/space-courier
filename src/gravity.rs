@@ -1,4 +1,4 @@
-use crate::{ecs::Ecs, physics::Physics, time::Time, transform::Transform};
+use crate::{ecs::Initailiser, physics::Physics, time::Time, transform::Transform};
 use bevy_ecs::system::{Query, Res};
 use glam::Vec3;
 
@@ -23,6 +23,7 @@ pub fn gravity_magnitude_from_zero(position: Vec3) -> Vec3 {
     G * position.normalize_or_zero() / position.length_squared().max(1.0) // Prevent extreamly high gravty when things are close
 }
 
+#[allow(dead_code)]
 pub fn gravity_all<'a>(
     position: Vec3,
     boddies: impl Iterator<Item = (&'a Physics, &'a Transform)>,
@@ -36,6 +37,6 @@ pub fn gravity_all<'a>(
     resultant
 }
 
-pub(crate) async fn init(ecs: &mut Ecs) {
+pub fn init_mod(ecs: &mut Initailiser) {
     ecs.update.add_systems(apply_gravity);
 }

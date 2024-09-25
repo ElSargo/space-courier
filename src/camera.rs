@@ -8,8 +8,9 @@ use std::{
 };
 
 use crate::{
-    ecs::Ecs,
-    gpu::{DeviceRes, QueueRes, SurfaceConfRes},
+    ecs::Initailiser,
+    gpu::{QueueResource, ScreenResolution, RD},
+    make_view_texture, make_view_textures_bind_group, texture, ViewTextureReasources,
 };
 
 #[derive(Resource)]
@@ -162,31 +163,120 @@ impl CameraUniform {
 pub fn update_camera(
     camera_uniform: ResMut<CameraUniform>,
     camera: Res<Camera>,
-    QueueRes(queue): Res<QueueRes>,
+    queue: Res<QueueResource>,
 ) {
     {
         camera_uniform.update(&camera, &queue);
     }
 }
 
-pub fn init(ecs: &mut Ecs) {
-    ecs.init.add_systems(
-        |SurfaceConfRes(config): Res<SurfaceConfRes>,
-         DeviceRes(device): Res<DeviceRes>,
-         commands: Commands| {
-            let camera = Camera {
-                aspect: config.width as f32 / config.height as f32,
-                eye: vec3(0.0, 0.0, -200.0),
-                target: Vec3::ZERO,
-                ..Default::default()
-            };
+pub fn insert_camera(resolution: Res<ScreenResolution>, device: RD, mut commands: Commands) {
+    let camera = Camera {
+        aspect: resolution.width as f32 / resolution.height as f32,
+        eye: vec3(0.0, 0.0, -200.0),
+        target: Vec3::ZERO,
+        ..Default::default()
+    };
 
-            let cam = CameraUniform::setup(&camera, &device);
+    let cam = CameraUniform::setup(&camera, &device);
 
-            commands.insert_resource(cam.clone());
-            ecs.world.insert_resource(cam);
-        },
+    commands.insert_resource(cam.clone());
+    commands.insert_resource(camera);
+    println!("Camera inserted");
+}
+
+pub fn init_mod(ecs: &mut Initailiser) {
+    ecs.init.add_systems(insert_camera);
+
+    ecs.prepare_buffers.add_systems(update_camera);
+    ecs.init.add_systems(init_view_textures);
+    ecs.resize
+        .add_systems((resize_camera, resize_view_textures));
+}
+
+fn resize_camera(
+    mut camera: ResMut<Camera>,
+    camera_uniform: ResMut<CameraUniform>,
+    queue: Res<QueueResource>,
+    resolution: Res<ScreenResolution>,
+) {
+    camera.aspect = resolution.width as f32 / resolution.height as f32;
+    camera_uniform.update(&camera, &queue);
+}
+
+fn resize_view_textures(
+    mut v_tex: ResMut<ViewTextureReasources>,
+    device: RD,
+    reslution: Res<ScreenResolution>,
+) {
+    v_tex.depth_texture =
+        texture::Texture::create_depth_texture(&device, &reslution, "depth_texture");
+    v_tex.color_texture = make_view_texture(&reslution, &device);
+    v_tex.view_textures_bind_group = make_view_textures_bind_group(
+        &device,
+        &v_tex.view_textures_bind_group_layout,
+        &v_tex.depth_texture,
+        &v_tex.color_texture,
     );
+}
 
-    ecs.extract.add_systems(update_camera);
+pub fn init_view_textures(device: RD, mut commands: Commands, resolution: Res<ScreenResolution>) {
+    let view_textures_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    // This should match the filterable field of the
+                    // corresponding Texture entry above.
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Depth,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    // This should match the filterable field of the
+                    // corresponding Texture entry above.
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+            label: Some("post_texture_bind_group_layout"),
+        });
+
+    let color_texture = make_view_texture(&resolution, &device);
+    let depth_texture =
+        texture::Texture::create_depth_texture(&device, &resolution, "depth_texture");
+
+    commands.insert_resource(ViewTextureReasources {
+        view_textures_bind_group: make_view_textures_bind_group(
+            &device,
+            &view_textures_bind_group_layout,
+            &depth_texture,
+            &color_texture,
+        ),
+        view_textures_bind_group_layout,
+        depth_texture,
+        color_texture,
+    });
 }

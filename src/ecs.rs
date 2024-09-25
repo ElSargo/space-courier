@@ -1,57 +1,63 @@
-/*
-______      _     _____ ________  ___                     _     _   _                            _                                _     _
-| ___ \    | |   /  ___|_   _|  \/  |                    | |   | | (_)                          | |                              | |   | |
-| |_/ /   _| |_  \ `--.  | | | .  . | __      _____  _ __| | __| |  _ _ __    _ __ ___ _ __   __| | ___ _ __  __      _____  _ __| | __| |
-|  __/ | | | __|  `--. \ | | | |\/| | \ \ /\ / / _ \| '__| |/ _` | | | '_ \  | '__/ _ \ '_ \ / _` |/ _ \ '__| \ \ /\ / / _ \| '__| |/ _` |
-| |  | |_| | |_  /\__/ /_| |_| |  | |  \ V  V / (_) | |  | | (_| | | | | | | | | |  __/ | | | (_| |  __/ |     \ V  V / (_) | |  | | (_| |
-\_|   \__,_|\__| \____/ \___/\_|  |_/   \_/\_/ \___/|_|  |_|\__,_| |_|_| |_| |_|  \___|_| |_|\__,_|\___|_|      \_/\_/ \___/|_|  |_|\__,_|
-*/
-
 use bevy_ecs::{
     schedule::{Schedule, ScheduleLabel},
     world::World,
 };
 
-pub struct Ecs {
+pub struct Initailiser {
     pub world: World,
-    pub update: Schedule,
-    pub extract: Schedule,
     pub init: Schedule,
-    pub sim_init: Schedule,
+    pub update: Schedule,
+    pub prepare_buffers: Schedule,
+    pub resize: Schedule,
+    pub render: Schedule,
 }
 
 #[derive(ScheduleLabel, Hash, PartialEq, Eq, Debug, Clone)]
-struct UpdateSchedual;
+pub struct UpdateSchedual;
 #[derive(ScheduleLabel, Hash, PartialEq, Eq, Debug, Clone)]
-struct ExtractSchedual;
+pub struct PrepareBuffersSchedual;
 #[derive(ScheduleLabel, Hash, PartialEq, Eq, Debug, Clone)]
-struct InitSchedual;
+pub struct InitSchedual;
 #[derive(ScheduleLabel, Hash, PartialEq, Eq, Debug, Clone)]
-struct SimInitSchedual;
+pub struct ResizeSchedual;
+#[derive(ScheduleLabel, Hash, PartialEq, Eq, Debug, Clone)]
+pub struct RenderSchedual;
 
-struct SimWorld(World);
-
-impl Ecs {
+impl Initailiser {
     pub fn new() -> Self {
-        let mut world = World::new();
-        world.insert_resource(SimWorld(World::new()));
-        let ecs = Self {
-            world,
+        let mut init = Schedule::new(InitSchedual);
+        init.set_executor_kind(bevy_ecs::schedule::ExecutorKind::Simple);
+        let mut resize = Schedule::new(ResizeSchedual);
+        resize.set_executor_kind(bevy_ecs::schedule::ExecutorKind::MultiThreaded);
+        let mut render = Schedule::new(RenderSchedual);
+        render.set_executor_kind(bevy_ecs::schedule::ExecutorKind::MultiThreaded);
+
+        Self {
+            world: World::new(),
             update: Schedule::new(UpdateSchedual),
-            extract: Schedule::new(ExtractSchedual),
-            init: Schedule::new(InitSchedual)
-                .set_executor_kind(bevy_ecs::schedule::ExecutorKind::Simple),
-            sim_init: Schedule::new(SimInitSchedual)
-                .set_executor_kind(bevy_ecs::schedule::ExecutorKind::Simple),
-        };
-
-        // SystemState::update_archetypes(, )
-
-        ecs
+            prepare_buffers: Schedule::new(PrepareBuffersSchedual),
+            init,
+            resize,
+            render,
+        }
     }
 
-    pub fn update(&mut self) {
-        self.update.run(&mut self.world);
-        self.extract.run(&mut self.world);
+    pub fn finalize(self) -> World {
+        let Self {
+            mut world,
+            init,
+            update,
+            prepare_buffers,
+            resize,
+            render,
+        } = self;
+        world.add_schedule(init);
+        world.add_schedule(render);
+        world.add_schedule(resize);
+
+        world.add_schedule(update);
+        world.add_schedule(prepare_buffers);
+
+        world
     }
 }

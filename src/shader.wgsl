@@ -1,11 +1,10 @@
 @group(0) @binding(0) var<uniform> camera: Camera;
 
-@group(1) @binding(0) var diff: texture_2d<f32>;
-@group(1) @binding(1) var diff_sampler: sampler;
+@group(1) @binding(0) var background: texture_cube<f32>;
+@group(1) @binding(1) var background_sampler: sampler;
 
-
-@group(2) @binding(0) var background: texture_cube<f32>;
-@group(2) @binding(1) var background_sampler: sampler;
+@group(2) @binding(0) var diff: texture_2d<f32>;
+@group(2) @binding(1) var diff_sampler: sampler;
 
 // @group(2) @binding(0) var<uniform> model: Model;
 
@@ -320,7 +319,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         1.0 - in.barry.x - in.barry.y
     );
     
-    return vec4(vec3(1.0 - pow(edge,10.)),1.0);
+    return vec4(color,1.0);
+    // return vec4(vec3(1.0 - pow(edge,10.)),1.0);
 }
 
 // Stars / background 

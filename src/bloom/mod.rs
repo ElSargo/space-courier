@@ -1,28 +1,37 @@
-use anymap::AnyMap;
 use bevy_ecs::{
-    system::{Commands, In, Res, Resource},
-    world::World,
+    schedule::IntoSystemConfigs,
+    system::{Commands, In, Res, ResMut, Resource},
 };
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, Color, Device,
-    PipelineLayout, ShaderModule, ShaderStages, SurfaceConfiguration, TextureDescriptor,
+    BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, Color, CommandEncoder,
+    Device, PipelineLayout, RenderPipeline, ShaderModule, ShaderStages, TextureDescriptor,
     TextureFormat, TextureUsages, TextureView, TextureViewDescriptor, VertexBufferLayout,
 };
 
 use crate::{
     background::Background,
     camera::CameraUniform,
+    ecs::Initailiser,
     fullscreen::FullscreenQuad,
-    get_all,
-    gpu::{DeviceRes, QueueRes, SurfaceConfRes},
-    idx_all, load_shader,
+    gpu::{QueueResource, ScreenResolution, RD},
+    load_shader,
     shader_manager::{
-        PipelineHandle, ShaderManager, SplitPipelineModuleDescriptor, SplitPipelineModuleResource,
+        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleDescriptor,
+        SplitPipelineModuleResource,
     },
     ViewTextureReasources,
 };
 
+pub fn init_mod(ecs: &mut Initailiser) {
+    ecs.init
+        .add_systems(init_res.after(crate::fullscreen::init_fsq));
+    ecs.render.add_systems(draw_bloom);
+    ecs.resize
+        .add_systems((create_extract_bind_group, resize_bloom));
+}
+
+#[derive(Resource)]
 pub struct BloomReasoruces {
     down_pipeline: PipelineHandle,
     up_pipeline: PipelineHandle,
@@ -49,6 +58,7 @@ impl Chain {
     }
 }
 
+#[derive(Resource)]
 pub struct Bloom {
     down_chain: Chain,
     pub up_chain: Chain,
@@ -66,120 +76,6 @@ impl BloomReasoruces {
 impl Bloom {
     pub fn get_result_bind_group(&self) -> &BindGroup {
         &self.up_chain.bind_groups.last().unwrap()
-    }
-
-    pub fn init(config: &SurfaceConfiguration, device: &Device, rr: &mut AnyMap) {
-        let x = {
-            let vt = &get_all!(rr, ViewTextureReasources)
-                .unwrap()
-                .0
-                .view_texture
-                .view;
-
-            let tmp_tex = create_texture(device, (config.width, config.height));
-            let tmp_v = tmp_tex.create_view(&TextureViewDescriptor {
-                label: Some("Dummy blm tex view"),
-                format: None,
-                dimension: None,
-                aspect: wgpu::TextureAspect::All,
-                base_mip_level: 0,
-                mip_level_count: None,
-                base_array_layer: 0,
-                array_layer_count: None,
-            });
-            let mut x = Self {
-                down_chain: Chain::default(),
-                up_chain: Chain::default(),
-                extract_texture: tmp_tex,
-                extract_texture_view: tmp_v,
-                extract_bindings: device.create_bind_group(&BindGroupDescriptor {
-                    label: Some("Dummy, todo remove me"),
-                    layout: &device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                        label: Some("Dummy todo remove me"),
-                        entries: &[],
-                    }),
-                    entries: &[],
-                }),
-            };
-
-            x.resize(config, device, vt, rr);
-            x
-        };
-
-        rr.insert(x);
-    }
-
-    pub fn resize(
-        &mut self,
-        config: &SurfaceConfiguration,
-        device: &Device,
-        view_texture_view: &TextureView,
-        rr: &AnyMap,
-    ) {
-        self.down_chain.empty();
-        self.up_chain.empty();
-
-        // extract_texture: wgpu::Texture,
-        self.extract_texture = create_texture(device, (config.width, config.height));
-        self.extract_texture_view = self.extract_texture.create_view(&TextureViewDescriptor {
-            label: Some("Bloom extract texture view"),
-            format: Some(TextureFormat::Rgba16Float),
-            dimension: Some(wgpu::TextureViewDimension::D2),
-            aspect: wgpu::TextureAspect::All,
-            base_mip_level: 0,
-            mip_level_count: Some(1),
-            base_array_layer: 0,
-            array_layer_count: Some(1),
-        });
-        // extract_bindings: wgpu::BindGroup,
-        self.extract_bindings = create_extract_bind_group(rr, device, view_texture_view);
-
-        // down_chain: chain,
-        {
-            let (br,) = get_all!(rr, BloomReasoruces).unwrap();
-            let lowest_x = 10;
-            let mut width = config.width;
-            let mut height = config.height;
-
-            let tex = self
-                .extract_texture
-                .create_view(&TextureViewDescriptor::default());
-            self.down_chain
-                .bind_groups
-                .push(mk_bind_group(device, br, &tex, width, height));
-
-            while width > lowest_x {
-                width /= 2;
-                height /= 2;
-
-                let tex = create_texture(device, (width, height));
-                let view = tex.create_view(&TextureViewDescriptor::default());
-                let bind_group = mk_bind_group(device, br, &view, width, height);
-
-                self.down_chain.textures.push(tex);
-                self.down_chain.texture_views.push(view);
-                self.down_chain.bind_groups.push(bind_group);
-            }
-
-            for _ in 0..self.down_chain.bind_groups.len() {
-                let tex = create_texture(device, (width, height));
-                let view = tex.create_view(&TextureViewDescriptor::default());
-                let bind_group = mk_bind_group(device, br, &view, width, height);
-
-                self.up_chain.textures.push(tex);
-                self.up_chain.texture_views.push(view);
-                self.up_chain.bind_groups.push(bind_group);
-
-                width *= 2;
-                height *= 2;
-            }
-
-            println!(
-                "Up: {}, Down {}",
-                self.up_chain.textures.len(),
-                self.down_chain.textures.len()
-            )
-        }
     }
 }
 
@@ -218,12 +114,14 @@ fn create_texture(device: &Device, size: (u32, u32)) -> wgpu::Texture {
 }
 
 fn create_extract_bind_group(
-    rr: &anymap::Map,
-    device: &Device,
-    view_texture_view: &TextureView,
-) -> wgpu::BindGroup {
-    let (br, bg, cam) = idx_all!(rr, BloomReasoruces, Background, CameraUniform);
-    device.create_bind_group(&BindGroupDescriptor {
+    device: RD,
+    vtr: Res<ViewTextureReasources>,
+    br: Res<BloomReasoruces>,
+    bg: Res<Background>,
+    cam: Res<CameraUniform>,
+    mut bloom: ResMut<Bloom>,
+) {
+    bloom.extract_bindings = device.create_bind_group(&BindGroupDescriptor {
         label: Some("Bloom extract bind group"),
         layout: &br.extract_bind_group_layout,
         entries: &[
@@ -245,7 +143,7 @@ fn create_extract_bind_group(
             },
             BindGroupEntry {
                 binding: 3,
-                resource: wgpu::BindingResource::TextureView(view_texture_view),
+                resource: wgpu::BindingResource::TextureView(&vtr.color_texture.view),
             },
             BindGroupEntry {
                 binding: 4,
@@ -256,10 +154,10 @@ fn create_extract_bind_group(
                 }),
             },
         ],
-    })
+    });
 }
 
-fn extract_bind_group_layout_name(DeviceRes(device): DeviceRes) -> wgpu::BindGroupLayout {
+fn extract_bind_group_layout(device: &Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         // @group(0) @binding(0) var color_sampler: sampler;
         // @group(0) @binding(1) var<uniform> threshold: f32;
@@ -372,13 +270,14 @@ fn mk_pipeline(
 }
 
 pub fn draw_bloom(
-    encoder: &mut wgpu::CommandEncoder,
-    shader_manager: &ShaderManager,
-    rr: &AnyMap,
-) -> Option<()> {
-    let (bloom, br, fullscreen_quad) = get_all!(rr, Bloom, BloomReasoruces, FullscreenQuad)?;
-
-    if let Some(pipeline) = shader_manager.get_render_pipeline(&br.extract_pipeline) {
+    render_pipelines: Res<PipelinesView<RenderPipeline>>,
+    mut encoder: ResMut<Marker<CommandEncoder, Bloom>>,
+    bloom: Res<Bloom>,
+    br: Res<BloomReasoruces>,
+    fullscreen_quad: Res<FullscreenQuad>,
+) {
+    if let Some(pipeline) = render_pipelines.get(&br.extract_pipeline) {
+        // println!("bloom extract drawing");
         // for i in 0..bloom.down_chain.textures.len() {
         // println!("Down: {:#?}", bloom.down_textures[i].size());
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -400,9 +299,12 @@ pub fn draw_bloom(
         render_pass.set_pipeline(&pipeline);
         fullscreen_quad.draw(&mut render_pass);
         // }
+    } else {
+        println!("Bloom extract not drawn");
     }
 
-    if let Some(pipeline) = shader_manager.get_render_pipeline(&br.down_pipeline) {
+    if let Some(pipeline) = render_pipelines.get(&br.down_pipeline) {
+        // println!("bloom down drawing");
         for i in 0..bloom.down_chain.textures.len() {
             // println!("Down: {:#?}", bloom.down_textures[i].size());
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -425,12 +327,15 @@ pub fn draw_bloom(
             render_pass.set_pipeline(&pipeline);
             fullscreen_quad.draw(&mut render_pass);
         }
+    } else {
+        println!("Bloom down not drawn");
     }
 
     //up  :0 1 2 3 4 5
     //down:0 1 2 3 4 5
 
-    if let Some(pipeline) = shader_manager.get_render_pipeline(&br.up_pipeline) {
+    if let Some(pipeline) = render_pipelines.get(&br.up_pipeline) {
+        // println!("bloom up drawing");
         for i in 1..bloom.up_chain.textures.len() {
             let view = &bloom.up_chain.texture_views[i];
             let down_texture =
@@ -457,55 +362,51 @@ pub fn draw_bloom(
             render_pass.set_pipeline(&pipeline);
             fullscreen_quad.draw(&mut render_pass);
         }
+    } else {
+        println!("Bloom down not drawn");
     }
-    Some(())
-    // .for_each(|((view, self_texture), prev_texture)| {
-    // });
 }
 
-pub fn init(
-    DeviceRes(device): Res<DeviceRes>,
-    QueueRes(queue): Res<QueueRes>,
-    SurfaceConfRes(config): Res<SurfaceConfRes>,
-    FullscreenQuad {
-        shader_handle: fs_shader,
-        ..
-    }: Res<FullscreenQuad>,
+pub fn init_res(
+    device: RD,
+    queue: Res<QueueResource>,
+    // config: Res<SurfaceConfResource>,
+    fsq: Res<FullscreenQuad>,
 
-    commands: Commands,
-    shader_manager: &mut ShaderManager,
+    mut commands: Commands,
+    shader_manager: Res<ShaderManagerCtrl>,
 ) {
-    let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-        label: Some("Bloom bind group layout"),
-        entries: &[
-            BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count: None,
-            },
-            BindGroupLayoutEntry {
-                binding: 1,
-                visibility: ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
-            BindGroupLayoutEntry {
-                binding: 2,
-                visibility: ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            },
-        ],
-    });
+    // let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+    //     label: Some("Bloom bind group layout"),
+    //     entries: &[
+    //         BindGroupLayoutEntry {
+    //             binding: 0,
+    //             visibility: ShaderStages::FRAGMENT,
+    //             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+    //             count: None,
+    //         },
+    //         BindGroupLayoutEntry {
+    //             binding: 1,
+    //             visibility: ShaderStages::FRAGMENT,
+    //             ty: wgpu::BindingType::Texture {
+    //                 sample_type: wgpu::TextureSampleType::Float { filterable: true },
+    //                 view_dimension: wgpu::TextureViewDimension::D2,
+    //                 multisampled: false,
+    //             },
+    //             count: None,
+    //         },
+    //         BindGroupLayoutEntry {
+    //             binding: 2,
+    //             visibility: ShaderStages::FRAGMENT,
+    //             ty: wgpu::BindingType::Texture {
+    //                 sample_type: wgpu::TextureSampleType::Float { filterable: true },
+    //                 view_dimension: wgpu::TextureViewDimension::D2,
+    //                 multisampled: false,
+    //             },
+    //             count: None,
+    //         },
+    //     ],
+    // });
 
     // struct BloomPipelineLayout {
     //     layout: PipelineLayout,
@@ -564,11 +465,11 @@ pub fn init(
         )));
         shader_manager.add_render_pipeline(
             SplitPipelineModuleDescriptor {
-                vertex: fs_shader,
+                vertex: fsq.shader_handle,
                 fragment: bloom_down_handle,
             },
             move |In(modules): In<SplitPipelineModuleResource>,
-                  DeviceRes(device): Res<DeviceRes>,
+                  device: RD,
                   fsq: Res<FullscreenQuad>,
                   dpl: Res<DownPipelineLayout>| {
                 mk_pipeline(
@@ -584,6 +485,7 @@ pub fn init(
     };
     let up_pipeline = {
         let bloom_up_handle = load_shader!(shader_manager, "bloom_up.wgsl");
+        #[derive(Resource)]
         struct UpPipelineLayout(PipelineLayout);
         commands.insert_resource(UpPipelineLayout(device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
@@ -599,11 +501,11 @@ pub fn init(
 
         shader_manager.add_render_pipeline(
             SplitPipelineModuleDescriptor {
-                vertex: fs_shader,
+                vertex: fsq.shader_handle,
                 fragment: bloom_up_handle,
             },
             |In(SplitPipelineModuleResource { vertex, fragment }),
-             DeviceRes(device): Res<DeviceRes>,
+             device: RD,
              fsq: Res<FullscreenQuad>,
              upl: Res<UpPipelineLayout>| {
                 mk_pipeline(
@@ -611,14 +513,15 @@ pub fn init(
                     &device,
                     &upl.0,
                     fsq.vertex_format,
-                    vertex,
-                    fragment,
+                    &vertex,
+                    &fragment,
                 )
             },
         )
     };
-    let extract_bind_group_layout = extract_bind_group_layout_name(device);
+    let extract_bind_group_layout = extract_bind_group_layout(&device);
     let bloom_extract_handle = load_shader!(shader_manager, "bloom_extract.wgsl");
+    #[derive(Resource)]
     struct ExtractPipelineLayout(PipelineLayout);
     commands.insert_resource(ExtractPipelineLayout(device.create_pipeline_layout(
         &wgpu::PipelineLayoutDescriptor {
@@ -630,13 +533,13 @@ pub fn init(
 
     let extract_pipeline = shader_manager.add_render_pipeline(
         SplitPipelineModuleDescriptor {
-            vertex: fs_shader,
+            vertex: fsq.shader_handle,
             fragment: bloom_extract_handle,
         },
-        |In(SplitPipelineModuleDescriptor { vertex, fragment }),
+        |In(SplitPipelineModuleResource { vertex, fragment }),
          fsq: Res<FullscreenQuad>,
          epl: Res<ExtractPipelineLayout>,
-         DeviceRes(device): Res<DeviceRes>| {
+         device: RD| {
             // Box::new(move |rr, device, modules| {
             //     let (fsq, epl) = get_all!(rr, FullscreenQuad, ExtractPipelineLayout).unwrap();
 
@@ -692,7 +595,107 @@ pub fn init(
         extract_bind_group_layout,
     };
 
+    let tmp_tex = create_texture(&device, (1, 1));
+    let tmp_v = tmp_tex.create_view(&TextureViewDescriptor {
+        label: Some("Dummy blm tex view"),
+        format: None,
+        dimension: None,
+        aspect: wgpu::TextureAspect::All,
+        base_mip_level: 0,
+        mip_level_count: None,
+        base_array_layer: 0,
+        array_layer_count: None,
+    });
+    let bloom = Bloom {
+        down_chain: Chain::default(),
+        up_chain: Chain::default(),
+        extract_texture: tmp_tex,
+        extract_texture_view: tmp_v,
+        extract_bindings: device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Dummy, todo remove me"),
+            layout: &device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Dummy todo remove me"),
+                entries: &[],
+            }),
+            entries: &[],
+        }),
+    };
+
+    commands.insert_resource(bloom);
+
     let threshold: f32 = 1.0;
     bloom_reasources.update_threshold(&queue, threshold);
     commands.insert_resource(bloom_reasources);
+}
+
+fn resize_bloom(
+    mut bloom: ResMut<Bloom>,
+    resolution: Res<ScreenResolution>,
+    device: RD,
+    br: Res<BloomReasoruces>,
+) {
+    bloom.down_chain.empty();
+    bloom.up_chain.empty();
+
+    // extract_texture: wgpu::Texture,
+    bloom.extract_texture = create_texture(&device, (resolution.width, resolution.height));
+    bloom.extract_texture_view = bloom.extract_texture.create_view(&TextureViewDescriptor {
+        label: Some("Bloom extract texture view"),
+        format: Some(TextureFormat::Rgba16Float),
+        dimension: Some(wgpu::TextureViewDimension::D2),
+        aspect: wgpu::TextureAspect::All,
+        base_mip_level: 0,
+        mip_level_count: Some(1),
+        base_array_layer: 0,
+        array_layer_count: Some(1),
+    });
+    // extract_bindings: wgpu::BindGroup,
+    // bloom.extract_bindings is set in create_extract_bind_group
+
+    // down_chain: chain,
+    {
+        let lowest_x = 10;
+        let mut width = resolution.width;
+        let mut height = resolution.height;
+
+        let tex = bloom
+            .extract_texture
+            .create_view(&TextureViewDescriptor::default());
+        bloom
+            .down_chain
+            .bind_groups
+            .push(mk_bind_group(&device, &br, &tex, width, height));
+
+        while width > lowest_x {
+            width /= 2;
+            height /= 2;
+
+            let tex = create_texture(&device, (width, height));
+            let view = tex.create_view(&TextureViewDescriptor::default());
+            let bind_group = mk_bind_group(&device, &br, &view, width, height);
+
+            bloom.down_chain.textures.push(tex);
+            bloom.down_chain.texture_views.push(view);
+            bloom.down_chain.bind_groups.push(bind_group);
+        }
+
+        for _ in 0..bloom.down_chain.bind_groups.len() {
+            let tex = create_texture(&device, (width, height));
+            let view = tex.create_view(&TextureViewDescriptor::default());
+            let bind_group = mk_bind_group(&device, &br, &view, width, height);
+
+            bloom.up_chain.textures.push(tex);
+            bloom.up_chain.texture_views.push(view);
+            bloom.up_chain.bind_groups.push(bind_group);
+
+            width *= 2;
+            height *= 2;
+        }
+
+        println!(
+            "Up: {}, Down {}",
+            bloom.up_chain.textures.len(),
+            bloom.down_chain.textures.len()
+        )
+    }
 }

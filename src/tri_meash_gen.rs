@@ -1,7 +1,6 @@
 use std::mem::size_of;
 
-use anymap::AnyMap;
-
+use bevy_ecs::system::{Commands, In, Res, Resource};
 use bytemuck::bytes_of;
 use glam::{vec2, vec3, Mat4, Vec2, Vec3};
 use wgpu::{
@@ -13,10 +12,12 @@ use wgpu::{
 use crate::{
     background::Background,
     camera::CameraUniform,
+    ecs::Initailiser,
     get_all,
-    gpu::{InstanceBuffer, InstanceBufferDescriptor},
+    gpu::{InstanceBuffer, RenderPassExt, RD},
     shader_manager::{
-        PipelineHandle, ShaderHandle, ShaderManager, UnifiedPipelineModuleDescriptor,
+        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleDescriptor,
+        UnifiedPipelineModuleResource,
     },
     texture,
     transform::Transform,
@@ -71,6 +72,7 @@ impl InstanceData {
     }
 }
 
+#[derive(Resource)]
 struct TriMeshResources {
     pub pipeline_handle: PipelineHandle,
 }
@@ -215,9 +217,19 @@ pub fn gen_mesh(
     }
 }
 
-pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device) {
+pub fn init_mod(i: &mut Initailiser) {
+    // i.init
+    //     .add_systems(init_res.after(background::init_background));
+}
+
+pub fn init_res(
+    device: RD,
+    shader_manager: Res<ShaderManagerCtrl>,
+    mut commands: Commands,
+    camera: Res<CameraUniform>,
+    bg: Res<Background>,
+) {
     let shader = shader_manager.load_shader("./src/tri_mesh.wgsl");
-    let (camera, bg) = get_all!(rr, CameraUniform, Background).unwrap();
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("tri mesh pipeline layout"),
         bind_group_layouts: &[
@@ -226,16 +238,21 @@ pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device
         ],
         push_constant_ranges: &[],
     });
-    struct TriMeshShaderResources(ShaderHandle, PipelineLayout);
-    rr.insert(TriMeshShaderResources(shader, pipeline_layout));
+    // struct TriMeshShaderResources (PipelineLayout);
+    // rr.insert(TriMeshShaderResources( pipeline_layout));
+
+    commands.insert_resource::<Marker<_, TriMesh>>(Marker::new(pipeline_layout));
+
     let pipeline_handle = shader_manager.add_render_pipeline(
         UnifiedPipelineModuleDescriptor { handle: shader },
-        Box::new(|rr, device, module| -> wgpu::RenderPipeline {
-            let (TriMeshShaderResources(shader_handle, pipeline_layout),) =
-                get_all!(rr, TriMeshShaderResources).unwrap();
+        |In(module): In<UnifiedPipelineModuleResource>,
+         device: RD,
+         tr: Res<Marker<PipelineLayout, TriMesh>>| {
+            // Box::new(|rr, device, module| -> wgpu::RenderPipeline {
+
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("Tri mesh render pipeline"),
-                layout: Some(&pipeline_layout),
+                layout: Some(&tr),
                 cache: None,
                 vertex: VertexState {
                     module: &module,
@@ -252,7 +269,7 @@ pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device
                         blend: Some(wgpu::BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
-                    ..Default::default()
+                    compilation_options: Default::default(),
                 }),
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: texture::Texture::DEPTH_FORMAT,
@@ -268,7 +285,7 @@ pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device
                     cull_mode: Some(wgpu::Face::Back),
                     // cull_mode: None,
                     // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                    polygon_mode: wgpu::PolygonMode::Fill,
+                    polygon_mode: wgpu::PolygonMode::Line,
                     // Requires Features::DEPTH_CLIP_CONTROL
                     unclipped_depth: false,
                     // Requires Features::CONSERVATIVE_RASTERIZATION
@@ -281,26 +298,24 @@ pub fn init(shader_manager: &mut ShaderManager, rr: &mut AnyMap, device: &Device
                 },
                 multiview: None, // 5.
             })
-        }),
+        },
     );
-
-    rr.insert(TriMeshResources { pipeline_handle });
 }
 
-pub fn prepare_mesh(tri_mesh: &FlatMesh, gpu: &Gpu) -> TriMesh {
+pub fn prepare_mesh(tri_mesh: &FlatMesh, device: &Device) -> TriMesh {
     // println!("{tri_mesh:#?}");
-    let vertex_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
+    let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Tri mesh vertex_buffer"),
         usage: BufferUsages::VERTEX,
         contents: bytemuck::cast_slice(tri_mesh.positions.as_slice()),
     });
-    let index_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
+    let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Tri mesh index_buffer"),
         usage: BufferUsages::INDEX,
         contents: bytemuck::cast_slice(tri_mesh.indices.as_slice()),
     });
     let buffer_usages = BufferUsages::COPY_DST | BufferUsages::VERTEX;
-    let instance_buffer = gpu.device.create_buffer_init(&BufferInitDescriptor {
+    let instance_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Tri mesh instance_buffer"),
         usage: buffer_usages,
         contents: bytes_of(&RawInstance::from_transform(&Transform::default())),
@@ -309,53 +324,30 @@ pub fn prepare_mesh(tri_mesh: &FlatMesh, gpu: &Gpu) -> TriMesh {
     TriMesh {
         vertex_buffer,
         index_buffer,
-        instance_buffer: InstanceBuffer {
-            descriptor: InstanceBufferDescriptor {
-                label: Some("Tri mesh index buffer".to_string()),
-                usages: buffer_usages,
-                mapped_at_creation: true,
-            },
-            buffer: instance_buffer,
-            instances: 1,
-        },
-        num_elements: tri_mesh.indices.len() as u32,
+        instance_buffer: InstanceBuffer::new_init(
+            Some("Tri mesh index buffer".to_string()),
+            buffer_usages,
+            device,
+            &[RawInstance::from_transform(&Transform::default())],
+        ),
+        num_elements: 1,
     }
 }
 
 pub fn draw_meshes(
     encoder: &mut wgpu::CommandEncoder,
-    shader_manager: &ShaderManager,
+    shader_manager: Res<PipelinesView<wgpu::RenderPipeline>>,
     meshes: &[TriMesh],
-    rr: &AnyMap,
+    tri_mesh_resources: Res<TriMeshResources>,
+    view_texture_reasources: Res<ViewTextureReasources>,
+    camera_uniform: Res<CameraUniform>,
+    background: Res<Background>,
 ) -> Option<()> {
-    let (
-        TriMeshResources {
-            pipeline_handle, ..
-        },
-        ViewTextureReasources {
-            view_texture,
-            depth_texture,
-            ..
-        },
-        camera,
-        Background {
-            texture_cube_bind_group,
-            ..
-        },
-    ) = get_all!(
-        rr,
-        TriMeshResources,
-        ViewTextureReasources,
-        CameraUniform,
-        Background
-    )
-    .expect("Didn't capture required resources");
-
-    if let Some(pipeline) = shader_manager.get_render_pipeline(&pipeline_handle) {
+    if let Some(pipeline) = shader_manager.get(&tri_mesh_resources.pipeline_handle) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Tri mesh render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view_texture.view,
+                view: &view_texture_reasources.color_texture.view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
@@ -363,7 +355,7 @@ pub fn draw_meshes(
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_texture.view,
+                view: &view_texture_reasources.depth_texture.view,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
@@ -374,14 +366,15 @@ pub fn draw_meshes(
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(pipeline);
-        render_pass.set_bind_group(0, &camera.inner.bind_group, &[]);
-        render_pass.set_bind_group(1, &texture_cube_bind_group, &[]);
+        render_pass.set_pipeline(&pipeline);
+        render_pass.set_bind_group(0, &camera_uniform.inner.bind_group, &[]);
+        render_pass.set_bind_group(1, &background.texture_cube_bind_group, &[]);
         for mesh in meshes {
             render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, mesh.instance_buffer.buffer.slice(..));
             render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..mesh.num_elements, 0, 0..mesh.instance_buffer.instances);
+
+            render_pass.set_instance_buffer(1, &mesh.instance_buffer);
+            render_pass.draw_indexed(0..mesh.num_elements, 0, 0..mesh.instance_buffer.len());
         }
     }
     Some(())

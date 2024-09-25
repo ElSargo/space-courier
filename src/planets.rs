@@ -2,28 +2,35 @@ use bevy_ecs::{
     component::Component,
     entity::Entity,
     query::With,
-    system::{Commands, Query, Res, ResMut, Resource},
+    schedule::IntoSystemConfigs,
+    system::{Commands, Query, Res, Resource},
 };
 use glam::{Quat, Vec3};
+
 use rand::{thread_rng, Rng};
 use std::{
     default::Default,
     sync::{Arc, Mutex},
 };
-use wgpu::BindGroupLayout;
+use wgpu::BufferUsages;
 use winit::keyboard::Key;
 
 use crate::{
+    background,
     camera::Camera,
-    ecs::Ecs,
-    gpu::{DeviceRes, InstanceBuffer, QueueRes},
+    ecs::Initailiser,
+    gpu::{
+        pack_buffers, InstanceBuffer, QueueResource, SolidRenderable,
+        TextureBindGroupLayoutResource, RD,
+    },
     gravity::G,
     input::ButtonInput,
     instance_buffer_bytes,
     model::Model,
+    model_loader,
     physics::Physics,
-    resources,
     transform::Transform,
+    RawInstance, StandardRenderPipeline,
 };
 
 #[derive(Default, Debug, Component)]
@@ -35,25 +42,48 @@ pub struct Planet {
     pub mass: f32,
 }
 
-pub fn init(
-    ecs: &mut Ecs,
-    devicedevice Res<DeviceRes>,
-    QueueRes(queue): Res<QueueRes>,
-    texture_bind_group_layout: &BindGroupLayout,
-    ib: Arc<Mutex<InstanceBuffer>>,
-) {
-    ecs.init.add_systems(make_planets);
-    ecs.update.add_systems(remake_planets);
-    ecs.update.add_systems(add_planet);
-    ecs.update.add_systems(destroy_planets_in_sun);
-    ecs.extract.add_systems(update_instance_buffer);
+#[derive(Default, Debug, Component)]
+struct PlanetStuff;
 
-    ecs.world.insert_resource(PlanetGpuData {
-        instance_buffer: ib,
-        model: resources::load_model("wallmart.obj", &device, &queue, &texture_bind_group_layout)
-            .block_on()
-            .unwrap(),
-    })
+fn init(
+    device: RD,
+    queue: Res<QueueResource>,
+    texture_bind_group_layout: Res<TextureBindGroupLayoutResource>,
+    nor_pipe: Res<StandardRenderPipeline>,
+    mut commands: Commands,
+) {
+    let ib = InstanceBuffer::new(
+        Some("Planet Instance buffer".to_owned()),
+        BufferUsages::VERTEX | BufferUsages::COPY_DST,
+        &device,
+    );
+
+    commands.spawn((
+        ib,
+        PlanetStuff,
+        SolidRenderable {
+            pipeline_handle: nor_pipe.handle,
+            model: model_loader::load_model(
+                "wallmart.obj",
+                device.0.clone(),
+                queue.0.clone(),
+                texture_bind_group_layout.0.clone(),
+            ),
+        },
+    ));
+}
+
+pub fn init_mod(ecs: &mut Initailiser) {
+    ecs.init.add_systems((
+        make_planets,
+        init.after(background::init_background)
+            .after(crate::solid_pass::init_normal_pipeline),
+    ));
+    ecs.update
+        .add_systems((remake_planets, add_planet, destroy_planets_in_sun));
+    // ecs.prepare_buffers.add_systems(update_instance_buffer);
+    ecs.prepare_buffers
+        .add_systems(pack_buffers::<&Transform, RawInstance, With<Planet>, With<PlanetStuff>>);
 
     // planets.scales[1] = Vec3::ONE;
 }
@@ -63,7 +93,7 @@ fn remake_planets(
     planets: Query<Entity, With<Planet>>,
     mut commands: Commands,
 ) {
-    if kb.just_down(Key::R) {
+    if kb.just_down(Key::Character("R".into())) {
         for e in planets.iter() {
             commands.entity(e).despawn();
         }
@@ -72,7 +102,7 @@ fn remake_planets(
 }
 
 fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
-    if kb.is_down(Key::L) {
+    if kb.is_down(Key::Character("p".into())) {
         let mut rng = thread_rng();
         make_planet(&mut rng, &mut commands);
     }
@@ -80,7 +110,7 @@ fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
 
 fn make_planets(mut commands: Commands) {
     let mut rng = thread_rng();
-    for _ in 0..400 {
+    for _ in 0..40 {
         make_planet(&mut rng, &mut commands);
     }
 }
@@ -141,34 +171,4 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
 pub struct PlanetGpuData {
     pub instance_buffer: Arc<Mutex<InstanceBuffer>>,
     pub model: Model,
-}
-
-pub fn update_instance_buffer(
-    camera: Res<Camera>,
-    transforms: Query<&Transform, With<Planet>>,
-    planet_data: ResMut<PlanetGpuData>,
-    DeviceRes(device): Res<DeviceRes>,
-    QueueRes(queue): Res<QueueRes>,
-) {
-    {
-        let planet_instances = instance_buffer_bytes(
-            transforms.iter(), // QueryBuilder::<&Transform, With<Planet>>::new(&mut self.ecs.world)
-            camera.eye,        //     .build(){
-                               //     .iter(&self.ecs.world),
-        );
-        planet_data
-            .instance_buffer
-            .lock()
-            .expect("Couldn't lock buffer")
-            .write(&device, &planet_instances.as_slice(), &queue);
-    }
-    // let i = transforms.iter();
-    // println!("{:#?}", i.size_hint());
-    // let bytes = instance_buffer_bytes(i);
-    // gpu.queue.write_buffer(
-    //     &planet_data.instance_buffer,
-    //     0,
-    //     bytemuck::cast_slice(&bytes),
-    // );
-    // println!("Updated buffer")
 }

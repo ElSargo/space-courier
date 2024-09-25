@@ -5,7 +5,7 @@ use wgpu::util::DeviceExt;
 
 use crate::{model, texture};
 
-pub async fn load_string(file_name: &str) -> color_eyre::Result<String> {
+pub fn load_string(file_name: &str) -> color_eyre::Result<String> {
     let path = std::path::Path::new(env!("OUT_DIR"))
         .join("res")
         .join(file_name);
@@ -17,7 +17,7 @@ pub async fn load_binary(file_name: &str) -> color_eyre::Result<Vec<u8>> {
     let path = std::path::Path::new(env!("OUT_DIR"))
         .join("res")
         .join(file_name);
-    println!("File name: {file_name}, Path: {path:?}");
+    // println!("File name: {file_name}, Path: {path:?}");
     let data = std::fs::read(path)?;
 
     Ok(data)
@@ -38,7 +38,7 @@ pub async fn load_model(
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
 ) -> color_eyre::Result<model::Model> {
-    let obj_text = load_string(file_name).await?;
+    let obj_text = load_string(file_name)?;
     let obj_cursor = Cursor::new(obj_text);
     let mut obj_reader = BufReader::new(obj_cursor);
 
@@ -50,7 +50,7 @@ pub async fn load_model(
             ..Default::default()
         },
         |p| async move {
-            let mat_text = load_string(&p).await.unwrap();
+            let mat_text = load_string(&p).unwrap();
             tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
         },
     )
