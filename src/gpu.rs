@@ -74,14 +74,15 @@ pub struct InstanceBufferDescriptor {
     pub mapped_at_creation: bool,
 }
 
-pub struct InstanceBufferInner {
+#[derive(Component)]
+pub struct InstanceBuffer {
     descriptor: InstanceBufferDescriptor,
     buffer: ArcSwap<wgpu::Buffer>,
     instances: AtomicU32,
 }
 
 #[allow(dead_code)]
-impl InstanceBufferInner {
+impl InstanceBuffer {
     pub fn new<S: ToOwned<Owned = String>>(
         label: Option<S>,
         usages: BufferUsages,
@@ -105,6 +106,9 @@ impl InstanceBufferInner {
         }
     }
 
+    pub fn len(&self) -> u32 {
+        self.instances.load(std::sync::atomic::Ordering::SeqCst)
+    }
     pub fn new_init<T: bytemuck::Pod>(
         label: Option<String>,
         usages: BufferUsages,
@@ -191,28 +195,6 @@ impl InstanceBufferInner {
     }
 }
 
-#[derive(Component, Clone)]
-pub struct InstanceBuffer(Arc<InstanceBufferInner>);
-
-impl std::fmt::Debug for InstanceBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "[Instance buffer: {} instances, Descriptor: {:?}",
-            self.instances.load(std::sync::atomic::Ordering::Relaxed),
-            self.0.descriptor
-        )
-    }
-}
-
-impl Deref for InstanceBuffer {
-    type Target = InstanceBufferInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 // impl DerefMut for InstanceBuffer {
 //     fn deref_mut(&mut self) -> &mut Self::Target {
 //         &mut self.0
@@ -247,29 +229,6 @@ where
     ) {
         self.set_instance_buffer(slot, instance_buffer);
         self.draw_model_instanced(model, 0..instance_buffer.len());
-    }
-}
-
-impl InstanceBuffer {
-    pub fn new<S: ToOwned<Owned = String>>(
-        label: Option<S>,
-        usages: BufferUsages,
-        device: &Device,
-    ) -> Self {
-        Self(InstanceBufferInner::new(label, usages, device).into())
-    }
-
-    pub fn new_init<T: bytemuck::Pod>(
-        label: Option<String>,
-        usages: BufferUsages,
-        device: &Device,
-        instances: &[T],
-    ) -> Self {
-        Self(InstanceBufferInner::new_init(label, usages, device, instances).into())
-    }
-
-    pub fn len(&self) -> u32 {
-        self.0.instances.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
