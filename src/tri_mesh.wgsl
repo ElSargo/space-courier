@@ -1,5 +1,4 @@
 @group(0) @binding(0) var<uniform> camera: Camera;
-const PI: f32 = 3.1415926535897932384626433832795;
 
 @group(1) @binding(0) var background: texture_cube<f32>;
 @group(1) @binding(1) var background_sampler: sampler;
@@ -14,15 +13,20 @@ struct Camera {
     inv_view: mat4x4<f32>,
 };
 
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
 }
 
 struct InstanceInput {
-    @location(0) model_view_proj_0: vec4<f32>,
-    @location(1) model_view_proj_1: vec4<f32>,
-    @location(2) model_view_proj_2: vec4<f32>,
-    @location(3) model_view_proj_3: vec4<f32>,
+    @location(5) model_matrix_0: vec4<f32>,
+    @location(6) model_matrix_1: vec4<f32>,
+    @location(7) model_matrix_2: vec4<f32>,
+    @location(8) model_matrix_3: vec4<f32>,
+
+    @location(9) rotation_only_matrix_0: vec3<f32>,
+    @location(10) rotation_only_matrix_1: vec3<f32>,
+    @location(11) rotation_only_matrix_2: vec3<f32>,
 };
 
 struct VertexOutput {
@@ -35,6 +39,8 @@ fn drawObject(v: vec3f) -> f32 {
     let p = abs(fract(v) - 0.5);
     return max(max(p.x, p.y), p.z);
 }
+
+const PI: f32 = 3.1415926535897932384626433832795;
 
 fn cellTile(v: vec3f) -> f32 {
     var p = v;
@@ -74,14 +80,14 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    let model_view_proj_matrix = mat4x4<f32>(
-        instance.model_view_proj_0,
-        instance.model_view_proj_1,
-        instance.model_view_proj_2,
-        instance.model_view_proj_3,
+    let model_matrix = mat4x4<f32>(
+        instance.model_matrix_0,
+        instance.model_matrix_1,
+        instance.model_matrix_2,
+        instance.model_matrix_3,
     );
 
-    let vert_position = model_matrix * vec4((vert.position - vec3(50.0, 0.0, 50.0)) * 200.0  - camera.view_pos.xyz, 1.0)   ;
+    let vert_position = model_matrix * vec4(vert.position, 1.0)  ;
     out.relative_position = vert_position.xyz;
     out.clip_position = camera.view_proj * vert_position;
     out.mesh_position = vert.position;
@@ -99,7 +105,7 @@ fn rot(a: f32) -> mat2x2<f32> {
 
 
 fn pow2(x: vec3f) -> vec3f {
-    return x*x;
+    return x * x;
 }
 
 fn fresnel(rd: vec3<f32>, normal: vec3<f32>, amount: f32) -> f32 {
@@ -108,13 +114,13 @@ fn fresnel(rd: vec3<f32>, normal: vec3<f32>, amount: f32) -> f32 {
 
 fn exp_int(a: f32, b: f32) -> f32 {
     let e = exp(a * 2.45);
-    return e / ( 1.0 + e) * 1.77;
+    return e / (1.0 + e) * 1.77;
 }
 
-fn smin( a: f32, b: f32, k: f32 ) -> f32 {
+fn smin(a: f32, b: f32, k: f32) -> f32 {
     let j = k * 4.0;
-    let h = max( k-abs(a-b), 0.0 )/j;
-    return min(a,b) - h*h*k*(1.0/4.0);
+    let h = max(k - abs(a - b), 0.0) / j;
+    return min(a, b) - h * h * k * (1.0 / 4.0);
 }
 
 
@@ -124,16 +130,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let sin_60 = sin(PI / 3.0) ;
     let period = 2.0 / sqrt(3.0) ;
-    let tri_coord = vec3(in.mesh_position.xz * mat2x2( sin_60, 0.5, sin_60, -0.5 ),in.mesh_position.z);
+    let tri_coord = vec3(in.mesh_position.xz * mat2x2(sin_60, 0.5, sin_60, -0.5), in.mesh_position.z);
     let triangle = abs(fract(0.5 + tri_coord * period) - 0.5);
-    let closest_tri_line = min(triangle.x,min(triangle.y,triangle.z));
+    let closest_tri_line = min(triangle.x, min(triangle.y, triangle.z));
     var aa = fwidth(in.mesh_position.x) + fwidth(in.mesh_position.z) ;
     // if in.clip_position.x < 900.0 {
     //     aa = 0.0;
     // }
     // let line_signal = smoothstep(0.02 + aa * 1.0,0.01, closest_tri_line) / (1.0 + aa * 100.0);
-    let c = exp(-30. * aa)*0.9 + 0.1;
-    let line_signal = exp(-150.0 * closest_tri_line * c) * pow(c,0.75);
+    let c = exp(-30. * aa) * 0.9 + 0.1;
+    let line_signal = exp(-150.0 * closest_tri_line * c) * pow(c, 0.75);
 
 
     let rd = normalize(in.relative_position.xyz);
@@ -144,6 +150,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let fr = fresnel(rd, nor_flat, 5.0);
     let shi = pow(max(0.0, dot(re, rd)), 2.0) * fr;
+
+    // return vec4(1.0);
 
     return vec4(
         vec3(1.0, 0.3, 0.05) * 0. + line_signal * vec3(1.0, 0.0, 0.23) * 20.0 * 1.0 + fr * 1.0 * shi * bg.rgb * 3.0, 

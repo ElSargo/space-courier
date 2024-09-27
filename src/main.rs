@@ -38,7 +38,7 @@ use bevy_ecs::{
     world::World,
 };
 use ecs::{InitSchedual, Initailiser, ResizeSchedual};
-use glam::{vec3, Mat3, Mat4, Quat, Vec2, Vec3, Vec4};
+use glam::{Mat3, Mat4, Quat, Vec3};
 use gpu::{
     DeviceResource, OutputTextureResource, QueueResource, RenderCompleteCallBack, ScreenResolution,
 };
@@ -281,9 +281,11 @@ impl<'a> ApplicationHandler for State<'a> {
                     });
                 }
             }
-
+            winit::event::DeviceEvent::Motion { axis, value } => {
+                println!("Axis id: {axis:?} value: {value:?}")
+            }
+            // update
             _ => {} // DeviceEvent::MouseWheel { delta } => todo!(),
-                    // DeviceEvent::Motion { axis, value } => todo!(),
                     // DeviceEvent::Button { button, self } => todo!(),
                     // DeviceEvent::Key(e) => self.input(&e),
                     // DeviceEvent::Text { codepoint } => todo!(),
@@ -1023,53 +1025,6 @@ macro_rules! get_all_shaders {
             closure()
         }
     }
-}
-
-fn draw_object(v: Vec3) -> f32 {
-    let p = (v.fract() - 0.5).abs();
-    return p.x.max(p.y).max(p.z);
-}
-
-fn cell_tile(v: Vec3) -> f32 {
-    let mut p = v;
-    // Draw four overlapping objects (spheres, in this case) at various positions throughout the tile.
-    let mut d = Vec4::ZERO;
-    d.x = draw_object(p - vec3(0.81, 0.62, 0.53));
-    p.x = (p.y - p.x) * 0.7071;
-    p.y = (p.y + p.x) * 0.7071;
-    //p.xy = vec2(p.y*.866025 - p.x*.5, p.y*.5 + p.x*.866025); // Etc.
-    d.y = draw_object(p - vec3(0.39, 0.2, 0.11));
-    p.y = (p.z - p.y) * 0.7071;
-    p.z = (p.z + p.y) * 0.7071;
-    //p.yz = vec2(p.z*.866025 - p.y*.5, p.z*.5 + p.y*.866025); // Etc.
-    d.z = draw_object(p - vec3(0.62, 0.24, 0.06));
-    p.x = (p.z - p.x) * 0.7071;
-    p.z = (p.z + p.x) * 0.7071;
-    //p.xz = vec2(p.z*.866025 - p.x*.5, p.z*.5 + p.x*.866025); // Etc.
-    d.w = draw_object(p - vec3(0.2, 0.82, 0.64));
-
-    // Obtain the minimum, and you're done.
-    d.x = d.x.min(d.y);
-    d.y = d.z.min(d.w);
-
-    return 1. - d.x.min(d.y) * 2.; // Scale between zero and one... roughly.
-
-    // For anyone wanting to experiment with this, the following gives better variance:
-    //const float scale = 1.; // 1 up to 4, or higher, depending on the look you want.
-    // Obviously, for the reverse, you take the one and minus away.
-    //return 1. - min(min(d.x, d.y)*2.*scale, 1.);
-}
-
-fn terain_height(p: Vec2) -> f32 {
-    let position = vec3(p.x, 0.0, p.y);
-    smoothstep(0.5, 1.0, cell_tile(position * 0.1)) * 2.0
-        + 0.0 * (0.4 + ((position.z * 0.5 + (position.x * 0.5).sin()).sin())).abs()
-}
-
-#[inline(always)]
-fn smoothstep(min: f32, max: f32, value: f32) -> f32 {
-    let x = ((value - min) / (max - min)).clamp(0.0, 1.0);
-    x * x * (3.0 - 2.0 * x)
 }
 
 #[macro_export]

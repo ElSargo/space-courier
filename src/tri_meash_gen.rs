@@ -1,27 +1,26 @@
-use std::mem::size_of;
+use std::{mem::size_of, sync::Arc};
 
-use bevy_ecs::system::{Commands, In, Res, Resource};
-use bytemuck::bytes_of;
-use glam::{vec2, vec3, Mat4, Vec2, Vec3};
+use bevy_ecs::{
+    component::Component,
+    query::With,
+    schedule::IntoSystemConfigs,
+    system::{Commands, Res, Resource},
+};
+
+use glam::{vec2, vec3, Mat4, Vec2, Vec3, Vec4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferUsages, Device, FragmentState, PipelineLayout, PipelineLayoutDescriptor, TextureFormat,
-    VertexState,
+    BufferUsages, Device,
 };
 
 use crate::{
-    background::Background,
-    camera::CameraUniform,
     ecs::Initailiser,
-    get_all,
-    gpu::{InstanceBuffer, RenderPassExt, RD},
+    gpu::{pack_buffers, InstanceBuffer, SolidDrawable, SolidDrawableHandle, SolidRenderable, RD},
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleDescriptor,
-        UnifiedPipelineModuleResource,
+        PipelineHandle, ShaderManagerCtrl, SolidPipelineModuleResourceExtras, SolidShader,
     },
-    texture,
     transform::Transform,
-    RawInstance, ViewTextureReasources,
+    RawInstance,
 };
 
 type IndexType = u16;
@@ -77,10 +76,10 @@ struct TriMeshResources {
     pub pipeline_handle: PipelineHandle,
 }
 
+#[derive(Debug, Component)]
 pub struct TriMesh {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    instance_buffer: InstanceBuffer,
     num_elements: u32,
 }
 
@@ -218,89 +217,66 @@ pub fn gen_mesh(
 }
 
 pub fn init_mod(i: &mut Initailiser) {
-    // i.init
-    //     .add_systems(init_res.after(background::init_background));
-}
-
-pub fn init_res(
-    device: RD,
-    shader_manager: Res<ShaderManagerCtrl>,
-    mut commands: Commands,
-    camera: Res<CameraUniform>,
-    bg: Res<Background>,
-) {
-    let shader = shader_manager.load_shader("./src/tri_mesh.wgsl");
-    let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-        label: Some("tri mesh pipeline layout"),
-        bind_group_layouts: &[
-            &camera.inner.bind_group_layout,
-            &bg.texture_cube_bind_group_layout,
-        ],
-        push_constant_ranges: &[],
-    });
-    // struct TriMeshShaderResources (PipelineLayout);
-    // rr.insert(TriMeshShaderResources( pipeline_layout));
-
-    commands.insert_resource::<Marker<_, TriMesh>>(Marker::new(pipeline_layout));
-
-    let pipeline_handle = shader_manager.add_render_pipeline(
-        UnifiedPipelineModuleDescriptor { handle: shader },
-        |In(module): In<UnifiedPipelineModuleResource>,
-         device: RD,
-         tr: Res<Marker<PipelineLayout, TriMesh>>| {
-            // Box::new(|rr, device, module| -> wgpu::RenderPipeline {
-
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Tri mesh render pipeline"),
-                layout: Some(&tr),
-                cache: None,
-                vertex: VertexState {
-                    module: &module,
-                    entry_point: "vs_main",
-                    buffers: &[Vertex::desc(), RawInstance::desc()],
-                    compilation_options: Default::default(),
-                },
-                fragment: Some(FragmentState {
-                    module: &module,
-                    entry_point: "fs_main",
-                    targets: &[Some(wgpu::ColorTargetState {
-                        // 4.
-                        format: TextureFormat::Rgba16Float,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: Default::default(),
-                }),
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: texture::Texture::DEPTH_FORMAT,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::Greater, // 1.
-                    stencil: wgpu::StencilState::default(),        // 2.
-                    bias: wgpu::DepthBiasState::default(),
-                }), // 1.
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList, // 1.
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Cw, // 2.
-                    cull_mode: Some(wgpu::Face::Back),
-                    // cull_mode: None,
-                    // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                    polygon_mode: wgpu::PolygonMode::Line,
-                    // Requires Features::DEPTH_CLIP_CONTROL
-                    unclipped_depth: false,
-                    // Requires Features::CONSERVATIVE_RASTERIZATION
-                    conservative: false,
-                },
-                multisample: wgpu::MultisampleState {
-                    count: 1,                         // 2.
-                    mask: !0,                         // 3.
-                    alpha_to_coverage_enabled: false, // 4.
-                },
-                multiview: None, // 5.
-            })
-        },
+    i.init
+        .add_systems(init_res.after(crate::background::init_background));
+    i.prepare_buffers.add_systems(
+        pack_buffers::<&Transform, RawInstance, With<TriMeshMarker>, With<TriMeshMarker>>,
     );
 }
+
+#[derive(Debug)]
+struct TriMeshHandle(Arc<TriMesh>);
+
+impl SolidDrawableHandle for TriMeshHandle {
+    fn aquire(&self) -> Option<Arc<dyn crate::gpu::SolidDrawable>> {
+        Some(self.0.clone())
+    }
+}
+
+impl SolidDrawable for TriMesh {
+    fn draw<'a: 'b, 'b>(
+        &self,
+        render_pass: &mut wgpu::RenderPass,
+        _instances: std::ops::Range<u32>,
+    ) {
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..self.index_buffer.size() as u32 / 2, 0, 0..1);
+    }
+}
+
+pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, device: RD) {
+    let shader = shader_manager.load_shader("./src/tri_mesh.wgsl");
+
+    let flat_mesh = gen_mesh(100, 100, |x| terain_height(x));
+
+    let mesh = Arc::new(prepare_mesh(&flat_mesh, &device));
+
+    commands.spawn((
+        SolidRenderable {
+            pipeline_handle: shader_manager.add_render_pipeline(
+                SolidShader { handle: shader },
+                move || SolidPipelineModuleResourceExtras {
+                    vertex_buffers: Arc::new([Vertex::desc(), RawInstance::desc()]),
+                    extra_bind_groups: vec![],
+                },
+            ),
+            renderable: Box::new(TriMeshHandle(mesh)),
+        },
+        InstanceBuffer::new_init(
+            Some("Tri mesh index buffer".to_string()),
+            BufferUsages::COPY_DST | BufferUsages::VERTEX,
+            &device,
+            &[RawInstance::from_transform(&Transform::default())],
+        ),
+        TriMeshMarker,
+    ));
+
+    commands.spawn((Transform::default(), TriMeshMarker));
+}
+
+#[derive(Component)]
+pub struct TriMeshMarker;
 
 pub fn prepare_mesh(tri_mesh: &FlatMesh, device: &Device) -> TriMesh {
     // println!("{tri_mesh:#?}");
@@ -314,69 +290,57 @@ pub fn prepare_mesh(tri_mesh: &FlatMesh, device: &Device) -> TriMesh {
         usage: BufferUsages::INDEX,
         contents: bytemuck::cast_slice(tri_mesh.indices.as_slice()),
     });
-    let buffer_usages = BufferUsages::COPY_DST | BufferUsages::VERTEX;
-    let instance_buffer = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("Tri mesh instance_buffer"),
-        usage: buffer_usages,
-        contents: bytes_of(&RawInstance::from_transform(&Transform::default())),
-    });
 
     TriMesh {
         vertex_buffer,
         index_buffer,
-        instance_buffer: InstanceBuffer::new_init(
-            Some("Tri mesh index buffer".to_string()),
-            buffer_usages,
-            device,
-            &[RawInstance::from_transform(&Transform::default())],
-        ),
         num_elements: 1,
     }
 }
 
-pub fn draw_meshes(
-    encoder: &mut wgpu::CommandEncoder,
-    shader_manager: Res<PipelinesView<wgpu::RenderPipeline>>,
-    meshes: &[TriMesh],
-    tri_mesh_resources: Res<TriMeshResources>,
-    view_texture_reasources: Res<ViewTextureReasources>,
-    camera_uniform: Res<CameraUniform>,
-    background: Res<Background>,
-) -> Option<()> {
-    if let Some(pipeline) = shader_manager.get(&tri_mesh_resources.pipeline_handle) {
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Tri mesh render pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view_texture_reasources.color_texture.view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &view_texture_reasources.depth_texture.view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            occlusion_query_set: None,
-            timestamp_writes: None,
-        });
+fn draw_object(v: Vec3) -> f32 {
+    let p = (v.fract() - 0.5).abs();
+    return p.x.max(p.y).max(p.z);
+}
 
-        render_pass.set_pipeline(&pipeline);
-        render_pass.set_bind_group(0, &camera_uniform.inner.bind_group, &[]);
-        render_pass.set_bind_group(1, &background.texture_cube_bind_group, &[]);
-        for mesh in meshes {
-            render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+fn cell_tile(v: Vec3) -> f32 {
+    let mut p = v;
+    // Draw four overlapping objects (spheres, in this case) at various positions throughout the tile.
+    let mut d = Vec4::ZERO;
+    d.x = draw_object(p - vec3(0.81, 0.62, 0.53));
+    p.x = (p.y - p.x) * 0.7071;
+    p.y = (p.y + p.x) * 0.7071;
+    //p.xy = vec2(p.y*.866025 - p.x*.5, p.y*.5 + p.x*.866025); // Etc.
+    d.y = draw_object(p - vec3(0.39, 0.2, 0.11));
+    p.y = (p.z - p.y) * 0.7071;
+    p.z = (p.z + p.y) * 0.7071;
+    //p.yz = vec2(p.z*.866025 - p.y*.5, p.z*.5 + p.y*.866025); // Etc.
+    d.z = draw_object(p - vec3(0.62, 0.24, 0.06));
+    p.x = (p.z - p.x) * 0.7071;
+    p.z = (p.z + p.x) * 0.7071;
+    //p.xz = vec2(p.z*.866025 - p.x*.5, p.z*.5 + p.x*.866025); // Etc.
+    d.w = draw_object(p - vec3(0.2, 0.82, 0.64));
 
-            render_pass.set_instance_buffer(1, &mesh.instance_buffer);
-            render_pass.draw_indexed(0..mesh.num_elements, 0, 0..mesh.instance_buffer.len());
-        }
-    }
-    Some(())
-} // pub fn draw<'a>(&'a self, render_pass: &mut RenderPass<'a>) {
-  // }
+    // Obtain the minimum, and you're done.
+    d.x = d.x.min(d.y);
+    d.y = d.z.min(d.w);
+
+    return 1. - d.x.min(d.y) * 2.; // Scale between zero and one... roughly.
+
+    // For anyone wanting to experiment with this, the following gives better variance:
+    //const float scale = 1.; // 1 up to 4, or higher, depending on the look you want.
+    // Obviously, for the reverse, you take the one and minus away.
+    //return 1. - min(min(d.x, d.y)*2.*scale, 1.);
+}
+
+fn terain_height(p: Vec2) -> f32 {
+    let position = vec3(p.x, 0.0, p.y);
+    smoothstep(0.5, 2.0, cell_tile(position * 0.2)) * 20.0
+        + 0.0 * (0.4 + ((position.z * 0.5 + (position.x * 0.5).sin()).sin())).abs()
+}
+
+#[inline(always)]
+fn smoothstep(min: f32, max: f32, value: f32) -> f32 {
+    let x = ((value - min) / (max - min)).clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
+}
