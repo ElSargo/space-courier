@@ -1,5 +1,5 @@
 use bevy_ecs::prelude::Res;
-use std::ops::DerefMut;
+use std::ops::{DerefMut, Range};
 use std::{
     collections::VecDeque,
     convert::From,
@@ -7,6 +7,7 @@ use std::{
     ops::Deref,
     sync::{atomic::AtomicU32, Arc},
 };
+use wgpu::RenderPass;
 
 use arc_swap::ArcSwap;
 use bevy_ecs::{
@@ -267,8 +268,30 @@ pub fn pack_buffers<Input, Raw, InputFilter, InstanceBufferFilter>(
 #[derive(Component, Debug)]
 pub struct SolidRenderable {
     pub pipeline_handle: PipelineHandle,
-    pub model: ModelHandle,
+    pub renderable: Box<dyn SolidDrawableHandle + Send + Sync>,
 }
+
+pub trait SolidDrawableHandle: std::fmt::Debug {
+    fn aquire(&self) -> Option<Arc<dyn SolidDrawable>>;
+}
+
+pub trait SolidDrawable {
+    fn draw<'a: 'b, 'b>(&'a self, render_pass: &mut RenderPass<'b>, instances: Range<u32>);
+}
+
+impl SolidDrawableHandle for ModelHandle {
+    fn aquire(&self) -> Option<Arc<dyn SolidDrawable>> {
+        self.get().map(|x| x as Arc<dyn SolidDrawable>)
+    }
+}
+
+impl SolidDrawable for Model {
+    fn draw<'a: 'b, 'b>(&'a self, render_pass: &mut RenderPass<'b>, instances: Range<u32>) {
+        render_pass.draw_model_instanced(self, instances);
+    }
+}
+
+// impl SolidDrawable for ModelHandle
 
 #[derive(Resource)]
 pub struct ScreenResolution {

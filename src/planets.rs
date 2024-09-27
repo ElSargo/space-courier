@@ -17,7 +17,6 @@ use winit::keyboard::Key;
 
 use crate::{
     background,
-    camera::Camera,
     ecs::Initailiser,
     gpu::{
         pack_buffers, InstanceBuffer, QueueResource, SolidRenderable,
@@ -25,7 +24,6 @@ use crate::{
     },
     gravity::G,
     input::ButtonInput,
-    instance_buffer_bytes,
     model::Model,
     model_loader,
     physics::Physics,
@@ -63,12 +61,12 @@ fn init(
         PlanetStuff,
         SolidRenderable {
             pipeline_handle: nor_pipe.handle,
-            model: model_loader::load_model(
+            renderable: Box::new(model_loader::load_model(
                 "wallmart.obj",
                 device.0.clone(),
                 queue.0.clone(),
                 texture_bind_group_layout.0.clone(),
-            ),
+            )),
         },
     ));
 }
