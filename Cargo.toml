@@ -28,6 +28,7 @@ pollster = "0.3.0"
 arc-swap = "1.7.1"
 lazy_static = "1.5.0"
 parking_lot = "0.12.3"
+crossbeam-channel = "0.5.13"
 
 [build-dependencies]
 color-eyre = "0.5.5"
