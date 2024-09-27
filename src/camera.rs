@@ -2,10 +2,7 @@ use bevy_ecs::system::{Commands, Res, ResMut, Resource};
 use glam::{vec3, Mat4, Vec3, Vec4};
 use wgpu::{util::DeviceExt, Queue};
 
-use std::{
-    default::Default,
-    sync::{Arc, Mutex},
-};
+use std::default::Default;
 
 use crate::{
     ecs::Initailiser,
@@ -22,8 +19,8 @@ pub struct Camera {
     pub fovy: f32,
     pub znear: f32,
 }
+
 #[repr(C)]
-// This is so we can store this in a buffer
 #[derive(Debug, Copy, Clone)]
 pub struct CameraUniformData {
     view_pos: Vec4,
@@ -36,16 +33,10 @@ pub struct CameraUniformData {
 unsafe impl bytemuck::Pod for CameraUniformData {}
 unsafe impl bytemuck::Zeroable for CameraUniformData {}
 
-#[derive(Resource, Clone)]
-pub struct CameraUniform {
-    pub inner: Arc<CameraUniformInner>,
-}
-
 #[derive(Resource)]
-pub struct CameraUniformInner {
+pub struct CameraUniform {
     pub bind_group: wgpu::BindGroup,
     pub buffer: wgpu::Buffer,
-    pub uniform: Mutex<CameraUniformData>,
     pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
@@ -58,20 +49,6 @@ impl CameraUniformData {
             view: Mat4::IDENTITY,
             inv_proj: Mat4::IDENTITY,
             inv_view: Mat4::IDENTITY,
-        }
-    }
-
-    pub fn update(&mut self, camera: &Camera) {
-        let view = camera.view_matrix();
-        let proj = camera.projection_matrix();
-        let view_proj = Camera::build_view_projection_matrix(view, proj);
-        *self = CameraUniformData {
-            view_pos: camera.eye.extend(1.0),
-            view,
-            proj,
-            view_proj,
-            inv_proj: proj.inverse(),
-            inv_view: view.transpose(),
         }
     }
 }
@@ -87,6 +64,20 @@ impl Camera {
 
     pub fn view_matrix(&self) -> Mat4 {
         Mat4::look_at_lh(Vec3::ZERO, self.target - self.eye, self.up)
+    }
+
+    pub fn into_uniform_data(&self) -> CameraUniformData {
+        let view = self.view_matrix();
+        let proj = self.projection_matrix();
+        let view_proj = Self::build_view_projection_matrix(view, proj);
+        CameraUniformData {
+            view_pos: self.eye.extend(1.0),
+            view,
+            proj,
+            view_proj,
+            inv_proj: proj.inverse(),
+            inv_view: view.transpose(),
+        }
     }
 }
 
@@ -105,24 +96,21 @@ impl Default for Camera {
 
 impl CameraUniform {
     pub fn update(&self, camera: &Camera, queue: &Queue) {
-        {
-            let mut this = self.inner.uniform.lock().unwrap();
-            this.update(camera);
-        };
         queue.write_buffer(
-            &self.inner.buffer,
+            &self.buffer,
             0,
-            bytemuck::cast_slice(&[*self.inner.uniform.lock().unwrap()]),
-        )
+            bytemuck::cast_slice(&[camera.into_uniform_data()]),
+        );
     }
 
     pub fn setup(camera: &Camera, device: &wgpu::Device) -> Self {
-        let camera_uniform = Mutex::new(CameraUniformData::new());
-        camera_uniform.lock().unwrap().update(camera);
+        // let camera_uniform = CameraUniformData::new();
+        // camera_uniform.lock().unwrap().update(camera);
+        let uniform_data = camera.into_uniform_data();
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[*camera_uniform.lock().unwrap()]),
+            contents: bytemuck::cast_slice(&[uniform_data]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -150,12 +138,9 @@ impl CameraUniform {
             label: Some("camera_bind_group"),
         });
         CameraUniform {
-            inner: Arc::new(CameraUniformInner {
-                uniform: camera_uniform,
-                buffer: camera_buffer,
-                bind_group: camera_bind_group,
-                bind_group_layout: camera_bind_group_layout,
-            }),
+            buffer: camera_buffer,
+            bind_group: camera_bind_group,
+            bind_group_layout: camera_bind_group_layout,
         }
     }
 }
@@ -178,9 +163,9 @@ pub fn insert_camera(resolution: Res<ScreenResolution>, device: RD, mut commands
         ..Default::default()
     };
 
-    let cam = CameraUniform::setup(&camera, &device);
+    let camera_uniform = CameraUniform::setup(&camera, &device);
 
-    commands.insert_resource(cam.clone());
+    commands.insert_resource(camera_uniform);
     commands.insert_resource(camera);
     println!("Camera inserted");
 }

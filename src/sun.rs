@@ -1,5 +1,4 @@
 use crate::gpu;
-use crate::gpu::SolidRenderable;
 use crate::gpu::RD;
 use crate::gpu::RQ;
 use crate::gpu::RTBL;
@@ -28,7 +27,7 @@ use crate::{
     ecs::Initailiser,
     gpu::InstanceBuffer,
     instance_buffer_bytes, mk_pipeline, mk_pipeline_layout,
-    shader_manager::{ShaderManagerCtrl, UnifiedPipelineModuleDescriptor},
+    shader_manager::ShaderManagerCtrl,
     transform::Transform,
     RawInstance,
 };
@@ -90,7 +89,7 @@ pub fn init(
             mk_pipeline_layout(
                 &device,
                 "Sun",
-                &[&cgs.inner.bind_group_layout, &texture_bind_group_layout.0],
+                &[&cgs.bind_group_layout, &texture_bind_group_layout.0],
             ),
         ));
 

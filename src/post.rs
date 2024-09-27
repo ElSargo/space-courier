@@ -1,4 +1,5 @@
 use crate::fullscreen::FullscreenQuad;
+use crate::shader_manager::SplitShaders;
 use crate::{
     background::Background,
     bloom::Bloom,
@@ -7,8 +8,7 @@ use crate::{
     gpu::{OutputTextureResource, ScreenFormat, RD},
     planet_shadows::PlanetShadows,
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleDescriptor,
-        SplitPipelineModuleResource,
+        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleResource,
     },
     ViewTextureReasources,
 };
@@ -92,7 +92,7 @@ impl Postprocessing {
         // let format = Box::leak(Box::new(resolution.format.clone()));
         let pipeline_handle = shader_manager.add_render_pipeline(
             // vec![shader_handle, fullscreen_quad.shader_handle],
-            SplitPipelineModuleDescriptor {
+            SplitShaders {
                 vertex: fullscreen_quad.shader_handle,
                 fragment: shader_handle,
             },
@@ -180,7 +180,7 @@ pub fn draw_post(
             timestamp_writes: None,
         });
         render_pass.set_bind_group(0, &vtr.view_textures_bind_group, &[]);
-        render_pass.set_bind_group(1, &camera_uniform.inner.bind_group, &[]);
+        render_pass.set_bind_group(1, &camera_uniform.bind_group, &[]);
         render_pass.set_bind_group(2, &br.get_result_bind_group(), &[]);
         render_pass.set_bind_group(3, &bg.texture_cube_bind_group, &[]);
         if let Some(pl) = pl {
