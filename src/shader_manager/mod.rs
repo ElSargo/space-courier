@@ -1,13 +1,12 @@
-use notify::Watcher;
 mod pipeline_shader_resource;
-use bevy_ecs::{
-    system::{IntoSystem, Resource},
-    world::World,
-};
+mod solid_pipeline;
+mod split_pipeline;
+mod unified_pipeline;
+use bevy_ecs::{system::Resource, world::World};
 
 use notify::{
     event::{AccessMode, MetadataKind},
-    recommended_watcher, Event, RecommendedWatcher, RecursiveMode,
+    recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher,
 };
 use pollster::FutureExt;
 use rand::random;
@@ -20,22 +19,28 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard},
 };
 
-use std::sync::mpsc::{channel, Receiver, Sender};
+// use std::sync::mpsc::{channel, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 
 use parking_lot::Mutex;
 use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
-pub use self::pipeline_shader_resource::{
-    PipelineConstructor, PipelineModuleDescriptor, SplitPipelineModuleDescriptor,
-    SplitPipelineModuleResource, UnifiedPipelineModuleDescriptor, UnifiedPipelineModuleResource,
-};
+use self::pipeline_shader_resource::PipelineShaderDescriptor;
+pub use self::pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor};
+pub use self::solid_pipeline::SolidPipelineModuleResourceExtras;
+pub use self::solid_pipeline::SolidShader;
+pub use self::solid_pipeline::SolidSplitShaders;
+pub use self::split_pipeline::SplitPipelineModuleDescriptor;
+pub use self::split_pipeline::SplitPipelineModuleResource;
+pub use self::split_pipeline::SplitShaders;
+pub use self::unified_pipeline::UnifiedPipelineModuleDescriptor;
+pub use self::unified_pipeline::UnifiedPipelineModuleResource;
+pub use self::unified_pipeline::UnifiedShaders;
 
 type Adder<PipelineType> =
     Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>;
 
 pub struct ShaderManager {
-    whatcher: Arc<Mutex<RecommendedWatcher>>,
-    compile_queue_sender: Sender<(PathBuf, ShaderHandle)>,
     compiled_shaders_queue: Receiver<(ShaderModule, ShaderHandle)>,
     shaders: ShaderStorage,
 
@@ -104,29 +109,25 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
         }
     }
 
-    pub fn add_pipeline<
-        const N: usize,
-        OutputResource: 'static,
-        R: PipelineModuleDescriptor<N, PipelineType, OutputResource> + Send + Sync,
-        M,
-    >(
+    pub fn add_pipeline<const N: usize, Descriptor, System, M>(
         &mut self,
-        res: R,
-        connstructor: impl IntoSystem<OutputResource, PipelineType, M> + 'static,
+        descriptor: Descriptor,
         pipeline_handle: PipelineHandle,
         rr: &mut World,
-    ) {
-        for shader_handle in res.as_arr() {
+    ) where
+        Descriptor: PipelineModuleDescriptor<N, PipelineType, System, M>, // Descriptor: PipelineModuleDescriptor<N, PipelineType, System, M> + Send + Sync,
+    {
+        for shader_handle in descriptor.as_arr() {
             self.pipelines_requirements
                 .entry(shader_handle)
                 .or_insert(vec![])
                 .push(pipeline_handle)
         }
-        let sys = rr.register_system(connstructor);
-        self.pipeline_connstructors
-            .insert(pipeline_handle, Box::new(R::constructor(sys)));
+
         self.pipline_reasoureces
-            .insert(pipeline_handle, res.as_arr().to_vec());
+            .insert(pipeline_handle, descriptor.as_arr().to_vec());
+        self.pipeline_connstructors
+            .insert(pipeline_handle, Box::new(descriptor.constructor(rr)));
     }
 
     pub fn get_pipeline<'a>(
@@ -265,10 +266,6 @@ pub struct ShaderStorage {
     shaders: HashMap<ShaderHandle, StoredShader>,
 }
 impl ShaderStorage {
-    pub fn get_module<'a>(&'a self, handle: ShaderHandle) -> Option<Arc<wgpu::ShaderModule>> {
-        self.shaders.get(&handle).map(|s| s.module.clone())
-    }
-
     fn new() -> Self {
         Self {
             shaders: HashMap::new(),
@@ -300,11 +297,11 @@ impl ShaderManager {
         ),
         notify::Error,
     > {
-        let (compile_queue_sender, rcv) = channel();
+        let (compile_queue_sender, rcv) = unbounded();
         let cqs = compile_queue_sender.clone();
         let mut compile_time_map = HashMap::new();
 
-        let (re_whatch_send, re_whatch_rcv) = channel();
+        let (re_whatch_send, re_whatch_rcv) = unbounded();
 
         let whatcher = Arc::new(Mutex::new(recommended_watcher(move |event| {
             println!("Recived event: {:#?}", event);
@@ -327,22 +324,20 @@ impl ShaderManager {
         let wt = whatcher.clone();
         std::thread::spawn(move || re_whatch_paths(re_whatch_rcv, wt));
 
-        let (compiled_shaders_queue_sender, compiled_shaders_queue) = channel();
+        let (compiled_shaders_queue_sender, compiled_shaders_queue) = unbounded();
 
         std::thread::spawn(move || {
             compile_shaders(rcv, device.clone(), compiled_shaders_queue_sender)
         });
 
-        let (compute_queue_send, compute_queue_rcv) = channel();
-        let (render_queue_send, render_queue_rcv) = channel();
+        let (compute_queue_send, compute_queue_rcv) = unbounded();
+        let (render_queue_send, render_queue_rcv) = unbounded();
 
         let render_pipelines = Arc::new(RwLock::new(BTreeMap::new()));
         let compute_pipelines = Arc::new(RwLock::new(BTreeMap::new()));
 
         Ok((
             Self {
-                whatcher: whatcher.clone(),
-                compile_queue_sender: compile_queue_sender.clone(),
                 compiled_shaders_queue,
                 shaders: ShaderStorage::new(), // constructors: HashMap::new(),
                 compute_manager: PipelineManager::new(compute_pipelines.clone()),
@@ -579,46 +574,61 @@ impl ShaderManagerCtrl {
         handle
     }
 
-    pub fn add_render_pipeline<'a, const NUM_MODULES: usize, OutputResource, R, M>(
+    pub fn add_render_pipeline<'a, const N: usize, System, Shaders, M>(
         &'a self,
-        res: R,
-        connstructor: impl IntoSystem<OutputResource, wgpu::RenderPipeline, M> + Send + Sync + 'static,
+        shaders: Shaders,
+        system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::RenderPipeline, M> + Send + Sync + 'static,
     ) -> PipelineHandle
     where
-        OutputResource: 'a + 'static,
-        R: PipelineModuleDescriptor<NUM_MODULES, wgpu::RenderPipeline, OutputResource>
-            + Send
-            + Sync
-            + 'static,
+        Shaders: PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>
+            + std::marker::Send
+            + std::marker::Sync,
+        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor: Send,
+        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor: Sync,
+        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor:
+            'static,
     {
         let pipeline_handle = PipelineHandle { id: random() };
-        self.render_creation_queue.send(Box::new(
-            move |render_manager: &mut PipelineManager<wgpu::RenderPipeline>, rr| {
-                render_manager.add_pipeline(res, connstructor, pipeline_handle, rr)
-            },
-        ));
+
+        let descriptor = Shaders::into_descriptor(shaders, system);
+
+        self.render_creation_queue
+            .send(Box::new(
+                move |render_manager: &mut PipelineManager<wgpu::RenderPipeline>, rr| {
+                    render_manager.add_pipeline(descriptor, pipeline_handle, rr)
+                },
+            ))
+            .expect("Render creatation queue closed for some reason, this shouldn't happen");
         pipeline_handle
     }
-    pub fn add_compute_pipeline<'a, const NUM_MODULES: usize, OutputResource, R, M>(
+
+    pub fn add_compute_pipeline<'a, const N: usize, System, Shaders, M>(
         &'a self,
-        res: R,
-        connstructor: impl IntoSystem<OutputResource, wgpu::ComputePipeline, M> + Send + Sync + 'static,
+        shaders: Shaders,
+        system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::ComputePipeline, M> + Send + Sync + 'static,
     ) -> PipelineHandle
     where
-        OutputResource: 'a + 'static,
-        R: PipelineModuleDescriptor<NUM_MODULES, wgpu::ComputePipeline, OutputResource>
-            + Send
-            + Sync
-            + 'static,
+        Shaders: PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>
+            + std::marker::Send
+            + std::marker::Sync,
+        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
+            Send,
+        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
+            Sync,
+        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
+            'static,
     {
         let pipeline_handle = PipelineHandle { id: random() };
 
-        self.compute_creation_queue.send(Box::new(
-            move |compute_manager: &mut PipelineManager<wgpu::ComputePipeline>, rr| {
-                compute_manager.add_pipeline(res, connstructor, pipeline_handle, rr)
-            },
-        ));
+        let descriptor = Shaders::into_descriptor(shaders, system);
 
+        self.compute_creation_queue
+            .send(Box::new(
+                move |compute_manager: &mut PipelineManager<wgpu::ComputePipeline>, rr| {
+                    compute_manager.add_pipeline(descriptor, pipeline_handle, rr)
+                },
+            ))
+            .expect("Compute creatation queue closed for some reason, this shouldn't happen");
         pipeline_handle
     }
 }

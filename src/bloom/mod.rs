@@ -17,8 +17,8 @@ use crate::{
     gpu::{QueueResource, ScreenResolution, RD},
     load_shader,
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleDescriptor,
-        SplitPipelineModuleResource,
+        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleResource,
+        SplitShaders,
     },
     ViewTextureReasources,
 };
@@ -148,7 +148,7 @@ fn create_extract_bind_group(
             BindGroupEntry {
                 binding: 4,
                 resource: wgpu::BindingResource::Buffer(BufferBinding {
-                    buffer: &cam.inner.buffer,
+                    buffer: &cam.buffer,
                     offset: 0,
                     size: None,
                 }),
@@ -464,7 +464,7 @@ pub fn init_res(
             },
         )));
         shader_manager.add_render_pipeline(
-            SplitPipelineModuleDescriptor {
+            SplitShaders {
                 vertex: fsq.shader_handle,
                 fragment: bloom_down_handle,
             },
@@ -500,7 +500,7 @@ pub fn init_res(
         )));
 
         shader_manager.add_render_pipeline(
-            SplitPipelineModuleDescriptor {
+            SplitShaders {
                 vertex: fsq.shader_handle,
                 fragment: bloom_up_handle,
             },
@@ -532,7 +532,7 @@ pub fn init_res(
     )));
 
     let extract_pipeline = shader_manager.add_render_pipeline(
-        SplitPipelineModuleDescriptor {
+        SplitShaders {
             vertex: fsq.shader_handle,
             fragment: bloom_extract_handle,
         },

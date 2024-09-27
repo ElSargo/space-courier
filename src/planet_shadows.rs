@@ -2,7 +2,6 @@
 
 use bevy_ecs::{
     component::Component,
-    query::With,
     system::{In, Res, ResMut, Resource},
 };
 
@@ -19,12 +18,11 @@ use wgpu::{
 use crate::{
     camera::CameraUniform,
     ecs::Initailiser,
-    get_all,
-    gpu::{pack_buffers, InstanceBuffer, Packable, RenderPassExt, ScreenResolution, RD},
+    gpu::{InstanceBuffer, Packable, RenderPassExt, ScreenResolution, RD},
     planets::Planet,
     shader_manager::{
-        PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleDescriptor,
-        UnifiedPipelineModuleResource,
+        PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleResource,
+        UnifiedShaders,
     },
     transform::Transform,
     ViewTextureReasources,
@@ -120,7 +118,7 @@ impl PlanetShadows {
         let shader_handle = shader_manager.load_shader("./src/planet_shadows.wgsl");
 
         let pipeline = shader_manager.add_render_pipeline(
-            UnifiedPipelineModuleDescriptor {
+            UnifiedShaders {
                 handle: shader_handle,
             },
             // Box::new(move |__rr, device, module| {
@@ -273,7 +271,7 @@ pub fn draw_planet_shadows(
         occlusion_query_set: None,
     });
 
-    render_pass.set_bind_group(0, &camera.inner.bind_group, &[]);
+    render_pass.set_bind_group(0, &camera.bind_group, &[]);
     render_pass.set_bind_group(1, &vt.view_textures_bind_group, &[]);
 
     render_pass.set_vertex_buffer(0, planet_shadows.vertex_buffer.slice(..));

@@ -5,8 +5,8 @@ use crate::{
     gpu::{RenderCompleteCallBack, RD, RQ},
     input::ButtonInput,
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleDescriptor,
-        UnifiedPipelineModuleResource,
+        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleResource,
+        UnifiedShaders,
     },
     texture::TexCube,
     time::Time,
@@ -113,7 +113,7 @@ pub fn init_background(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut c
     });
 
     let pipeline = shader_manager.add_compute_pipeline(
-        UnifiedPipelineModuleDescriptor {
+        UnifiedShaders {
             handle: shader_handle,
         },
         background_pipeline_constructor,
