@@ -10,7 +10,7 @@ use wgpu::{
 };
 
 use crate::{
-    background::Background,
+    background::{self, Background},
     camera::CameraUniform,
     ecs::Initailiser,
     fullscreen::FullscreenQuad,
@@ -20,15 +20,19 @@ use crate::{
         Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleResource,
         SplitShaders,
     },
-    ViewTextureReasources,
+    ViewTextures,
 };
 
 pub fn init_mod(ecs: &mut Initailiser) {
-    ecs.init
-        .add_systems(init_res.after(crate::fullscreen::init_fsq));
+    ecs.init.add_systems(
+        init_res
+            .after(crate::fullscreen::init_fsq)
+            .after(background::init_background)
+            .after(create_extract_bind_group),
+    );
     ecs.render.add_systems(draw_bloom);
     ecs.resize
-        .add_systems((create_extract_bind_group, resize_bloom));
+        .add_systems((create_extract_bind_group, resize_bloom).chain());
 }
 
 #[derive(Resource)]
@@ -115,7 +119,7 @@ fn create_texture(device: &Device, size: (u32, u32)) -> wgpu::Texture {
 
 fn create_extract_bind_group(
     device: RD,
-    vtr: Res<ViewTextureReasources>,
+    vtr: Res<ViewTextures>,
     br: Res<BloomReasoruces>,
     bg: Res<Background>,
     cam: Res<CameraUniform>,
@@ -370,7 +374,6 @@ pub fn draw_bloom(
 pub fn init_res(
     device: RD,
     queue: Res<QueueResource>,
-    // config: Res<SurfaceConfResource>,
     fsq: Res<FullscreenQuad>,
 
     mut commands: Commands,
