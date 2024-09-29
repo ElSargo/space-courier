@@ -335,8 +335,13 @@ fn cell_tile(v: Vec3) -> f32 {
 
 fn terain_height(p: Vec2) -> f32 {
     let position = vec3(p.x, 0.0, p.y);
-    smoothstep(0.5, 2.0, cell_tile(position * 0.2)) * 20.0
-        + 0.0 * (0.4 + ((position.z * 0.5 + (position.x * 0.5).sin()).sin())).abs()
+    let noise = cell_tile(position * 0.1);
+
+    if noise > 0.70 {
+        ((noise - 0.6) * 4.0).powi(2)
+    } else {
+        0.0
+    }
 }
 
 #[inline(always)]

@@ -6,7 +6,7 @@ use bevy_ecs::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use glam::{vec2, Vec3};
+use glam::{vec2, Vec2, Vec3};
 use wgpu::{
     util::DeviceExt, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BlendComponent, BufferUsages, Color,
@@ -25,7 +25,7 @@ use crate::{
         UnifiedShaders,
     },
     transform::Transform,
-    ViewTextureReasources,
+    ViewTextures,
 };
 
 #[derive(Resource)]
@@ -252,7 +252,7 @@ pub fn draw_planet_shadows(
     shader_manager: &PipelinesView<wgpu::RenderPipeline>,
 
     planet_shadows: Res<PlanetShadows>,
-    vt: Res<ViewTextureReasources>,
+    vt: Res<ViewTextures>,
     camera: Res<CameraUniform>,
 ) -> Option<()> {
     let pipeline = shader_manager.get(&planet_shadows.pipeline)?;
@@ -272,7 +272,7 @@ pub fn draw_planet_shadows(
     });
 
     render_pass.set_bind_group(0, &camera.bind_group, &[]);
-    render_pass.set_bind_group(1, &vt.view_textures_bind_group, &[]);
+    render_pass.set_bind_group(1, &vt.bind_group, &[]);
 
     render_pass.set_vertex_buffer(0, planet_shadows.vertex_buffer.slice(..));
     render_pass.set_instance_buffer(1, &planet_shadows.instance_buffer);
@@ -352,7 +352,7 @@ pub fn init_mod(ecs: &mut Initailiser) {
 impl Packable for (&Transform, &Planet) {
     type Raw = RawPlanetShadow;
 
-    fn pack(&self, eye: Vec3) -> Self::Raw {
+    fn pack(&self, eye: Vec2) -> Self::Raw {
         let sun_radius = 20.0;
         let distance_recip = self.0.translation.length_recip();
         let umbra_gradient = (sun_radius - self.1.radius) * distance_recip;

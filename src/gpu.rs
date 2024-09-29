@@ -17,7 +17,7 @@ use bevy_ecs::{
     system::Commands,
 };
 
-use glam::Vec3;
+use glam::{Vec2, Vec3, Vec3Swizzles};
 use wgpu::{
     util::DeviceExt, BindGroupLayout, BufferDescriptor, BufferUsages, Device, Queue, TextureFormat,
     TextureView,
@@ -61,12 +61,34 @@ macro_rules! make_resource_wrapper {
         #[allow(dead_code)]
         pub type $s<'a> = bevy_ecs::prelude::Res<'a, $l>;
     };
+
+    ($t:ty,$l:ident,$s:ident !) => {
+        #[derive(Resource)]
+        pub struct $l(pub $t);
+        impl Deref for $l {
+            type Target = $t;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        impl DerefMut for $l {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+
+        /// Shorthand for a wrapper of Res<Inner>
+        #[allow(dead_code)]
+        pub type $s<'a> = bevy_ecs::prelude::Res<'a, $l>;
+    };
 }
 
 make_resource_wrapper!(Arc<Device>, DeviceResource, RD);
 make_resource_wrapper!(Arc<wgpu::Queue>, QueueResource, RQ);
 make_resource_wrapper!(Arc<BindGroupLayout>, TextureBindGroupLayoutResource, RTBL);
 make_resource_wrapper!(Arc<TextureView>, OutputTextureResource, RST);
+make_resource_wrapper!(wgpu::BindGroupLayout, ViewTexturesBindGroupLayout, VTBGL !);
 
 #[derive(Debug)]
 pub struct InstanceBufferDescriptor {
@@ -235,7 +257,7 @@ where
 
 pub trait Packable {
     type Raw: bytemuck::Pod;
-    fn pack(&self, eye: Vec3) -> Self::Raw;
+    fn pack(&self, eye: Vec2) -> Self::Raw;
 }
 
 pub fn pack_buffers<Input, Raw, InputFilter, InstanceBufferFilter>(
@@ -254,7 +276,7 @@ pub fn pack_buffers<Input, Raw, InputFilter, InstanceBufferFilter>(
 {
     match instance_buffer.get_single() {
         Ok(ib) => {
-            let i = inputs.iter().map(|i| Raw::from(i.pack(camera.eye)));
+            let i = inputs.iter().map(|i| Raw::from(i.pack(camera.eye.xz())));
             ib.write_from_iterator(i, &device, &queue);
         }
         Err(_e) => {

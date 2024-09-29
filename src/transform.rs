@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use bevy_ecs::component::Component;
-use glam::{Mat3, Mat4, Quat, Vec3};
+use glam::{Mat3, Mat4, Quat, Vec2, Vec3, Vec3Swizzles};
 
 use crate::{gpu::Packable, RawInstance};
 
@@ -155,7 +155,7 @@ impl Transform {
 impl Packable for &Transform {
     type Raw = RawInstance;
 
-    fn pack(&self, eye: Vec3) -> Self::Raw {
-        RawInstance::from_transform(&self.translated(-eye))
+    fn pack(&self, eye: Vec2) -> Self::Raw {
+        RawInstance::from_transform(&self.translated(-eye.extend(0.0).xzy()))
     }
 }

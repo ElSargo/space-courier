@@ -3,7 +3,7 @@
 use std::mem::size_of;
 
 use bevy_ecs::{component::Component, query::With};
-use glam::{vec4, Mat4, Vec3, Vec4};
+use glam::{vec3, vec4, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
 use wgpu::VertexAttribute;
 
 use crate::{
@@ -102,9 +102,9 @@ pub fn init(ecs: &mut Initailiser) {
 impl Packable for (&Transform, &ArrowGizmo) {
     type Raw = RawArrowInstance;
 
-    fn pack(&self, eye: Vec3) -> Self::Raw {
+    fn pack(&self, eye: Vec2) -> Self::Raw {
         Self::Raw {
-            transform: self.0.translated(-eye).to_mat(),
+            transform: self.0.translated(-eye.extend(0.0).xzy()).to_mat(),
             color: self.1.color,
         }
     }

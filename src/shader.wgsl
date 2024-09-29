@@ -3,8 +3,13 @@
 @group(1) @binding(0) var background: texture_cube<f32>;
 @group(1) @binding(1) var background_sampler: sampler;
 
-@group(2) @binding(0) var diff: texture_2d<f32>;
-@group(2) @binding(1) var diff_sampler: sampler;
+@group(2) @binding(0) var color_texture: texture_2d<f32>;
+@group(2) @binding(1) var color_sampler: sampler;
+@group(2) @binding(2) var depth_texture: texture_depth_2d;
+@group(2) @binding(3) var depth_sampler: sampler;
+
+@group(3) @binding(0) var diff: texture_2d<f32>;
+@group(3) @binding(1) var diff_sampler: sampler;
 
 // @group(2) @binding(0) var<uniform> model: Model;
 
@@ -79,8 +84,8 @@ fn vs_main(
 
     let bi = in_vertex_index - (in_vertex_index / 3u) * 3u;
 
-    out.barry = vec2<f32>( f32(bi == 0u), f32(bi == 1u)  );
-    
+    out.barry = vec2<f32>(f32(bi == 0u), f32(bi == 1u));
+
     return out;
 }
 
@@ -242,12 +247,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let color_sample = textureSample(diff, diff_sampler, in.uv) ;
     // let color_sample = vec4(0.2,0.2,0.2,1.0) ;
     let albedo = color_sample.rgb * color_sample.a;
-    let ems = color_sample.rgb * mix(20.0, 0.0, color_sample.a);
+    let ems = color_sample.rgb * mix(40.0, 0.0, color_sample.a);
 
 
     let nor = normalize(in.world_normal);
     // let nor_flat = normalize(cross(dpdx(in.world_position  + disp), dpdy(in.world_position + disp)));
-    let dis = length(in.relative_position* 0.005);
+    let dis = length(in.relative_position * 0.005);
     let freznel = fresnel(rd, nor, 5.0);
     let reflect_direction = reflect(rd, nor);
 
@@ -267,8 +272,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // let diffuse = max(0.0,light_dot_normal );
         let specular = (8.0 * angle_atenuation + 0.5) * pow(max(0.0, dot(light_direction, reflect_direction)), (8.0 + angle_atenuation)) * (0.05 + 0.95 * freznel) * diffuse;
 
-        color += albedo * light_color * light_intensity * diffuse;
-        color += light_intensity * sqrt(light_color) * specular;
+        // color += albedo * light_color * light_intensity * diffuse;
+        // color += light_intensity * sqrt(light_color) * specular;
     }
     // Ecretion disk
         {
@@ -300,7 +305,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Emission 
-        {
+    {
         color += ems;
     }
 
@@ -315,11 +320,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // return vec4<f32>(color, 1.0)  ;
 
     let edge = max(
-        max(in.barry.x,in.barry.y ),
+        max(in.barry.x, in.barry.y),
         1.0 - in.barry.x - in.barry.y
     );
-    
-    return vec4(color,1.0);
+
+    return vec4(color, 1.0);
     // return vec4(vec3(1.0 - pow(edge,10.)),1.0);
 }
 

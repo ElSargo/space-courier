@@ -1,18 +1,20 @@
-use crate::fullscreen::FullscreenQuad;
-use crate::shader_manager::SplitShaders;
 use crate::{
     background::Background,
     bloom::Bloom,
     camera::CameraUniform,
     ecs::Initailiser,
-    gpu::{OutputTextureResource, ScreenFormat, RD},
+    fullscreen::FullscreenQuad,
+    gpu::{OutputTextureResource, ScreenFormat, RD, VTBGL},
+    input::ButtonInput,
     planet_shadows::PlanetShadows,
     shader_manager::{
         Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleResource,
+        SplitShaders,
     },
-    ViewTextureReasources,
+    ViewTextures,
 };
 
+use bevy_ecs::system::Local;
 use bevy_ecs::{
     schedule::IntoSystemConfigs,
     system::{Commands, In, Res, ResMut, Resource},
@@ -20,6 +22,7 @@ use bevy_ecs::{
 use wgpu::{
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, CommandEncoder, RenderPipeline, ShaderStages,
 };
+use winit::keyboard::KeyCode;
 
 #[derive(Resource)]
 pub struct Postprocessing {
@@ -30,11 +33,11 @@ impl Postprocessing {
     pub fn new(
         device: RD,
         fullscreen_quad: Res<FullscreenQuad>,
-        view_textures_bind_group_layout: Res<ViewTextureReasources>,
         planet_shadows: Option<Res<PlanetShadows>>,
         bg: Res<Background>,
         shader_manager: Res<ShaderManagerCtrl>,
         mut commands: Commands,
+        vtbgl: VTBGL,
     ) {
         let shader_handle = shader_manager.load_shader("./src/post.wgsl");
 
@@ -73,7 +76,7 @@ impl Postprocessing {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("post pipline layout"),
                 bind_group_layouts: [
-                    Some(&view_textures_bind_group_layout.view_textures_bind_group_layout),
+                    Some(&vtbgl.0),
                     Some(&inverse_camera), // &model_transform_bind_group_layout,
                     Some(&texture_bind_group_layout),
                     Some(&bg.texture_cube_bind_group_layout),
@@ -156,13 +159,15 @@ pub fn draw_post(
     mut encoder: ResMut<Marker<CommandEncoder, Postprocessing>>,
     output_view: Res<OutputTextureResource>,
     render_pipelines: Res<PipelinesView<RenderPipeline>>,
-    vtr: Res<ViewTextureReasources>,
+    vtr: Res<ViewTextures>,
     post: Res<Postprocessing>,
     fsq: Res<FullscreenQuad>,
     camera_uniform: Res<CameraUniform>,
     br: Res<Bloom>,
     pl: Option<Res<PlanetShadows>>,
     bg: Res<Background>,
+    mut flip: Local<bool>,
+    kb: Res<ButtonInput>,
 ) {
     if let Some(pipeline) = render_pipelines.get(&post.pipeline_handle) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -179,7 +184,10 @@ pub fn draw_post(
             occlusion_query_set: None,
             timestamp_writes: None,
         });
-        render_pass.set_bind_group(0, &vtr.view_textures_bind_group, &[]);
+        if kb.just_down(KeyCode::KeyF) {
+            *flip = !*flip;
+        }
+        render_pass.set_bind_group(0, &vtr.bind_group, &[]);
         render_pass.set_bind_group(1, &camera_uniform.bind_group, &[]);
         render_pass.set_bind_group(2, &br.get_result_bind_group(), &[]);
         render_pass.set_bind_group(3, &bg.texture_cube_bind_group, &[]);
