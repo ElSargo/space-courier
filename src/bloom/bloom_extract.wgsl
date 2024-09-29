@@ -29,8 +29,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_sample = textureSample(color_texture, color_sampler, in.uv);
     let bg_sample = textureSample(background, color_sampler, ray_direction);
 
+    let view_sample_color = (view_sample.rgb - threshold) * view_sample.a;
+    let bg_color = bg_sample.rgb * (1.0 - view_sample.a);
+
     return vec4(
-        max(vec3(0.0), view_sample.rgb - vec3(threshold)) + max(vec3(0.0), bg_sample.rgb - vec3(threshold*0.0)) * ( 1.0 - view_sample.a), 1.0
+        max(vec3(0.0), view_sample_color + bg_color), 1.0
     );
     // return vec4(view_sample.a * 00.6);
 }
