@@ -28,6 +28,7 @@ use crate::{
     bloom::Bloom,
     ecs::{PrepareBuffersSchedual, RenderSchedual, UpdateSchedual},
     gpu::ScreenFormat,
+    input::AxisEvent,
     post::Postprocessing,
     solid_pass::Solidpass,
 };
@@ -42,7 +43,7 @@ use glam::{Mat3, Mat4, Quat, Vec3};
 use gpu::{
     DeviceResource, OutputTextureResource, QueueResource, RenderCompleteCallBack, ScreenResolution,
 };
-use input::MouseDelta;
+use input::KeyEvent;
 use pollster::FutureExt;
 use shader_manager::{PipelineHandle, PipelinesView, ShaderManager, ShaderManagerCtrl};
 use std::{collections::VecDeque, mem::size_of, sync::Arc};
@@ -55,9 +56,10 @@ use wgpu::{
 };
 use winit::{
     application::ApplicationHandler,
+    dpi::{LogicalSize, PhysicalSize},
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    keyboard::{Key, NamedKey},
+    keyboard::{Key, NamedKey, PhysicalKey},
     window::WindowAttributes,
 };
 
@@ -96,9 +98,6 @@ pub fn run() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    // ActiveEventLoop::create_window(ActiveEventLoop::into(), WindowAttributes::default());
-    // let window = event_loop.create_window();
-    // window.set_fullscreen(Some(Fullscreen::Borderless(None)));
     let mut state = State::new().block_on();
 
     event_loop.run_app(&mut state).unwrap();
@@ -108,11 +107,19 @@ pub fn run() {
 use winit::window::Window;
 
 #[derive(Resource)]
-struct ViewTextureReasources {
+struct ViewTextures {
     color_texture: Texture,
     depth_texture: Texture,
-    view_textures_bind_group: BindGroup,
-    view_textures_bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: BindGroup,
+}
+
+#[derive(Resource)]
+struct ReflectedViewTextures {
+    color_texture: Texture,
+    depth_texture: Texture,
+    bind_group: BindGroup,
+    null_texture: Texture,
+    null_bind_group: BindGroup,
 }
 
 struct GraphicsContext<'a> {
@@ -138,7 +145,9 @@ impl GraphicsContext<'_> {
 
         let window = Arc::new(
             event_loop
-                .create_window(WindowAttributes::default())
+                .create_window(
+                    WindowAttributes::default().with_inner_size(PhysicalSize::new(1920, 1080)),
+                )
                 .unwrap(),
         );
 
@@ -229,7 +238,7 @@ struct State<'a> {
     graphics_ctx: Option<GraphicsContext<'a>>,
     initialiser: Option<Initailiser>,
     world: Option<World>,
-    key_events: VecDeque<winit::event::KeyEvent>,
+    key_events: VecDeque<KeyEvent>,
 }
 
 impl<'a> ApplicationHandler for State<'a> {
@@ -273,16 +282,21 @@ impl<'a> ApplicationHandler for State<'a> {
         event: winit::event::DeviceEvent,
     ) {
         match event {
-            winit::event::DeviceEvent::MouseMotion { delta } => {
+            // winit::event::DeviceEvent::MouseMotion { delta } => {
+            //     if let Some(ref mut world) = self.world {
+            //         world.send_event(MouseDelta {
+            //             x: delta.0 as f32,
+            //             y: delta.1 as f32,
+            //         });
+            //     }
+            // }
+            winit::event::DeviceEvent::Motion { axis, value } => {
                 if let Some(ref mut world) = self.world {
-                    world.send_event(MouseDelta {
-                        x: delta.0 as f32,
-                        y: delta.1 as f32,
+                    world.send_event(AxisEvent {
+                        axis,
+                        value: value as f32,
                     });
                 }
-            }
-            winit::event::DeviceEvent::Motion { axis, value } => {
-                println!("Axis id: {axis:?} value: {value:?}")
             }
             // update
             _ => {} // DeviceEvent::MouseWheel { delta } => todo!(),
@@ -334,7 +348,7 @@ impl<'a> ApplicationHandler for State<'a> {
                                 },
                             ..
                         } => event_loop.exit(),
-                        WindowEvent::KeyboardInput {  event,..} => {self.key_events.push_back(event);}
+                        WindowEvent::KeyboardInput {  event: winit::event::KeyEvent { physical_key: PhysicalKey::Code(code), state,.. },..} => {self.key_events.push_back( KeyEvent{ code, pressed: state.is_pressed()} );}
                         WindowEvent::Focused(has_focus) => {
                             let window = &self.graphics_ctx.as_mut().unwrap().window;
                             if let Err(e) = if has_focus {
@@ -635,8 +649,8 @@ impl<'a> State<'a> {
 
             // world.resource_mut::<AxisInput>().update(&mut self.gilrs);
 
-            while let Some(key) = self.key_events.pop_front() {
-                world.send_event(input::KeyEvent(key));
+            while let Some(key_event) = self.key_events.pop_front() {
+                world.send_event(key_event);
             }
 
             g_ctx.shader_manager.construct_piplines(world);

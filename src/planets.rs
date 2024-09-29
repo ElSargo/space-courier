@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use wgpu::BufferUsages;
-use winit::keyboard::Key;
+use winit::keyboard::KeyCode;
 
 use crate::{
     background,
@@ -79,7 +79,6 @@ pub fn init_mod(ecs: &mut Initailiser) {
     ));
     ecs.update
         .add_systems((remake_planets, add_planet, destroy_planets_in_sun));
-    // ecs.prepare_buffers.add_systems(update_instance_buffer);
     ecs.prepare_buffers
         .add_systems(pack_buffers::<&Transform, RawInstance, With<Planet>, With<PlanetStuff>>);
 
@@ -91,7 +90,7 @@ fn remake_planets(
     planets: Query<Entity, With<Planet>>,
     mut commands: Commands,
 ) {
-    if kb.just_down(Key::Character("R".into())) {
+    if kb.just_down(KeyCode::KeyR) {
         for e in planets.iter() {
             commands.entity(e).despawn();
         }
@@ -100,7 +99,7 @@ fn remake_planets(
 }
 
 fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
-    if kb.is_down(Key::Character("p".into())) {
+    if kb.is_down(KeyCode::KeyP) {
         let mut rng = thread_rng();
         make_planet(&mut rng, &mut commands);
     }
@@ -108,9 +107,9 @@ fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
 
 fn make_planets(mut commands: Commands) {
     let mut rng = thread_rng();
-    for _ in 0..40 {
-        make_planet(&mut rng, &mut commands);
-    }
+    // for _ in 0..40 {
+    //     make_planet(&mut rng, &mut commands);
+    // }
 }
 
 fn destroy_planets_in_sun(

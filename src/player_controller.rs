@@ -2,7 +2,10 @@ use crate::{
     camera::Camera,
     ecs::Initailiser,
     gravity::gravity_all,
-    input::{AxisInput, ButtonInput, MouseDelta},
+    input::{
+        AxisInput, ButtonInput,
+        Inputs::{Back, Forward},
+    },
     physics::Physics,
     ship::Ship,
     time::Time,
@@ -10,14 +13,12 @@ use crate::{
 };
 use bevy_ecs::{
     component::Component,
-    event::EventReader,
     query::With,
     schedule::IntoSystemConfigs,
     system::{Commands, Local, Query, Res, ResMut},
 };
 
-use glam::{vec2, vec3, Quat, Vec2, Vec3};
-use winit::keyboard::Key;
+use glam::{vec3, Quat, Vec3};
 
 #[derive(Debug, Component)]
 pub struct PlayerControllerUpright {
@@ -41,7 +42,6 @@ pub fn update<'a>(
     mut camera: ResMut<Camera>,
     time: Res<Time>,
     kb: Res<ButtonInput>,
-    mut mouse_events: EventReader<MouseDelta>,
     axis: Res<AxisInput>,
     look_ahead: Local<Quat>,
     // bodies: Query<(&Physics, &Transform), Without<PlayerController>>,
@@ -54,29 +54,25 @@ pub fn update<'a>(
     // camera.eye += gravity;
     // camera.target += gravity;
 
-    if kb.is_down(Key::Character("W".into())) {
+    if kb.active(Forward) {
         player_controller.momentum += player_controller.speed * time.delta_seconds
     }
-    if kb.is_down(Key::Character("S".into())) {
+    if kb.active(crate::input::Inputs::Back) {
         player_controller.momentum *= 0.95
     }
     let camera_displacement_factor = 0.04;
     camera.fovy = std::f32::consts::PI * 0.25 * (2.0 - (-player_controller.momentum * 0.1).exp());
-    let mouse_delta: Vec2 = mouse_events
-        .read()
-        .map(|MouseDelta { x, y }| vec2(*x, *y))
-        .sum();
 
     let mouse_sensitivity = 0.3;
 
     let cam_transform = Transform::from_mat4(&camera.view_matrix());
 
     let x_rotation = (cam_transform.rotation.inverse()
-        * Quat::from_rotation_x(mouse_sensitivity * (mouse_delta.y + axis.y) * time.delta_seconds))
+        * Quat::from_rotation_x(mouse_sensitivity * (axis.y) * time.delta_seconds))
         * cam_transform.rotation;
 
     let y_rotation = (cam_transform.rotation.inverse()
-        * Quat::from_rotation_y(mouse_sensitivity * (mouse_delta.x + axis.x) * time.delta_seconds))
+        * Quat::from_rotation_y(mouse_sensitivity * (axis.x) * time.delta_seconds))
         * cam_transform.rotation;
 
     let body_rotation = x_rotation * y_rotation;
@@ -158,22 +154,12 @@ pub fn update_upright_player_controller<'a>(
     let (mut player_controller, mut ship_transform) = player.single_mut();
     let (player_controller, ship_transform) = (&mut *player_controller, &mut *ship_transform);
 
-    // let gravity = gravity_all(transform.translation, bodies.iter()) * time.delta_seconds * -10.0;
-    // transform.translation += gravity;
-    // camera.eye += gravity;
-    // camera.target += gravity;
-
-    if kb.is_down(Key::Character("W".into())) | kb.is_down(Key::Character("w".into())) {
+    if kb.active(Forward) {
         player_controller.momentum += player_controller.speed * time.delta_seconds
     }
-    if kb.is_down(Key::Character("S".into())) {
+    if kb.active(Back) {
         player_controller.momentum *= 0.95
     }
-    let camera_displacement_factor = 0.04;
-
-    let roll_target = Transform::left_of_quat(player_controller.rotation);
-
-    // average_forward = average_forward
 
     let pc_forward = Transform::forward_of_quat(player_controller.rotation);
     let roll_ammount = pc_forward.dot(ship_transform.left()) * 4.0;
@@ -199,52 +185,15 @@ pub fn update_upright_player_controller<'a>(
         * time.delta_seconds
         * ship_transform.forward();
     ship_transform.translation += frame_translation;
+    ship_transform.translation.y = 0.02;
     player_controller.position = ship_transform.translation
-        + ship_transform.back() * 0.2
-        + ship_transform.up() * 0.05
-        + ship_transform.right() * 0.02;
-
-    // let x_rotation = (cam_transform.rotation.inverse()
-    //     * Quat::from_rotation_x(mouse_sensitivity * (mouse_delta.y + axis.y) * time.delta_seconds))
-    //     * cam_transform.rotation;
-
-    // let y_rotation = (cam_transform.rotation.inverse()
-    //     * Quat::from_rotation_y(mouse_sensitivity * (mouse_delta.x + axis.x) * time.delta_seconds))
-    //     * cam_transform.rotation;
-
-    // let body_rotation = x_rotation * y_rotation;
-
-    // ship_transform.rotation = body_rotation * ship_transform.rotation;
-    // look_ahead.lerp(
-    //     body_rotation * 10.0,
-    //     1.0 - (-1.0 * time.delta_seconds).exp(),
-    // );
-
-    // // Correct view
-    // let camera_alginment_full_rotation = Quat::from_rotation_arc(camera.up, ship_transform.up());
-
-    // let focal_ponit = ship_transform.translation
-    //     + (ship_transform.up() * 1.5 + ship_transform.forward() * 2.0) * camera_displacement_factor;
-    // let camera_eye_target = focal_ponit + ship_transform.back() * camera_displacement_factor * 6.0;
-    // let camera_target_target = focal_ponit
-    //     + look_ahead.mul_vec3(ship_transform.forward())
-    //         * camera_displacement_factor
-    //         * 3.0
-    //         * (player_controller.momentum + 1.0).ln();
-
-    // let lerp_factor = 1.0
-    //     - (-time.delta_seconds
-    //         * 020.0
-    //         * (1.0 / (1.1 + camera_transform.forward().dot(ship_transform.forward())) + 1.0))
-    //         .exp();
-    // camera.eye += frame_translation;
-    // camera.target += frame_translation;
-    // camera.target = camera.target.lerp(camera_target_target, lerp_factor);
-    // camera.eye = camera.eye.lerp(camera_eye_target, lerp_factor);
+        + ship_transform.back() * 0.4
+        + ship_transform.up() * 0.1
+        + ship_transform.right() * 0.04;
 }
 
 fn spawn_player(mut commands: Commands) {
-    let spawn_position = vec3(0.0, 0.0, -200.0);
+    let spawn_position = vec3(0.0, 0.0, -2.0);
 
     commands.spawn((
         // PlayerController::new(10.1),
@@ -254,7 +203,7 @@ fn spawn_player(mut commands: Commands) {
             pitch: 0.0,
             yaw: 0.0,
             momentum: 0.0,
-            speed: 10.0,
+            speed: 1.0,
         },
         Transform {
             scale: Vec3::ONE * 0.01,
@@ -270,22 +219,15 @@ fn spawn_player(mut commands: Commands) {
 }
 
 fn update_upright_pitch_and_yaw(
-    mut mouse_events: EventReader<MouseDelta>,
-    // axis: Res<AxisInput>,
+    axis: Res<AxisInput>,
     mut players: Query<&mut PlayerControllerUpright>,
     time: Res<Time>,
 ) {
     let mouse_sensitivity = 0.3;
-    let mouse_delta = mouse_events
-        .read()
-        .map(|MouseDelta { x, y }| vec2(*x, *y))
-        .sum::<Vec2>()
-        * mouse_sensitivity
-        * time.delta_seconds;
 
     for mut player in players.iter_mut() {
-        player.pitch += mouse_delta.y;
-        player.yaw += mouse_delta.x;
+        player.pitch += axis.y * time.delta_seconds * mouse_sensitivity;
+        player.yaw += axis.x * time.delta_seconds * mouse_sensitivity;
         let max_pitch = std::f32::consts::PI * 0.4;
         player.pitch = player.pitch.clamp(-max_pitch, max_pitch);
         player.rotation = Quat::from_euler(glam::EulerRot::YXZ, player.yaw, player.pitch, 0.0);
@@ -327,8 +269,8 @@ pub fn bank_player(
 ) {
     for (mut pc, mut tra) in players.iter_mut() {
         let tra = &mut *tra;
-        if tra.translation.y < 1.0 {
-            tra.translation.y = 1.0;
+        if tra.translation.y < 0.0 {
+            tra.translation.y = 0.0;
             // let rotation_correction =
             //     Quat::from_rotation_arc(tra.forward(), tra.forward() * vec3(1.0, -1.0, 1.0));
             // tra.rotation *= rotation_correction;

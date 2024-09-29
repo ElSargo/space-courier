@@ -19,7 +19,6 @@ use wgpu::{
     PipelineLayout, ShaderStages, TextureDescriptor, TextureDimension, TextureFormat,
     TextureUsages, TextureView, TextureViewDescriptor,
 };
-use winit::keyboard::Key;
 
 #[derive(Resource)]
 pub struct Background {
@@ -241,7 +240,7 @@ pub fn generate_background(
     input: Res<ButtonInput>,
     time: Res<Time>,
 ) {
-    if input.just_down(Key::Character("b".into())) {
+    if input.just_down(winit::keyboard::KeyCode::KeyB) {
         let old = bg.generating.compare_exchange(
             false,
             true,
