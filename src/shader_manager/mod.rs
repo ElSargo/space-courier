@@ -27,6 +27,7 @@ use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
 use self::pipeline_shader_resource::PipelineShaderDescriptor;
 pub use self::pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor};
+pub use self::solid_pipeline::SolidPipelineModuleResource;
 pub use self::solid_pipeline::SolidPipelineModuleResourceExtras;
 pub use self::solid_pipeline::SolidShader;
 pub use self::solid_pipeline::SolidSplitShaders;
