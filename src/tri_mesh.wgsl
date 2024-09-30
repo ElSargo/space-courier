@@ -22,14 +22,7 @@ struct VertexInput {
 }
 
 struct InstanceInput {
-    @location(5) model_matrix_0: vec4<f32>,
-    @location(6) model_matrix_1: vec4<f32>,
-    @location(7) model_matrix_2: vec4<f32>,
-    @location(8) model_matrix_3: vec4<f32>,
-
-    @location(9) rotation_only_matrix_0: vec3<f32>,
-    @location(10) rotation_only_matrix_1: vec3<f32>,
-    @location(11) rotation_only_matrix_2: vec3<f32>,
+    @location(1) translation: vec2<f32>,
 };
 
 struct VertexOutput {
@@ -44,14 +37,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    let model_matrix = mat4x4<f32>(
-        instance.model_matrix_0,
-        instance.model_matrix_1,
-        instance.model_matrix_2,
-        instance.model_matrix_3,
-    );
-
-    let vert_position = model_matrix * vec4(vert.position, 1.0)  ;
+    let vert_position = vec4(vert.position.xz + instance.translation.xy, vert.position.y, 1.0).xzyw  ;
     out.relative_position = vert_position.xyz - vec3(0.0, camera.view_pos.y, 0.0);
     out.clip_position = camera.view_proj * vert_position;
     out.mesh_position = vert.position;

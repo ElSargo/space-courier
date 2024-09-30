@@ -7,7 +7,7 @@ use bevy_ecs::{
     system::{Commands, Res, Resource},
 };
 
-use glam::{vec2, vec3, Mat4, Vec2, Vec3, Vec4};
+use glam::{vec2, vec3, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BufferUsages, Device,
@@ -15,7 +15,10 @@ use wgpu::{
 
 use crate::{
     ecs::Initailiser,
-    gpu::{pack_buffers, InstanceBuffer, SolidDrawable, SolidDrawableHandle, SolidRenderable, RD},
+    gpu::{
+        pack_buffers, InstanceBuffer, Packable, SolidDrawable, SolidDrawableHandle,
+        SolidRenderable, RD,
+    },
     shader_manager::{
         PipelineHandle, ShaderManagerCtrl, SolidPipelineModuleResourceExtras, SolidShader,
     },
@@ -39,12 +42,21 @@ pub struct Vertex {
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x3 ];
+    const INSTANCE_ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![1 => Float32x2 ];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &Self::ATTRIBS,
+        }
+    }
+
+    pub fn instance_desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: size_of::<Vec2>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::INSTANCE_ATTRIBS,
         }
     }
 }
@@ -173,43 +185,6 @@ pub fn gen_mesh(
         }
     }
 
-    // let old_idxs = idxs;
-    // let old_positions = positions;
-    // let mut positions = Vec::with_capacity(old_positions.len() * 3);
-    // let mut idxs = Vec::with_capacity(old_positions.len() * 3);
-
-    // for position in old_positions {
-    //     let disp = 0.3;
-    //     let base_idx = positions.len() as INDEX_TYPE;
-    //     positions.extend_from_slice(&[
-    //         position + vec3(-disp, 0.0, -disp),
-    //         position + vec3(0.0, disp, 0.0),
-    //         position + vec3(-disp, 0.0, disp),
-    //     ]);
-
-    //     idxs.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
-    // }
-
-    // for is in idxs.windows(3) {
-    //     let [a, b, c] = [
-    //         positions[is[0] as usize],
-    //         positions[is[1] as usize],
-    //         positions[is[2] as usize],
-    //     ];
-
-    //     let ab = a.distance(b);
-    //     let ac = a.distance(c);
-    //     let bc = b.distance(c);
-
-    //     if let Err(_) = catch_unwind(|| {
-    //         assert!((ab - ac).abs() < 0.001);
-    //         assert!((ab - bc).abs() < 0.001);
-    //         assert!((bc - ac).abs() < 0.001);
-    //     }) {
-    //         // panic!("ab: {ab:?} ac: {ac:?} bc: {bc:?}; a: {a:?} b: {b:?} c: {c:?}")
-    //     }
-    // }
-
     FlatMesh {
         indices: idxs,
         positions,
@@ -219,9 +194,15 @@ pub fn gen_mesh(
 pub fn init_mod(i: &mut Initailiser) {
     i.init
         .add_systems(init_res.after(crate::background::init_background));
-    i.prepare_buffers.add_systems(
-        pack_buffers::<&Transform, RawInstance, With<TriMeshMarker>, With<TriMeshMarker>>,
-    );
+    i.prepare_buffers
+        .add_systems(pack_buffers::<Vec2, With<TriMeshMarker>, With<TriMeshMarker>>);
+}
+
+impl Packable for Vec2 {
+    type Input<'a> = &'a Transform;
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
+        input.translation.xz() - eye
+    }
 }
 
 #[derive(Debug)]
@@ -257,7 +238,7 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
             pipeline_handle: shader_manager.add_render_pipeline(
                 SolidShader { handle: shader },
                 move || SolidPipelineModuleResourceExtras {
-                    vertex_buffers: Arc::new([Vertex::desc(), RawInstance::desc()]),
+                    vertex_buffers: Arc::new([Vertex::desc(), Vertex::instance_desc()]),
                     extra_bind_groups: vec![],
                 },
             ),
@@ -342,10 +323,4 @@ fn terain_height(p: Vec2) -> f32 {
     } else {
         0.0
     }
-}
-
-#[inline(always)]
-fn smoothstep(min: f32, max: f32, value: f32) -> f32 {
-    let x = ((value - min) / (max - min)).clamp(0.0, 1.0);
-    x * x * (3.0 - 2.0 * x)
 }
