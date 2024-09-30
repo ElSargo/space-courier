@@ -349,19 +349,19 @@ pub fn init_mod(ecs: &mut Initailiser) {
     // );
 }
 
-impl Packable for (&Transform, &Planet) {
-    type Raw = RawPlanetShadow;
+impl Packable for RawPlanetShadow {
+    type Input<'a> = (&'a Transform, &'a Planet);
 
-    fn pack(&self, eye: Vec2) -> Self::Raw {
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
         let sun_radius = 20.0;
-        let distance_recip = self.0.translation.length_recip();
-        let umbra_gradient = (sun_radius - self.1.radius) * distance_recip;
-        let penumbra_gradient = (sun_radius + self.1.radius) * distance_recip;
+        let distance_recip = input.0.translation.length_recip();
+        let umbra_gradient = (sun_radius - input.1.radius) * distance_recip;
+        let penumbra_gradient = (sun_radius + input.1.radius) * distance_recip;
         let penumbra_origin_length = sun_radius / penumbra_gradient;
-        let umbra_origin_length_past_planet = self.1.radius / umbra_gradient;
+        let umbra_origin_length_past_planet = input.1.radius / umbra_gradient;
 
         let back_length = 20000.0;
-        let back_width = back_length * penumbra_gradient + self.1.radius;
+        let back_width = back_length * penumbra_gradient + input.1.radius;
 
         RawPlanetShadow {
             penumbra_origin_length,
@@ -369,10 +369,10 @@ impl Packable for (&Transform, &Planet) {
                 / vec2(penumbra_origin_length, sun_radius).length(),
             umbra_origin_length: umbra_origin_length_past_planet + 1. / distance_recip,
             umbra_cosa: umbra_origin_length_past_planet
-                / vec2(umbra_origin_length_past_planet, self.1.radius).length(),
+                / vec2(umbra_origin_length_past_planet, input.1.radius).length(),
             umbra_h: umbra_origin_length_past_planet,
-            shadow_dir: self.0.translation.normalize(),
-            radius: self.1.radius,
+            shadow_dir: input.0.translation.normalize(),
+            radius: input.1.radius,
             back_length,
             back_width,
         }

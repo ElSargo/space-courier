@@ -80,7 +80,7 @@ pub fn init_mod(ecs: &mut Initailiser) {
     ecs.update
         .add_systems((remake_planets, add_planet, destroy_planets_in_sun));
     ecs.prepare_buffers
-        .add_systems(pack_buffers::<&Transform, RawInstance, With<Planet>, With<PlanetStuff>>);
+        .add_systems(pack_buffers::<RawInstance, With<Planet>, With<PlanetStuff>>);
 
     // planets.scales[1] = Vec3::ONE;
 }

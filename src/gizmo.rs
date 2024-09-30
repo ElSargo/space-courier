@@ -93,19 +93,18 @@ pub fn init(ecs: &mut Initailiser) {
         ));
     }
 
-    ecs.prepare_buffers.add_systems(
-        pack_buffers::<(&Transform, &ArrowGizmo), RawArrowInstance, (), With<ArrowBufferMarker>>,
-    );
+    ecs.prepare_buffers
+        .add_systems(pack_buffers::<RawArrowInstance, (), With<ArrowBufferMarker>>);
     // ecs.update.add_systems(update_arrows);
 }
 
-impl Packable for (&Transform, &ArrowGizmo) {
-    type Raw = RawArrowInstance;
+impl Packable for RawArrowInstance {
+    type Input<'a> = (&'a Transform, &'a ArrowGizmo);
 
-    fn pack(&self, eye: Vec2) -> Self::Raw {
-        Self::Raw {
-            transform: self.0.translated(-eye.extend(0.0).xzy()).to_mat(),
-            color: self.1.color,
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
+        Self {
+            transform: input.0.translated(-eye.extend(0.0).xzy()).to_mat(),
+            color: input.1.color,
         }
     }
 }

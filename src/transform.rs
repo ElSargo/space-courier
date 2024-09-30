@@ -152,10 +152,10 @@ impl Transform {
     }
 }
 
-impl Packable for &Transform {
-    type Raw = RawInstance;
+impl Packable for RawInstance {
+    type Input<'a> = &'a Transform;
 
-    fn pack(&self, eye: Vec2) -> Self::Raw {
-        RawInstance::from_transform(&self.translated(-eye.extend(0.0).xzy()))
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
+        RawInstance::from_transform(&input.translated(-eye.extend(0.0).xzy()))
     }
 }

@@ -47,7 +47,7 @@ pub fn init_ship(
 
 pub fn init_mod(ecs: &mut Initailiser) {
     ecs.prepare_buffers
-        .add_systems(pack_buffers::<&Transform, RawInstance, With<Ship>, With<Ship>>);
+        .add_systems(pack_buffers::<RawInstance, With<Ship>, With<Ship>>);
     // ecs.prepare_buffers.add_systems(update_instance_buffer);
     ecs.init.add_systems(
         init_ship

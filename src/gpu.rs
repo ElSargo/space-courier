@@ -1,4 +1,5 @@
 use bevy_ecs::prelude::Res;
+use bytemuck::Pod;
 use std::ops::{DerefMut, Range};
 use std::{
     collections::VecDeque,
@@ -255,28 +256,28 @@ where
     }
 }
 
-pub trait Packable {
-    type Raw: bytemuck::Pod;
-    fn pack(&self, eye: Vec2) -> Self::Raw;
+pub trait Packable: Pod {
+    type Input<'a>: WorldQuery + QueryData;
+    fn pack<'a>(
+        intput: <<Self::Input<'a> as QueryData>::ReadOnly as WorldQuery>::Item<'_>,
+        eye: Vec2,
+    ) -> Self;
 }
 
-pub fn pack_buffers<Input, Raw, InputFilter, InstanceBufferFilter>(
+pub fn pack_buffers<'a, Raw: Packable, InputFilter, InstanceBufferFilter>(
     camera: Res<Camera>,
-    inputs: Query<Input, InputFilter>,
+    inputs: Query<<Raw as Packable>::Input<'a>, InputFilter>,
     instance_buffer: Query<&InstanceBuffer, InstanceBufferFilter>,
     device: RD,
     queue: RQ,
 ) where
-    Raw: for<'a> From<<<<Input as QueryData>::ReadOnly as WorldQuery>::Item<'a> as Packable>::Raw>
-        + bytemuck::Pod,
     InstanceBufferFilter: QueryFilter,
     InputFilter: QueryFilter + bevy_ecs::query::ArchetypeFilter,
-    Input: QueryData,
-    for<'a> <<Input as QueryData>::ReadOnly as WorldQuery>::Item<'a>: Packable,
+    <Raw as Packable>::Input<'a>: QueryData,
 {
     match instance_buffer.get_single() {
         Ok(ib) => {
-            let i = inputs.iter().map(|i| Raw::from(i.pack(camera.eye.xz())));
+            let i = inputs.iter().map(|i| Raw::pack(i, camera.eye.xz()));
             ib.write_from_iterator(i, &device, &queue);
         }
         Err(_e) => {
