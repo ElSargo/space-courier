@@ -424,7 +424,7 @@ fn full(
             // }
 
             if length_p < bh_rad {black_hole_suck = 0.0; break;}
-            d = warp(p, length_p, d, dt * 0.6);
+            d = warp(p, length_p, d, dt * 0.4);
             // p += d * dt;
             // let p_disp = p.y - nfbm(p * 10.0)*0.15 + 0.10;
             // let pp_disp = pp.y - nfbm(pp * 10.0)*0.15 + 0.10;

@@ -12,7 +12,7 @@ use crate::{
     time::Time,
 };
 
-use bevy_ecs::system::{Commands, In, Res, ResMut, Resource};
+use bevy_ecs::system::{Commands, In, Local, Res, ResMut, Resource};
 use wgpu::{
     util::DeviceExt, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferBinding, BufferUsages, CommandEncoder, ComputePassDescriptor,
@@ -38,7 +38,7 @@ struct ConstructorReasources {
 }
 
 static FORMAT: TextureFormat = wgpu::TextureFormat::Rgba16Float;
-const DIM: u32 = 2048;
+const DIM: u32 = 1024;
 static SIZE: wgpu::Extent3d = wgpu::Extent3d {
     width: DIM,
     height: DIM,
@@ -150,9 +150,9 @@ pub fn init_background(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut c
         address_mode_u: wgpu::AddressMode::ClampToEdge,
         address_mode_v: wgpu::AddressMode::ClampToEdge,
         address_mode_w: wgpu::AddressMode::ClampToEdge,
-        min_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Linear,
         mag_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Linear,
         ..Default::default()
     });
     let time_buffer = Arc::new(
@@ -239,15 +239,16 @@ pub fn generate_background(
     mut callbacks: ResMut<RenderCompleteCallBack>,
     input: Res<ButtonInput>,
     time: Res<Time>,
+    mut first_run: Local<bool>,
 ) {
-    if input.just_down(winit::keyboard::KeyCode::KeyB) {
+    if input.just_down(winit::keyboard::KeyCode::KeyB) || !*first_run {
+        *first_run = true; // Will be false initialy
         let old = bg.generating.compare_exchange(
             false,
             true,
             std::sync::atomic::Ordering::Acquire,
             std::sync::atomic::Ordering::Relaxed,
         );
-        println!("Old state: {old:?}, Tick: {}", time.tick);
         if old.is_ok() {
             println!("BG gen");
             if let Some(pipeline) = shader_manager.get(&bg.pipeline) {
