@@ -18,7 +18,7 @@ struct Camera {
 };
 
 struct VertexInput {
-    @location(0) position: vec3<f32>,
+    @location(0) position: vec4<f32>,
 }
 
 struct InstanceInput {
@@ -39,7 +39,7 @@ fn vs_main(
     return VertexOutput(
         camera.view_proj * vert_position,
         vert_position.xyz - vec3(0.0, camera.view_pos.y, 0.0),
-        vert.position
+        vert.position.xyz
     );
 }
 

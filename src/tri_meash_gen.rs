@@ -1,26 +1,31 @@
-use std::{mem::size_of, sync::Arc};
+use std::{collections::VecDeque, mem::size_of, sync::Arc};
 
 use bevy_ecs::{
     component::Component,
     query::With,
     schedule::IntoSystemConfigs,
-    system::{Commands, Res, Resource},
+    system::{Commands, In, Res, ResMut, Resource},
 };
 
-use glam::{vec2, vec3, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
+use bytemuck::cast_slice;
+use glam::{vec2, vec3, vec4, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
+
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferUsages, Device,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BufferBinding, BufferUsages, CommandEncoderDescriptor, ComputePipeline,
+    ComputePipelineDescriptor, Device, ShaderStages,
 };
 
 use crate::{
     ecs::Initailiser,
     gpu::{
         pack_buffers, InstanceBuffer, Packable, SolidDrawable, SolidDrawableHandle,
-        SolidRenderable, RD,
+        SolidRenderable, RD, RQ,
     },
     shader_manager::{
-        PipelineHandle, ShaderManagerCtrl, SolidPipelineModuleResourceExtras, SolidShader,
+        PipelineHandle, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras,
+        SolidShader, UnifiedPipelineModuleResource, UnifiedShaders,
     },
     transform::Transform,
     RawInstance,
@@ -31,17 +36,17 @@ type IndexType = u16;
 #[derive(Debug)]
 pub struct FlatMesh {
     indices: Vec<IndexType>,
-    positions: Vec<Vec3>,
+    positions: Vec<Vec2>,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Vertex {
-    position: [f32; 3],
+    position: [f32; 4],
 }
 
 impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x3 ];
+    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x4 ];
     const INSTANCE_ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![1 => Float32x2 ];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -83,11 +88,6 @@ impl InstanceData {
     }
 }
 
-#[derive(Resource)]
-struct TriMeshResources {
-    pub pipeline_handle: PipelineHandle,
-}
-
 #[derive(Debug, Component)]
 pub struct TriMesh {
     vertex_buffer: wgpu::Buffer,
@@ -114,7 +114,7 @@ pub fn gen_mesh(
         let mut x = 0.0;
         for _ in 0..width {
             let height = height_function(vec2(x, 0.0));
-            positions.push(vec3(x, height, 0.0));
+            positions.push(vec2(x, 0.0));
             x += 1.0;
         }
         // Chunks
@@ -125,8 +125,7 @@ pub fn gen_mesh(
             for o in 0..=1 {
                 let mut x = x + if o == 0 { 0.5 } else { 0.0 };
                 for _ in 0..width - 1 + o {
-                    let height = height_function(vec2(x, y));
-                    positions.push(vec3(x, height, y));
+                    positions.push(vec2(x, y));
                     x += 1.0;
                 }
                 // x = 0.0;
@@ -196,6 +195,7 @@ pub fn init_mod(i: &mut Initailiser) {
         .add_systems(init_res.after(crate::background::init_background));
     i.prepare_buffers
         .add_systems(pack_buffers::<Vec2, With<TriMeshMarker>, With<TriMeshMarker>>);
+    i.update.add_systems(gen_height);
 }
 
 impl Packable for Vec2 {
@@ -230,8 +230,68 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
     let shader = shader_manager.load_shader("./src/tri_mesh.wgsl");
 
     let flat_mesh = gen_mesh(100, 100, |x| terain_height(x));
+    let inputs_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("Background inputs buffer layout"),
+        entries: &[BindGroupLayoutEntry {
+            binding: 0,
+            visibility: ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
 
-    let mesh = Arc::new(prepare_mesh(&flat_mesh, &device));
+    let output_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("Background outpus buffer layout"),
+        entries: &[BindGroupLayoutEntry {
+            binding: 0,
+            visibility: ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Tri mesh gen layout"),
+        bind_group_layouts: &[&inputs_layout, &output_layout],
+        push_constant_ranges: &[],
+    });
+
+    let compute_pipeline = shader_manager.add_compute_pipeline(
+        UnifiedShaders {
+            handle: shader_manager.load_shader("src/tri_mesh_gen.wgsl"),
+        },
+        move |In(mo): In<UnifiedPipelineModuleResource>, device: RD| {
+            device.create_compute_pipeline(&ComputePipelineDescriptor {
+                label: Some("Tri mesh generator"),
+                layout: Some(&pipeline_layout),
+                module: &mo,
+                entry_point: "full",
+                compilation_options: Default::default(),
+                cache: None,
+            })
+        },
+    );
+
+    let mut tq = TriQueue {
+        queue: VecDeque::new(),
+        pipeline: compute_pipeline,
+    };
+
+    let mesh = Arc::new(prepare_mesh(
+        &flat_mesh,
+        &device,
+        &inputs_layout,
+        &output_layout,
+        &mut tq,
+    ));
 
     commands.spawn((
         SolidRenderable {
@@ -253,19 +313,73 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
         TriMeshMarker,
     ));
 
+    commands.insert_resource(tq);
     commands.spawn((Transform::default(), TriMeshMarker));
 }
 
 #[derive(Component)]
 pub struct TriMeshMarker;
 
-pub fn prepare_mesh(tri_mesh: &FlatMesh, device: &Device) -> TriMesh {
-    // println!("{tri_mesh:#?}");
-    let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
+pub fn prepare_mesh(
+    tri_mesh: &FlatMesh,
+    device: &Device,
+    input_layout: &BindGroupLayout,
+    output_layout: &BindGroupLayout,
+    tri_q: &mut TriQueue,
+) -> TriMesh {
+    let inputs = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Tri mesh vertex_buffer"),
-        usage: BufferUsages::VERTEX,
+        usage: BufferUsages::STORAGE,
         contents: bytemuck::cast_slice(tri_mesh.positions.as_slice()),
     });
+
+    let output = device.create_buffer_init(&BufferInitDescriptor {
+        label: Some("Tri mesh vertex_buffer"),
+        usage: BufferUsages::VERTEX | BufferUsages::STORAGE,
+        contents: bytemuck::cast_slice(
+            tri_mesh
+                .positions
+                .iter()
+                .map(|xy| vec4(xy.x, 0.0, xy.y, 0.0))
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ),
+    });
+
+    let input_bind = Arc::new(device.create_bind_group(&BindGroupDescriptor {
+        label: Some("Tri mesh storage layout"),
+        layout: input_layout,
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Buffer(BufferBinding {
+                buffer: &inputs,
+                offset: 0,
+                size: None,
+            }),
+        }],
+    }));
+
+    let output_bind = Arc::new(device.create_bind_group(&BindGroupDescriptor {
+        label: Some("Tri mesh storage layout"),
+        layout: output_layout,
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Buffer(BufferBinding {
+                buffer: &output,
+                offset: 0,
+                size: None,
+            }),
+        }],
+    }));
+
+    tri_q.queue.push_front((
+        tri_mesh.positions.len() as u32,
+        IOL {
+            i: input_bind,
+            o: output_bind,
+        },
+    ));
+
     let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Tri mesh index_buffer"),
         usage: BufferUsages::INDEX,
@@ -273,9 +387,47 @@ pub fn prepare_mesh(tri_mesh: &FlatMesh, device: &Device) -> TriMesh {
     });
 
     TriMesh {
-        vertex_buffer,
+        vertex_buffer: output,
         index_buffer,
         num_elements: 1,
+    }
+}
+
+struct IOL {
+    i: Arc<BindGroup>,
+    o: Arc<BindGroup>,
+}
+
+#[derive(Resource)]
+pub struct TriQueue {
+    queue: VecDeque<(u32, IOL)>,
+    pipeline: PipelineHandle,
+}
+
+fn gen_height(
+    device: RD,
+    queue: RQ,
+    pipelines: Res<PipelinesView<ComputePipeline>>,
+    mut to_process: ResMut<TriQueue>,
+    // mut commands: Commands,
+) {
+    if let Some(p) = pipelines.get(&to_process.pipeline) {
+        let mut enc = device.create_command_encoder(&CommandEncoderDescriptor {
+            label: Some("Tri mesh enc"),
+        });
+        while let Some((count, bind)) = to_process.queue.pop_front() {
+            println!("Dispatcing compute");
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Tri mesh compute"),
+                timestamp_writes: None,
+            });
+
+            pass.set_bind_group(0, &bind.i, &[]);
+            pass.set_bind_group(1, &bind.o, &[]);
+            pass.set_pipeline(&p);
+            pass.dispatch_workgroups((count / 256) + 1, 1, 1);
+        }
+        queue.submit(std::iter::once(enc.finish()));
     }
 }
 
