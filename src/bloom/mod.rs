@@ -31,8 +31,11 @@ pub fn init_mod(ecs: &mut Initailiser) {
             .after(create_extract_bind_group),
     );
     ecs.render.add_systems(draw_bloom);
-    ecs.resize
-        .add_systems((create_extract_bind_group, resize_bloom).chain());
+    ecs.resize.add_systems(
+        (create_extract_bind_group, resize_bloom)
+            .chain()
+            .after(crate::camera::resize_view_textures),
+    );
 }
 
 #[derive(Resource)]
