@@ -234,7 +234,7 @@ fn resize_camera(mut camera: ResMut<Camera>, resolution: Res<ScreenResolution>) 
     camera.aspect = resolution.width as f32 / resolution.height as f32;
 }
 
-fn resize_view_textures(
+pub fn resize_view_textures(
     mut v_tex: ResMut<ViewTextures>,
     mut rv_tex: ResMut<ReflectedViewTextures>,
     vtbgl: VTBGL,
