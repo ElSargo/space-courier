@@ -7,8 +7,7 @@ use bevy_ecs::{
     system::{Commands, In, Res, ResMut, Resource},
 };
 
-use bytemuck::cast_slice;
-use glam::{vec2, vec3, vec4, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
+use glam::{vec2, vec4, Vec2, Vec3Swizzles};
 
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
@@ -70,7 +69,6 @@ pub fn gen_mesh(width: usize, depth: usize) -> FlatMesh {
         let dy = 3_f32.sqrt() / 2.0;
         let mut x = 0.0;
         for _ in 0..width {
-            let height = height_function(vec2(x, 0.0));
             positions.push(vec2(x, 0.0));
             x += 1.0;
         }
@@ -182,7 +180,7 @@ impl SolidDrawable for TriMesh {
 pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, device: RD) {
     let shader = shader_manager.load_shader("./src/tri_mesh.wgsl");
 
-    let flat_mesh = gen_mesh(100, 100, |x| terain_height(x));
+    let flat_mesh = gen_mesh(100, 100);
     let inputs_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
         label: Some("Background inputs buffer layout"),
         entries: &[BindGroupLayoutEntry {
@@ -238,24 +236,18 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
         pipeline: compute_pipeline,
     };
 
-    let mesh = Arc::new(prepare_mesh(
-        &flat_mesh,
-        &device,
-        &inputs_layout,
-        &output_layout,
-        &mut tq,
-    ));
+    let mesh = prepare_mesh(&flat_mesh, &device, &inputs_layout, &output_layout, &mut tq);
 
     commands.spawn((
         SolidRenderable {
             pipeline_handle: shader_manager.add_render_pipeline(
                 SolidShader { handle: shader },
                 move || SolidPipelineModuleResourceExtras {
-                    vertex_buffers: Arc::new([Vertex::desc(), Vertex::instance_desc()]),
+                    vertex_buffers: Arc::new([Vertex::desc(), Instance::desc()]),
                     extra_bind_groups: vec![],
                 },
             ),
-            renderable: Box::new(TriMeshHandle(mesh)),
+            renderable: Box::new(mesh),
         },
         InstanceBuffer::new_init(
             Some("Tri mesh index buffer".to_string()),
@@ -342,7 +334,6 @@ pub fn prepare_mesh(
     TriMesh {
         vertex_buffer: output,
         index_buffer,
-        num_elements: 1,
     }
 }
 
@@ -381,51 +372,5 @@ fn gen_height(
             pass.dispatch_workgroups((count / 256) + 1, 1, 1);
         }
         queue.submit(std::iter::once(enc.finish()));
-    }
-}
-
-fn draw_object(v: Vec3) -> f32 {
-    let p = (v.fract() - 0.5).abs();
-    return p.x.max(p.y).max(p.z);
-}
-
-fn cell_tile(v: Vec3) -> f32 {
-    let mut p = v;
-    // Draw four overlapping objects (spheres, in this case) at various positions throughout the tile.
-    let mut d = Vec4::ZERO;
-    d.x = draw_object(p - vec3(0.81, 0.62, 0.53));
-    p.x = (p.y - p.x) * 0.7071;
-    p.y = (p.y + p.x) * 0.7071;
-    //p.xy = vec2(p.y*.866025 - p.x*.5, p.y*.5 + p.x*.866025); // Etc.
-    d.y = draw_object(p - vec3(0.39, 0.2, 0.11));
-    p.y = (p.z - p.y) * 0.7071;
-    p.z = (p.z + p.y) * 0.7071;
-    //p.yz = vec2(p.z*.866025 - p.y*.5, p.z*.5 + p.y*.866025); // Etc.
-    d.z = draw_object(p - vec3(0.62, 0.24, 0.06));
-    p.x = (p.z - p.x) * 0.7071;
-    p.z = (p.z + p.x) * 0.7071;
-    //p.xz = vec2(p.z*.866025 - p.x*.5, p.z*.5 + p.x*.866025); // Etc.
-    d.w = draw_object(p - vec3(0.2, 0.82, 0.64));
-
-    // Obtain the minimum, and you're done.
-    d.x = d.x.min(d.y);
-    d.y = d.z.min(d.w);
-
-    return 1. - d.x.min(d.y) * 2.; // Scale between zero and one... roughly.
-
-    // For anyone wanting to experiment with this, the following gives better variance:
-    //const float scale = 1.; // 1 up to 4, or higher, depending on the look you want.
-    // Obviously, for the reverse, you take the one and minus away.
-    //return 1. - min(min(d.x, d.y)*2.*scale, 1.);
-}
-
-fn terain_height(p: Vec2) -> f32 {
-    let position = vec3(p.x, 0.0, p.y);
-    let noise = cell_tile(position * 0.1);
-
-    if noise > 0.70 {
-        ((noise - 0.6) * 4.0).powi(2)
-    } else {
-        0.0
     }
 }
