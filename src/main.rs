@@ -469,7 +469,6 @@ impl<'a> State<'a> {
         g_ctx
             .queue
             .submit(encoders.into_iter().map(|encoder| encoder.finish()));
-        println!("Presented");
         output.present();
 
         Ok(())
@@ -661,7 +660,7 @@ pub struct RawInstance {
 }
 unsafe impl bytemuck::Pod for RawInstance {}
 unsafe impl bytemuck::Zeroable for RawInstance {}
-vertex_layout!(RawInstance, [
+instance_layout!(RawInstance, [
      // Model matrix
      5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
      // Model rotation matrix
@@ -675,25 +674,6 @@ impl RawInstance {
             rotation_only: Mat3::from_quat(t.rotation),
         }
     }
-}
-
-#[macro_export]
-macro_rules! vertex_layout {
-    ($t: ident, $tok: tt ) => {
-        impl $t {
-            const ATTRIBS: &'static [wgpu::VertexAttribute] = &wgpu::vertex_attr_array!$tok;
-
-            pub fn desc() -> wgpu::VertexBufferLayout<'static> {
-                wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &Self::ATTRIBS,
-                }
-            }
-
-        }
-
-    };
 }
 
 fn main() {

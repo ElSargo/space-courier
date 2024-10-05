@@ -19,6 +19,7 @@ use crate::{
     camera::CameraUniform,
     ecs::Initailiser,
     gpu::{InstanceBuffer, Packable, RenderPassExt, ScreenResolution, RD},
+    instance_layout,
     planets::Planet,
     shader_manager::{
         PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleResource,
@@ -61,7 +62,7 @@ struct Instance {
     back_length: f32,
     back_width: f32,
 }
-vertex_layout!( Instance ,[2 => Float32, 3 => Float32, 4 => Float32, 5 => Float32, 6 => Float32,7 => Float32x3,8=>Float32,9=>Float32,10=>Float32] );
+instance_layout!( Instance ,[2 => Float32, 3 => Float32, 4 => Float32, 5 => Float32, 6 => Float32,7 => Float32x3,8=>Float32,9=>Float32,10=>Float32] );
 
 impl PlanetShadows {
     pub fn new(

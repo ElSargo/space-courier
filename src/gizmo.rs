@@ -9,6 +9,7 @@ use wgpu::VertexAttribute;
 use crate::{
     ecs::Initailiser,
     gpu::{pack_buffers, Packable},
+    instance_layout,
     transform::Transform,
     vertex_layout,
 };
@@ -44,7 +45,7 @@ pub struct RawArrowInstance {
 unsafe impl bytemuck::Pod for RawArrowInstance {}
 unsafe impl bytemuck::Zeroable for RawArrowInstance {}
 
-vertex_layout!(RawArrowInstance, [ 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, ]);
+instance_layout!(RawArrowInstance, [ 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, ]);
 
 // pub fn update_arrows(
 //     player: Query<(&PlayerController, &Transform, &Physics), Without<ArrowGizmo>>,

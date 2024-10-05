@@ -19,6 +19,7 @@ use wgpu::{
 use crate::{
     ecs::Initailiser,
     gpu::{pack_buffers, InstanceBuffer, Packable, SolidDrawable, SolidRenderable, RD, RQ},
+    instance_layout,
     shader_manager::{
         PipelineHandle, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras,
         SolidShader, UnifiedPipelineModuleResource, UnifiedShaders,
@@ -47,7 +48,7 @@ vertex_layout!(Vertex,[0 => Float32x4 ]);
 pub struct Instance {
     position: [f32; 2],
 }
-vertex_layout!(Instance,[1 => Float32x2 ]);
+instance_layout!(Instance,[1 => Float32x2 ]);
 
 #[derive(Debug, Component)]
 pub struct TriMesh {

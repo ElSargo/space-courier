@@ -170,7 +170,6 @@ pub fn draw_post(
     kb: Res<ButtonInput>,
 ) {
     if let Some(pipeline) = render_pipelines.get(&post.pipeline_handle) {
-        println!("Drawn");
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Post render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

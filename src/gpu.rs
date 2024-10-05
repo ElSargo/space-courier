@@ -408,3 +408,41 @@ macro_rules! instance_buffer {
         }
     };
 }
+
+#[macro_export]
+macro_rules! vertex_layout {
+    ($t: ident, $tok: tt ) => {
+        impl $t {
+            const ATTRIBS: &'static [wgpu::VertexAttribute] = &wgpu::vertex_attr_array!$tok;
+
+            pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &Self::ATTRIBS,
+                }
+            }
+
+        }
+
+    };
+}
+
+#[macro_export]
+macro_rules! instance_layout {
+    ($t: ident, $tok: tt ) => {
+        impl $t {
+            const ATTRIBS: &'static [wgpu::VertexAttribute] = &wgpu::vertex_attr_array!$tok;
+
+            pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &Self::ATTRIBS,
+                }
+            }
+
+        }
+
+    };
+}
