@@ -18,7 +18,7 @@ use bevy_ecs::{
     system::Commands,
 };
 
-use glam::{Vec2, Vec3, Vec3Swizzles};
+use glam::{Vec2, Vec3Swizzles};
 use wgpu::{
     util::DeviceExt, BindGroupLayout, BufferDescriptor, BufferUsages, Device, Queue, TextureFormat,
     TextureView,
@@ -109,10 +109,11 @@ pub struct InstanceBuffer {
 impl InstanceBuffer {
     pub fn new<S: ToOwned<Owned = String>>(
         label: Option<S>,
-        usages: BufferUsages,
+        extra_usages: BufferUsages,
         device: &Device,
     ) -> Self {
         let label = label.map(|s| s.to_owned());
+        let usages = extra_usages | BufferUsages::VERTEX | BufferUsages::COPY_DST;
         let buffer = device.create_buffer(&BufferDescriptor {
             label: label.as_ref().map(|x| x.as_str()),
             size: 0,
