@@ -9,9 +9,7 @@ use crate::{
     background,
     ecs::Initailiser,
     gpu::{pack_buffers, InstanceBuffer, SolidRenderable, TextureBindGroupLayoutResource, RD, RQ},
-    model_loader,
-    transform::Transform,
-    RawInstance, StandardRenderPipeline,
+    model_loader, RawInstance, StandardRenderPipeline,
 };
 
 #[derive(Component)]
