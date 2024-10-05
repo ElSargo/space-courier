@@ -162,24 +162,20 @@ impl Packable for Vec2 {
     }
 }
 
-#[derive(Debug)]
-struct TriMeshHandle(Arc<TriMesh>);
-
-impl SolidDrawableHandle for TriMeshHandle {
-    fn aquire(&self) -> Option<Arc<dyn crate::gpu::SolidDrawable>> {
-        Some(self.0.clone())
-    }
-}
-
 impl SolidDrawable for TriMesh {
     fn draw<'a: 'b, 'b>(
         &self,
         render_pass: &mut wgpu::RenderPass,
         _instances: std::ops::Range<u32>,
+        _asset: &'a dyn Any,
     ) {
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..self.index_buffer.size() as u32 / 2, 0, 0..1);
+    }
+
+    fn aquire(&self) -> Option<Arc<dyn Any>> {
+        Some(Arc::new(()))
     }
 }
 

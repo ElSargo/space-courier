@@ -55,19 +55,19 @@ fn solid_pass(
         render_pass.set_bind_group(1, &background.texture_cube_bind_group, &[]);
         render_pass.set_bind_group(2, &refl_bind, &[]);
 
-        let mut objects: Vec<(&InstanceBuffer, PipelineHandle, Arc<dyn SolidDrawable>)> = objects
+        let mut objects = objects
             .iter()
             .flat_map(|obj| {
                 obj.1
                     .renderable
                     .aquire()
-                    .map(|renderable| (obj.0, obj.1.pipeline_handle, renderable))
+                    .map(|asset| (obj.1.pipeline_handle, obj.0, &obj.1.renderable, asset))
             })
             .collect::<Vec<_>>();
-        objects.sort_by_key(|(_, pipeline_handle, _)| *pipeline_handle);
+        objects.sort_by_key(|(pipeline_handle, ..)| *pipeline_handle);
 
         let mut last_pipeline = None;
-        for (ib, pipeline_handle, renderable) in objects.iter() {
+        for (pipeline_handle, ib, renderable, asset) in objects.iter() {
             if Some(pipeline_handle) != last_pipeline {
                 if let Some(pipeline) = render_pipelines.get(&pipeline_handle) {
                     render_pass.set_pipeline(&pipeline);
@@ -79,7 +79,7 @@ fn solid_pass(
             }
 
             render_pass.set_instance_buffer(1, ib);
-            renderable.draw(&mut render_pass, 0..ib.len());
+            renderable.draw(&mut render_pass, 0..ib.len(), asset);
         }
     }
 }

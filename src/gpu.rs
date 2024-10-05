@@ -1,9 +1,9 @@
 use bevy_ecs::prelude::Res;
 use bytemuck::Pod;
+use std::any::Any;
 use std::ops::{DerefMut, Range};
 use std::{
     collections::VecDeque,
-    convert::From,
     num::NonZeroU64,
     ops::Deref,
     sync::{atomic::AtomicU32, Arc},
@@ -288,29 +288,34 @@ pub fn pack_buffers<'a, Raw: Packable, InputFilter, InstanceBufferFilter>(
     // instance_buffer.single_mut().
 }
 
-#[derive(Component, Debug)]
+#[derive(Component)]
 pub struct SolidRenderable {
     pub pipeline_handle: PipelineHandle,
-    pub renderable: Box<dyn SolidDrawableHandle + Send + Sync>,
-}
-
-pub trait SolidDrawableHandle: std::fmt::Debug {
-    fn aquire(&self) -> Option<Arc<dyn SolidDrawable>>;
+    pub renderable: Box<dyn SolidDrawable + Send + Sync>,
 }
 
 pub trait SolidDrawable {
-    fn draw<'a: 'b, 'b>(&'a self, render_pass: &mut RenderPass<'b>, instances: Range<u32>);
+    fn draw<'a: 'b, 'b>(
+        &'a self,
+        render_pass: &mut RenderPass<'b>,
+        instances: Range<u32>,
+        asset: &'a dyn Any,
+    );
+    fn aquire(&self) -> Option<Arc<dyn Any>>;
 }
 
-impl SolidDrawableHandle for ModelHandle {
-    fn aquire(&self) -> Option<Arc<dyn SolidDrawable>> {
-        self.get().map(|x| x as Arc<dyn SolidDrawable>)
+impl SolidDrawable for ModelHandle {
+    fn draw<'a: 'b, 'b>(
+        &'a self,
+        render_pass: &mut RenderPass<'b>,
+        instances: Range<u32>,
+        asset: &'a dyn Any,
+    ) {
+        render_pass.draw_model_instanced(asset.downcast_ref().unwrap(), instances);
     }
-}
 
-impl SolidDrawable for Model {
-    fn draw<'a: 'b, 'b>(&'a self, render_pass: &mut RenderPass<'b>, instances: Range<u32>) {
-        render_pass.draw_model_instanced(self, instances);
+    fn aquire(&self) -> Option<Arc<dyn std::any::Any + 'static>> {
+        self.get().map(|model| model as Arc<dyn Any>)
     }
 }
 
