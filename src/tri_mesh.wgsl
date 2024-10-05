@@ -75,8 +75,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sin_60 = sqrt(3.0) / 2.0;
     let tri_coord = vec3(in.mesh_position.xz * mat2x2(sin_60, 0.5, sin_60, -0.5), in.mesh_position.z) + 3.0 / sqrt(48.0);
 
-    let tri_int = triangle_line_signal(tri_coord, 0.04) ;
-    let line_signal = max(tri_int.x, max(tri_int.y, tri_int.z)) * (1.0 - exp(-in.mesh_position.y) + 0.01);
+    let tri_int = triangle_line_signal(tri_coord, 0.02) ;
+    let line_signal = max(tri_int.x, max(tri_int.y, tri_int.z));
 
 
     let ray_direction = normalize(in.relative_position.xyz);
@@ -91,9 +91,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let fresnel_strength = fresnel(ray_direction, flat_normal, 5.0);
     let reflection_strength = pow(max(0.0, dot(reflected_ray_direction, ray_direction)), 2.0) * fresnel_strength;
 
-    let line_color = line_signal * vec3(1.0, 0.0, 0.23) * 20.0;
+    let line_color = vec3(1.0, 0.0, 0.23) * 20.0 * (1.0 - exp(-in.mesh_position.y) + 0.03);
     let reflection_color = reflection_strength * reflection_incident;
-    let color = line_color + reflection_color;
+    // let color = mix(reflection_color, line_color, line_signal);
+    let color = reflection_color + line_color * line_signal;
 
     return vec4(color, 1.0);
 }
