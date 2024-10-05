@@ -20,6 +20,7 @@ mod shader_manager;
 mod ship;
 mod solid_pass;
 mod sun;
+mod tetrahedron;
 mod texture;
 mod time;
 mod transform;
@@ -46,7 +47,7 @@ use gpu::{
 use input::KeyEvent;
 use pollster::FutureExt;
 use shader_manager::{PipelineHandle, PipelinesView, ShaderManager, ShaderManagerCtrl};
-use std::{collections::VecDeque, mem::size_of, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 use texture::Texture;
 use time::Time;
 use transform::Transform;
@@ -56,7 +57,7 @@ use wgpu::{
 };
 use winit::{
     application::ApplicationHandler,
-    dpi::{LogicalSize, PhysicalSize},
+    dpi::PhysicalSize,
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::{Key, NamedKey, PhysicalKey},
@@ -82,6 +83,7 @@ fn init_modules(initialiser: &mut Initailiser) {
         solid_pass::init_mod,
         tri_meash_gen::init_mod,
         physics::init_mod,
+        // tetrahedron::init_mod,
     ]
     .iter()
     .for_each(|f| f(initialiser));
@@ -382,233 +384,6 @@ impl<'a> State<'a> {
             world: None,
             key_events: VecDeque::new(),
         }
-
-        // // let camera_controller = PlayerController::new(100.0)
-
-        // render_stuff.insert({
-        //     let view_textures_bind_group_layout =
-        //         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        //             entries: &[
-        //                 wgpu::BindGroupLayoutEntry {
-        //                     binding: 0,
-        //                     visibility: wgpu::ShaderStages::FRAGMENT,
-        //                     ty: wgpu::BindingType::Texture {
-        //                         multisampled: false,
-        //                         view_dimension: wgpu::TextureViewDimension::D2,
-        //                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-        //                     },
-        //                     count: None,
-        //                 },
-        //                 wgpu::BindGroupLayoutEntry {
-        //                     binding: 1,
-        //                     visibility: wgpu::ShaderStages::FRAGMENT,
-        //                     // This should match the filterable field of the
-        //                     // corresponding Texture entry above.
-        //                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-        //                     count: None,
-        //                 },
-        //                 wgpu::BindGroupLayoutEntry {
-        //                     binding: 2,
-        //                     visibility: wgpu::ShaderStages::FRAGMENT,
-        //                     ty: wgpu::BindingType::Texture {
-        //                         multisampled: false,
-        //                         view_dimension: wgpu::TextureViewDimension::D2,
-        //                         sample_type: wgpu::TextureSampleType::Depth,
-        //                     },
-        //                     count: None,
-        //                 },
-        //                 wgpu::BindGroupLayoutEntry {
-        //                     binding: 3,
-        //                     visibility: wgpu::ShaderStages::FRAGMENT,
-        //                     // This should match the filterable field of the
-        //                     // corresponding Texture entry above.
-        //                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-        //                     count: None,
-        //                 },
-        //             ],
-        //             label: Some("post_texture_bind_group_layout"),
-        //         });
-
-        //     let color_texture = make_view_texture(&config, &device);
-        //     let depth_texture =
-        //         texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-        //     ViewTextureReasources {
-        //         view_textures_bind_group: make_view_textures_bind_group(
-        //             &device,
-        //             &view_textures_bind_group_layout,
-        //             &depth_texture,
-        //             &color_texture,
-        //         ),
-        //         view_textures_bind_group_layout,
-        //         depth_texture,
-        //         view_texture: color_texture,
-        //     }
-        // });
-
-        // let planet_model =
-        //     resources::load_model("wallmart.obj", &device, &queue, &texture_bind_group_layout)
-        //         .await
-        //         .unwrap();
-
-        // let arrow_model =
-        //     resources::load_model("arrow.obj", &device, &queue, &texture_bind_group_layout)
-        //         .await
-        //         .unwrap();
-        // // let arrow_transform_buffer_data = arrows.to_raw_buffer();
-        // let arrow_transform_instance_buffer = InstanceBuffer::new(
-        //     Some("arrow instance Buffer".to_owned()),
-        //     wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        //     &device,
-        // );
-
-        // let gpu = Gpu {
-        //     device: Arc::new(device),
-        //     queue: Arc::new(queue),
-        // };
-        // render_stuff.insert(gpu.clone());
-        // ecs.world.insert_resource(gpu.clone());
-        // ecs.world.insert_resource(Camera::default());
-
-        // time::init(&mut ecs).await;
-        // physics::init(&mut ecs).await;
-        // planets::init(
-        //     &mut ecs,
-        //     &gpu,
-        //     &texture_bind_group_layout,
-        //     planet_transform_instance_buffer.clone(),
-        // )
-        // .await;
-        // gravity::init(&mut ecs).await;
-        // input::init(&mut ecs);
-        // player_controller::init(&mut ecs);
-        // gizmo::init(&mut ecs);
-        // ship::init(&mut ecs, &mut render_stuff);
-        // sun::init(
-        //     &mut ecs,
-        //     &mut render_stuff,
-        //     &mut shader_manager,
-        //     &gpu,
-        //     &texture_bind_group_layout,
-        // )
-        // .await;
-
-        // render_stuff.insert(FullscreenQuad::init(&gpu.device, &mut shader_manager));
-
-        // if let Some((vt,)) = get_all!(render_stuff, ViewTextureReasources) {
-        //     render_stuff.insert(PlanetShadows::new(
-        //         &gpu.device,
-        //         &config,
-        //         &mut shader_manager,
-        //         &vt.view_textures_bind_group_layout,
-        //     ));
-        // }
-
-        // Background::init(
-        //     &gpu.device,
-        //     &mut shader_manager,
-        //     &mut render_stuff,
-        //     &mut ecs,
-        // );
-
-        // if let Some((vt, ps, bg, fsq)) = get_all!(
-        //     render_stuff,
-        //     ViewTextureReasources,
-        //     PlanetShadows,
-        //     Background,
-        //     FullscreenQuad
-        // ) {
-        //     render_stuff.insert(Postprocessing::new(
-        //         &gpu.device,
-        //         &config,
-        //         &fsq,
-        //         &vt.view_textures_bind_group_layout,
-        //         &ps.texture_bind_group_layout,
-        //         &bg.texture_cube_bind_group_layout,
-        //         &mut shader_manager,
-        //     ));
-        // }
-        // BloomReasoruces::init(&gpu, &config, &mut render_stuff, &mut shader_manager);
-
-        // Bloom::init(&config, &gpu.device, &mut render_stuff);
-
-        // init_normal_pipeline(
-        //     &mut render_stuff,
-        //     &mut shader_manager,
-        //     &texture_bind_group_layout,
-        // );
-
-        // let gizmo_shader = shader_manager.load_shader("./src/gizmo.wgsl");
-        // // let tbgl = texture_bind_group_layout.clone();
-        // // let cgs = camera_gpu_stuff.clone();
-        // let gizmo_layout = Box::leak(Box::new(mk_pipeline_layout(
-        //     &gpu.device.clone(),
-        //     "gizmo",
-        //     &[&render_stuff
-        //         .get::<CameraUniform>()
-        //         .unwrap()
-        //         .inner
-        //         .bind_group_layout],
-        // )));
-        // let gizmo_render_pipeline = shader_manager.add_render_pipeline(
-        //     UnifiedPipelineModuleDescriptor {
-        //         handle: gizmo_shader,
-        //     },
-        //     Box::new(move |_rr, device, module| {
-        //         mk_pipeline(
-        //             &device,
-        //             gizmo_layout,
-        //             None,
-        //             &module,
-        //             "gizmo",
-        //             RawArrowInstance::desc(),
-        //         )
-        //     }),
-        // );
-
-        // tri_meash_gen::init(&mut shader_manager, &mut render_stuff, &gpu.device);
-
-        // let tri_meshes = vec![tri_meash_gen::prepare_mesh(
-        //     &tri_meash_gen::gen_mesh(100, 100, terain_height),
-        //     &gpu,
-        // )];
-
-        // Self {
-        // planet_model,
-
-        // planets,
-        // planet_transform_instance_buffer: planet_transform_instance_buffer.into(),
-        // render_world,
-        // ship_transforms,
-        // ship_model,
-        // fire_bg: true,
-        // arrows,
-        // arrow_transform_instance_buffer,
-        // arrow_model,
-        // gizmo_render_pipeline,
-        // ecs,
-        // gilrs: Gilrs::new().unwrap(),
-        // shader_manager,
-        // render_stuff,
-        // tri_meshes,
-        // graphics_ctx: None,
-        // render_init,
-        // shader_manager: ,
-        // }
-
-        // tri_meshes: Vec<tri_meash_gen::TriMesh>,
-
-        // fire_bg: bool,
-        // // planets: Planets,
-        // planet_model: Model,
-        // planet_transform_instance_buffer: Arc<Mutex<InstanceBuffer>>,
-
-        // // ship_transforms: Vec<Transform>,
-        // ship_model: Model,
-
-        // // arrows: ArrowGizmos,
-        // arrow_transform_instance_buffer: InstanceBuffer,
-        // arrow_model: Model,
-        // gizmo_render_pipeline: PipelineHandle,
     }
 
     pub fn window(&self) -> &Window {
