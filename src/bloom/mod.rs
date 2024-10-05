@@ -15,6 +15,7 @@ use crate::{
     ecs::Initailiser,
     fullscreen::FullscreenQuad,
     gpu::{QueueResource, ScreenResolution, RD},
+    input::ButtonInput,
     load_shader,
     shader_manager::{
         Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleResource,
@@ -30,6 +31,7 @@ pub fn init_mod(ecs: &mut Initailiser) {
             .after(background::init_background)
             .after(create_extract_bind_group),
     );
+    ecs.update.add_systems(change_result_texture);
     ecs.render.add_systems(draw_bloom);
     ecs.resize.add_systems(
         (create_extract_bind_group, resize_bloom)
@@ -72,6 +74,7 @@ pub struct Bloom {
     extract_texture: wgpu::Texture,
     extract_texture_view: wgpu::TextureView,
     extract_bindings: wgpu::BindGroup,
+    which_result: (bool, usize),
 }
 
 impl BloomReasoruces {
@@ -82,7 +85,11 @@ impl BloomReasoruces {
 
 impl Bloom {
     pub fn get_result_bind_group(&self) -> &BindGroup {
-        &self.up_chain.bind_groups.last().unwrap()
+        if self.which_result.0 {
+            &self.up_chain.bind_groups[self.up_chain.textures.len() - self.which_result.1 - 1]
+        } else {
+            &self.down_chain.bind_groups[self.which_result.1]
+        }
     }
 }
 
@@ -625,11 +632,12 @@ pub fn init_res(
             }),
             entries: &[],
         }),
+        which_result: (true, 0),
     };
 
     commands.insert_resource(bloom);
 
-    let threshold: f32 = 1.0;
+    let threshold: f32 = 2.0;
     bloom_reasources.update_threshold(&queue, threshold);
     commands.insert_resource(bloom_reasources);
 }
@@ -660,7 +668,7 @@ fn resize_bloom(
 
     // down_chain: chain,
     {
-        let lowest_x = 10;
+        let lowest_x = 20;
         let mut width = resolution.width;
         let mut height = resolution.height;
 
@@ -703,5 +711,17 @@ fn resize_bloom(
             bloom.up_chain.textures.len(),
             bloom.down_chain.textures.len()
         )
+    }
+}
+
+fn change_result_texture(mut this: ResMut<Bloom>, kb: Res<ButtonInput>) {
+    if kb.just_down(winit::keyboard::KeyCode::Equal) {
+        this.which_result.1 = (this.which_result.1 + 1).min(this.down_chain.textures.len());
+    }
+    if kb.just_down(winit::keyboard::KeyCode::Minus) {
+        this.which_result.1 = this.which_result.1.saturating_sub(1);
+    }
+    if kb.just_down(winit::keyboard::KeyCode::Digit0) {
+        this.which_result.0 = !this.which_result.0;
     }
 }

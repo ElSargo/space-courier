@@ -29,13 +29,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_sample = textureSample(color_texture, color_sampler, in.uv);
     let bg_sample = textureSample(background, color_sampler, ray_direction);
 
-    let view_sample_color = (view_sample.rgb - threshold) * view_sample.a;
-    let bg_color = bg_sample.rgb * (1.0 - view_sample.a);
-
+    let in_color = mix(bg_sample.rgb,view_sample.rgb,view_sample.a);
+    // let out_color = step(vec3(threshold), in_color ) * in_color ;
+    let out_color = smoothstep(vec3(threshold*0.5), vec3(threshold*1.0), in_color ) * in_color ;
     return vec4(
-        max(vec3(0.0), view_sample_color + bg_color), 1.0
+        out_color,
+        1.0
     );
-    // return vec4(view_sample.a * 00.6);
 }
 
 
