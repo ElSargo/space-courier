@@ -2,7 +2,7 @@ mod pipeline_shader_resource;
 mod solid_pipeline;
 mod split_pipeline;
 mod unified_pipeline;
-use bevy_ecs::{system::Resource, world::World};
+use bevy_ecs::{component::Component, system::Resource, world::World};
 
 use notify::{
     event::{AccessMode, MetadataKind},
@@ -235,7 +235,7 @@ struct StoredPipeline<T> {
     generations: Vec<u64>,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
+#[derive(Component, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
 pub struct PipelineHandle {
     id: u64,
 }
@@ -658,7 +658,7 @@ impl<PipelineType> PipelinesView<PipelineType> {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Component)]
 pub struct Marker<T, Id>(T, PhantomData<Id>);
 
 impl<T, I> Marker<T, I> {
