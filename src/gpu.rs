@@ -312,9 +312,10 @@ impl SolidDrawable for ModelHandle {
         instances: Range<u32>,
         asset: &'a dyn Any,
     ) {
-        render_pass.draw_model_instanced(asset.downcast_ref().unwrap(), instances);
+        if let Some(model) = asset.downcast_ref::<Model>() {
+            render_pass.draw_model_instanced(model, instances);
+        }
     }
-
     fn aquire(&self) -> Option<Arc<dyn std::any::Any + 'static>> {
         self.get().map(|model| model as Arc<dyn Any>)
     }

@@ -469,6 +469,7 @@ impl<'a> State<'a> {
         g_ctx
             .queue
             .submit(encoders.into_iter().map(|encoder| encoder.finish()));
+        println!("Presented");
         output.present();
 
         Ok(())

@@ -79,7 +79,7 @@ fn solid_pass(
             }
 
             render_pass.set_instance_buffer(1, ib);
-            renderable.draw(&mut render_pass, 0..ib.len(), asset);
+            renderable.draw(&mut render_pass, 0..ib.len(), asset.as_ref());
         }
     }
 }

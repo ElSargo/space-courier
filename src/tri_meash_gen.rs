@@ -47,7 +47,7 @@ vertex_layout!(Vertex,[0 => Float32x4 ]);
 pub struct Instance {
     position: [f32; 2],
 }
-vertex_layout!(Instance,[0 => Float32x2 ]);
+vertex_layout!(Instance,[1 => Float32x2 ]);
 
 #[derive(Debug, Component)]
 pub struct TriMesh {

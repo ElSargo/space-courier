@@ -1,6 +1,5 @@
 use bevy_ecs::system::{Commands, Res, Resource};
 use bytemuck::cast_slice;
-use std::mem::size_of;
 
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
@@ -36,6 +35,7 @@ const INDICES: &[u16] = &[0, 1, 2, 1, 2, 3];
 pub struct Vertex {
     position: [f32; 2],
 }
+
 vertex_layout!(Vertex,[0 => Float32x2 ]);
 
 #[derive(Resource)]
@@ -58,9 +58,6 @@ impl FullscreenQuad {
             contents: cast_slice(&VERTICES),
             usage: BufferUsages::VERTEX,
         });
-        // let shader_module = std::boxed::Box::leak(Box::new(
-        //     device.create_shader_module(wgpu::include_wgsl!("fullscreen_quad.wgsl")),
-        // ));
 
         let shader_handle = shader_manager.load_shader("./src/fullscreen_quad.wgsl");
 
@@ -78,14 +75,6 @@ impl FullscreenQuad {
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..6, 0, 0..1);
     }
-
-    // pub fn vertex_state<'a>(&'a self) -> VertexState<'a> {
-    //     wgpu::VertexState {
-    //         module: self.shader_module,
-    //         entry_point: "vs_main",       // 1.
-    //         buffers: &self.vertex_format, // 2.
-    //     }
-    // }
 }
 
 pub fn init_fsq(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands) {
