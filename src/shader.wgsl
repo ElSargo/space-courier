@@ -247,7 +247,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let color_sample = textureSample(diff, diff_sampler, in.uv) ;
     // let color_sample = vec4(0.2,0.2,0.2,1.0) ;
     let albedo = color_sample.rgb * color_sample.a;
-    let ems = color_sample.rgb * mix(40.0, 0.0, color_sample.a);
+    let ems = color_sample.rgb * mix(10.0, 0.0, color_sample.a);
 
 
     let nor = normalize(in.world_normal);
