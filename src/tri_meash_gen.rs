@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, mem::size_of, sync::Arc};
+use std::{any::Any, collections::VecDeque, sync::Arc};
 
 use bevy_ecs::{
     component::Component,
@@ -19,16 +19,13 @@ use wgpu::{
 
 use crate::{
     ecs::Initailiser,
-    gpu::{
-        pack_buffers, InstanceBuffer, Packable, SolidDrawable, SolidDrawableHandle,
-        SolidRenderable, RD, RQ,
-    },
+    gpu::{pack_buffers, InstanceBuffer, Packable, SolidDrawable, SolidRenderable, RD, RQ},
     shader_manager::{
         PipelineHandle, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras,
         SolidShader, UnifiedPipelineModuleResource, UnifiedShaders,
     },
     transform::Transform,
-    RawInstance,
+    vertex_layout, RawInstance,
 };
 
 type IndexType = u16;
@@ -44,62 +41,22 @@ pub struct FlatMesh {
 pub struct Vertex {
     position: [f32; 4],
 }
-
-impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x4 ];
-    const INSTANCE_ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![1 => Float32x2 ];
-
-    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-
-    pub fn instance_desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Vec2>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &Self::INSTANCE_ATTRIBS,
-        }
-    }
-}
+vertex_layout!(Vertex,[0 => Float32x4 ]);
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
-pub struct InstanceData {
-    position: Mat4,
+pub struct Instance {
+    position: [f32; 2],
 }
-
-impl InstanceData {
-    const ATTRIBS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
-        // model_view_proj matrix
-        0 => Float32x4, 1 => Float32x4,2 => Float32x4,3 => Float32x4
-        //
-    ];
-
-    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-}
+vertex_layout!(Instance,[0 => Float32x2 ]);
 
 #[derive(Debug, Component)]
 pub struct TriMesh {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    num_elements: u32,
 }
 
-pub fn gen_mesh(
-    width: usize,
-    depth: usize,
-    mut height_function: impl FnMut(Vec2) -> f32,
-) -> FlatMesh {
+pub fn gen_mesh(width: usize, depth: usize) -> FlatMesh {
     let num_chunks = (depth - 1) / 2;
     assert!(num_chunks > 0);
     assert!(width > 2);

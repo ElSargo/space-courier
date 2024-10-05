@@ -385,3 +385,19 @@ impl RenderCompleteCallBack {
         self.callbacks.pop_front()
     }
 }
+
+#[macro_export]
+macro_rules! instance_buffer {
+    ($(@ $label: expr)? $(; $usages: expr)? , $device: expr ) => {
+        {
+            #[allow(unused_assignments)]
+            let mut label = None;
+            $(
+                label = Some($label.to_owned());
+            )?
+            let usages =  BufferUsages::empty() $( | $usages )? ;
+            crate::gpu::InstanceBuffer::new(label, usages , $device)
+
+        }
+    };
+}

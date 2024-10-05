@@ -885,29 +885,39 @@ pub struct RawInstance {
 }
 unsafe impl bytemuck::Pod for RawInstance {}
 unsafe impl bytemuck::Zeroable for RawInstance {}
-
-impl RawInstance {
-    const ATTRIBS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+vertex_layout!(RawInstance, [
      // Model matrix
      5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
      // Model rotation matrix
      9 => Float32x3, 10 => Float32x3, 11 => Float32x3,
-    ];
+]);
 
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-
+impl RawInstance {
     pub fn from_transform(t: &Transform) -> Self {
         Self {
             transform: t.to_mat(),
             rotation_only: Mat3::from_quat(t.rotation),
         }
     }
+}
+
+#[macro_export]
+macro_rules! vertex_layout {
+    ($t: ident, $tok: tt ) => {
+        impl $t {
+            const ATTRIBS: &'static [wgpu::VertexAttribute] = &wgpu::vertex_attr_array!$tok;
+
+            pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &Self::ATTRIBS,
+                }
+            }
+
+        }
+
+    };
 }
 
 fn main() {

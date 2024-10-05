@@ -25,7 +25,7 @@ use crate::{
         UnifiedShaders,
     },
     transform::Transform,
-    ViewTextures,
+    vertex_layout, ViewTextures,
 };
 
 #[derive(Resource)]
@@ -46,22 +46,11 @@ struct Vertex {
     length_coef: f32,
     displacment: f32,
 }
-
-impl Vertex {
-    const ATRIBS: [VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32, 1 => Float32];
-
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATRIBS,
-        }
-    }
-}
+vertex_layout!(Vertex,[0 => Float32, 1 => Float32]);
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct RawPlanetShadow {
+struct Instance {
     penumbra_origin_length: f32,
     penumbra_cosa: f32,
     umbra_origin_length: f32,
@@ -72,18 +61,7 @@ pub struct RawPlanetShadow {
     back_length: f32,
     back_width: f32,
 }
-
-impl RawPlanetShadow {
-    const INSTANCE_ATRIBS: [VertexAttribute; 9] = wgpu::vertex_attr_array![2 => Float32, 3 => Float32, 4 => Float32, 5 => Float32, 6 => Float32,7 => Float32x3,8=>Float32,9=>Float32,10=>Float32];
-
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &Self::INSTANCE_ATRIBS,
-        }
-    }
-}
+vertex_layout!( Instance ,[2 => Float32, 3 => Float32, 4 => Float32, 5 => Float32, 6 => Float32,7 => Float32x3,8=>Float32,9=>Float32,10=>Float32] );
 
 impl PlanetShadows {
     pub fn new(
@@ -129,7 +107,7 @@ impl PlanetShadows {
                     vertex: wgpu::VertexState {
                         module: &module,
                         entry_point: "vs_main",
-                        buffers: &[Vertex::desc(), RawPlanetShadow::desc()],
+                        buffers: &[Vertex::desc(), Instance::desc()],
                         compilation_options: Default::default(),
                     },
                     primitive: PrimitiveState {
@@ -349,7 +327,7 @@ pub fn init_mod(ecs: &mut Initailiser) {
     // );
 }
 
-impl Packable for RawPlanetShadow {
+impl Packable for Instance {
     type Input<'a> = (&'a Transform, &'a Planet);
 
     fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
@@ -363,7 +341,7 @@ impl Packable for RawPlanetShadow {
         let back_length = 20000.0;
         let back_width = back_length * penumbra_gradient + input.1.radius;
 
-        RawPlanetShadow {
+        Instance {
             penumbra_origin_length,
             penumbra_cosa: penumbra_origin_length
                 / vec2(penumbra_origin_length, sun_radius).length(),
