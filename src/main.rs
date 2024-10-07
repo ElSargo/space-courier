@@ -83,7 +83,7 @@ fn init_modules(initialiser: &mut Initailiser) {
         solid_pass::init_mod,
         tri_meash_gen::init_mod,
         physics::init_mod,
-        // tetrahedron::init_mod,
+        tetrahedron::init_mod,
     ]
     .iter()
     .for_each(|f| f(initialiser));
