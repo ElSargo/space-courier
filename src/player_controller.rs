@@ -193,7 +193,7 @@ pub fn update_upright_player_controller<'a>(
 }
 
 fn spawn_player(mut commands: Commands) {
-    let spawn_position = vec3(0.0, 0.0, -2.0);
+    let spawn_position = vec3(0.0, 0.0, 0.0);
 
     commands.spawn((
         // PlayerController::new(10.1),

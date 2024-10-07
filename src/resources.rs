@@ -6,18 +6,23 @@ use wgpu::util::DeviceExt;
 use crate::{model, texture};
 
 pub fn load_string(file_name: &str) -> color_eyre::Result<String> {
-    let path = std::path::Path::new(env!("OUT_DIR"))
-        .join("res")
-        .join(file_name);
+    // let path = std::path::Path::new(env!("OUT_DIR"))
+    //     .join("res")
+    //     .join(file_name);
+
+    let path = std::path::Path::new("res").join(file_name);
+
     let txt = std::fs::read_to_string(path)?;
     Ok(txt)
 }
 
 pub async fn load_binary(file_name: &str) -> color_eyre::Result<Vec<u8>> {
-    let path = std::path::Path::new(env!("OUT_DIR"))
-        .join("res")
-        .join(file_name);
+    // let path = std::path::Path::new(env!("OUT_DIR"))
+    //     .join("res")
+    //     .join(file_name);
     // println!("File name: {file_name}, Path: {path:?}");
+
+    let path = std::path::Path::new("res").join(file_name);
     let data = std::fs::read(path)?;
 
     Ok(data)

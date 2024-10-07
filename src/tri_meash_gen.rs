@@ -246,6 +246,7 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
                 move || SolidPipelineModuleResourceExtras {
                     vertex_buffers: Arc::new([Vertex::desc(), Instance::desc()]),
                     extra_bind_groups: vec![],
+                    label: Some("Tri mesh pipeline"),
                 },
             ),
             renderable: Box::new(mesh),

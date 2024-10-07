@@ -61,6 +61,7 @@ where
 pub struct SolidPipelineModuleResourceExtras {
     pub vertex_buffers: Arc<[VertexBufferLayout<'static>]>,
     pub extra_bind_groups: Vec<Arc<BindGroupLayout>>,
+    pub label: Option<&'static str>,
 }
 
 pub struct SolidPipelineModuleResource {

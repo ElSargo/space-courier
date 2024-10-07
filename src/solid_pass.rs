@@ -128,6 +128,7 @@ pub fn init_normal_pipeline(shader_manager: Res<ShaderManagerCtrl>, mut commands
             move |texture_bind_group_layout: RTBL| SolidPipelineModuleResourceExtras {
                 vertex_buffers: Arc::new([model::ModelVertex::desc(), RawInstance::desc()]),
                 extra_bind_groups: vec![texture_bind_group_layout.0.clone()],
+                label: Some("Standard pipeline"),
             },
         ),
     })
@@ -164,7 +165,7 @@ pub fn solid_pass_render_descriptor<'a>(
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Tri mesh render pipeline"),
+        label: descriptor.extras.label,
         layout: Some(&pipeline_layout),
         cache: None,
         vertex: wgpu::VertexState {

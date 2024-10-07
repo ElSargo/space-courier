@@ -296,8 +296,8 @@ fn stars(ro: vec3f, rd: vec3f) -> vec3f {
     
 const bh_rad = 0.2;
 const start: f32 = 0.25;
-const height: f32 = 0.0015;
-const end: f32 = 1.5;
+const height: f32 = 0.1115;
+const end: f32 = 3.5;
 const mid: f32 = (start + end) * 0.5;
 
 
@@ -384,7 +384,7 @@ fn full(
 
 
 
-    let ro = vec3(0.9, -height, 0.0);
+    let ro = vec3(1.9, -height, 0.0);
     let to_center = -normalize(ro);
     let tcdrd = dot(to_center, rd);
     var col = vec3(0.0);
@@ -446,7 +446,7 @@ fn full(
             prev_l = length_p;
         }
 
-        col += stars(ro + rd * t, d) * black_hole_suck * transmission;
+        // col += stars(ro + rd * t, d) * black_hole_suck * transmission;
         col = col * transmission + emsission;
         // col += photon_shere_light;
     }
@@ -458,5 +458,5 @@ fn full(
 
     // let col = mix(vec3(2.6,0.4,0.123), vec3(0.02,0.23,0.3), exp(-m*0.5)) * sin(m*100.0) * 10.0 * 1.;
 
-    textureStore(dst, gid.xy, gid.z, vec4(col, 1.0));
+    textureStore(dst, gid.xy, gid.z, vec4(col * 5.0, 1.0));
 }
