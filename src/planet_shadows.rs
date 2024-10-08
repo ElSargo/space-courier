@@ -12,13 +12,14 @@ use wgpu::{
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BlendComponent, BufferUsages, Color,
     ColorWrites, Device, Extent3d, FrontFace, PipelineLayoutDescriptor, PrimitiveState,
     RenderPipelineDescriptor, ShaderStages, TextureDescriptor, TextureDimension, TextureFormat,
-    TextureUsages, TextureViewDescriptor, VertexAttribute,
+    TextureUsages, TextureViewDescriptor,
 };
 
 use crate::{
     camera::CameraUniform,
     ecs::Initailiser,
-    gpu::{InstanceBuffer, Packable, RenderPassExt, ScreenResolution, RD},
+    gpu::{Packable, ScreenResolution, RD},
+    instance_buffer::{InstanceBuffer, RenderPassExt},
     instance_layout,
     planets::Planet,
     shader_manager::{

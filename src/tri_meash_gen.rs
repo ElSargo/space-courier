@@ -18,8 +18,10 @@ use wgpu::{
 
 use crate::{
     ecs::Initailiser,
-    gpu::{pack_buffers, InstanceBuffer, Packable, SolidDrawable, SolidRenderable, RD, RQ},
+    gpu::{pack_buffers, Packable, RD, RQ},
+    instance_buffer::InstanceBuffer,
     instance_layout,
+    renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{
         PipelineHandle, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras,
         SolidShader, UnifiedPipelineModuleResource, UnifiedShaders,
@@ -162,18 +164,19 @@ impl Packable for Vec2 {
 }
 
 impl SolidDrawable for TriMesh {
+    type Resource = ();
     fn draw<'a: 'b, 'b>(
         &self,
         render_pass: &mut wgpu::RenderPass,
         _instances: std::ops::Range<u32>,
-        _asset: &'a dyn Any,
+        _asset: &'a Self::Resource,
     ) {
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..self.index_buffer.size() as u32 / 2, 0, 0..1);
     }
 
-    fn aquire(&self) -> Option<Arc<dyn Any>> {
+    fn aquire(&self) -> Option<Arc<Self::Resource>> {
         Some(Arc::new(()))
     }
 }
@@ -241,7 +244,7 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
 
     commands.spawn((
         SolidRenderable {
-            pipeline_handle: shader_manager.add_render_pipeline(
+            pipeline: shader_manager.add_render_pipeline(
                 SolidShader { handle: shader },
                 move || SolidPipelineModuleResourceExtras {
                     vertex_buffers: Arc::new([Vertex::desc(), Instance::desc()]),

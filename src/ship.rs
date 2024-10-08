@@ -8,8 +8,11 @@ use bevy_ecs::{
 use crate::{
     background,
     ecs::Initailiser,
-    gpu::{pack_buffers, InstanceBuffer, SolidRenderable, TextureBindGroupLayoutResource, RD, RQ},
-    model_loader, RawInstance, StandardRenderPipeline,
+    gpu::{pack_buffers, TextureBindGroupLayoutResource, RD, RQ},
+    instance_buffer::InstanceBuffer,
+    model_loader,
+    renderables::SolidRenderable,
+    RawInstance, StandardRenderPipeline,
 };
 
 #[derive(Component)]
@@ -32,7 +35,7 @@ pub fn init_ship(
     commands.spawn((
         SolidRenderable {
             renderable: Box::new(ship_model),
-            pipeline_handle: pipeline.handle,
+            pipeline: pipeline.handle,
         },
         Ship,
         InstanceBuffer::new(

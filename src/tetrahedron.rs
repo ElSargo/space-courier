@@ -1,8 +1,9 @@
 use crate::gpu::{pack_buffers, Packable};
 use crate::transform::Transform;
+use crate::{ecs::Initailiser, gpu::RD};
 use crate::{
-    gpu::SolidDrawable,
     instance_buffer,
+    renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{ShaderManagerCtrl, SolidPipelineModuleResourceExtras, SolidShader},
 };
 use crate::{instance_layout, vertex_layout};
@@ -16,11 +17,6 @@ use std::{any::Any, sync::Arc};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BufferUsages, IndexFormat,
-};
-
-use crate::{
-    ecs::Initailiser,
-    gpu::{SolidRenderable, RD},
 };
 
 const SQRT_3_FRAC_2: f32 = 0.8660254;
@@ -58,7 +54,7 @@ impl Packable for Instance {
     }
 }
 
-const BATCH_SIZE: usize = 3_000;
+const BATCH_SIZE: usize = 1_000;
 fn init(device: RD, mut commands: Commands, shader_manager: Res<ShaderManagerCtrl>) {
     let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Stars batch vertex buffer"),
@@ -105,7 +101,7 @@ fn init(device: RD, mut commands: Commands, shader_manager: Res<ShaderManagerCtr
 
     commands.spawn((
         SolidRenderable {
-            pipeline_handle: pipeline,
+            pipeline,
             renderable: Box::new(Stars {
                 vertex_buffer,
                 index_buffer,
@@ -165,18 +161,19 @@ struct Stars {
 }
 
 impl SolidDrawable for Stars {
+    type Resource = ();
     fn draw<'a: 'b, 'b>(
         &'a self,
         render_pass: &mut wgpu::RenderPass<'b>,
         instances: std::ops::Range<u32>,
-        _asset: &'a dyn Any,
+        _asset: &'a Self::Resource,
     ) {
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
         render_pass.draw_indexed(0..BATCH_SIZE as u32 * 12, 0, instances);
     }
 
-    fn aquire(&self) -> Option<Arc<dyn Any>> {
+    fn aquire(&self) -> Option<Arc<Self::Resource>> {
         Some(Arc::new(()))
     }
 }

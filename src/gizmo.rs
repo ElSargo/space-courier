@@ -1,18 +1,13 @@
 #![allow(dead_code)]
 
-use std::mem::size_of;
-
-use bevy_ecs::{component::Component, query::With};
-use glam::{vec3, vec4, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
-use wgpu::VertexAttribute;
-
 use crate::{
     ecs::Initailiser,
     gpu::{pack_buffers, Packable},
     instance_layout,
     transform::Transform,
-    vertex_layout,
 };
+use bevy_ecs::{component::Component, query::With};
+use glam::{vec4, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
 
 #[derive(Debug, Component)]
 pub struct ArrowGizmo {

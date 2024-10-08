@@ -1,3 +1,17 @@
+use crate::renderables::SolidRenderable;
+use crate::{
+    background,
+    ecs::Initailiser,
+    gpu::{pack_buffers, QueueResource, TextureBindGroupLayoutResource, RD},
+    gravity::G,
+    input::ButtonInput,
+    instance_buffer::InstanceBuffer,
+    model::Model,
+    model_loader,
+    physics::Physics,
+    transform::Transform,
+    RawInstance, StandardRenderPipeline,
+};
 use bevy_ecs::{
     component::Component,
     entity::Entity,
@@ -6,7 +20,6 @@ use bevy_ecs::{
     system::{Commands, Query, Res, Resource},
 };
 use glam::{Quat, Vec3};
-
 use rand::{thread_rng, Rng};
 use std::{
     default::Default,
@@ -14,22 +27,6 @@ use std::{
 };
 use wgpu::BufferUsages;
 use winit::keyboard::KeyCode;
-
-use crate::{
-    background,
-    ecs::Initailiser,
-    gpu::{
-        pack_buffers, InstanceBuffer, QueueResource, SolidRenderable,
-        TextureBindGroupLayoutResource, RD,
-    },
-    gravity::G,
-    input::ButtonInput,
-    model::Model,
-    model_loader,
-    physics::Physics,
-    transform::Transform,
-    RawInstance, StandardRenderPipeline,
-};
 
 #[derive(Default, Debug, Component)]
 pub struct Planet {
@@ -60,7 +57,7 @@ fn init(
         ib,
         PlanetStuff,
         SolidRenderable {
-            pipeline_handle: nor_pipe.handle,
+            pipeline: nor_pipe.handle,
             renderable: Box::new(model_loader::load_model(
                 "wallmart.obj",
                 device.0.clone(),

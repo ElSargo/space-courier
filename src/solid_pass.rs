@@ -14,11 +14,12 @@ use crate::{
     background::Background,
     camera::{CameraUniform, ReflectedCameraUniform},
     ecs::Initailiser,
-    gpu::{InstanceBuffer, RenderPassExt, SolidDrawable, SolidRenderable, RD, RTBL, VTBGL},
+    gpu::{RD, RTBL, VTBGL},
+    instance_buffer::{InstanceBuffer, RenderPassExt},
     model::{self, Vertex},
+    renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl,
-        SolidPipelineModuleResourceExtras, SolidShader,
+        Marker, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras, SolidShader,
     },
     texture, RawInstance, ReflectedViewTextures, StandardRenderPipeline, ViewTextures,
 };
@@ -61,7 +62,7 @@ fn solid_pass(
                 obj.1
                     .renderable
                     .aquire()
-                    .map(|asset| (obj.1.pipeline_handle, obj.0, &obj.1.renderable, asset))
+                    .map(|asset| (obj.1.pipeline, obj.0, &obj.1.renderable, asset))
             })
             .collect::<Vec<_>>();
         objects.sort_by_key(|(pipeline_handle, ..)| *pipeline_handle);

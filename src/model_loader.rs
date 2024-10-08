@@ -1,12 +1,20 @@
 // Quick hax for removing async from model loader
 use lazy_static::lazy_static;
 use pollster::FutureExt;
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::{
+    any::Any,
+    ops::Range,
+    sync::{atomic::AtomicUsize, Arc},
+};
 
 use arc_swap::ArcSwap;
-use wgpu::{Device, Queue};
+use wgpu::{Device, Queue, RenderPass};
 
-use crate::{model::Model, resources};
+use crate::{
+    model::{DrawModel, Model},
+    renderables::SolidDrawable,
+    resources,
+};
 
 lazy_static! {
     static ref DUMMY_MODEL: Arc<Model> = Arc::new(Model {
@@ -49,4 +57,19 @@ pub fn load_model(
     });
 
     ModelHandle(idx)
+}
+
+impl SolidDrawable for ModelHandle {
+    type Resource = Model;
+    fn draw<'a: 'b, 'b>(
+        &'a self,
+        render_pass: &mut RenderPass<'b>,
+        instances: Range<u32>,
+        model: &'a Self::Resource,
+    ) {
+        render_pass.draw_model_instanced(model, instances);
+    }
+    fn aquire(&self) -> Option<Arc<Self::Resource>> {
+        self.get()
+    }
 }

@@ -25,7 +25,7 @@ use glam::Vec3;
 use crate::{
     camera::{Camera, CameraUniform},
     ecs::Initailiser,
-    gpu::InstanceBuffer,
+    instance_buffer::InstanceBuffer,
     instance_buffer_bytes, mk_pipeline, mk_pipeline_layout,
     shader_manager::ShaderManagerCtrl,
     transform::Transform,
