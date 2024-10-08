@@ -1,13 +1,10 @@
 {
-  description = "Home page";
+  description = "Space game";
 
   inputs = {
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-    fenixl = {
-      url = "github:nix-community/fenix";
     };
     nixpkgs.url = "nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
@@ -18,32 +15,21 @@
     nixpkgs,
     flake-utils,
     fenix,
-    fenixl,
     wgsl,
   }:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
       linker_pkgs = with pkgs; [mold clang];
 
-      fast_rust_toolchain = fenixl.packages.${system}.latest.withComponents [
-        "rustc"
-        "cargo"
-        "clippy"
-        "rustfmt"
-        "rust-src"
-        "rust-std"
-        "rustc-codegen-cranelift-preview"
-        "rust-analyzer"
-      ];
-      rust_toolchain = fenix.packages.${system}.stable.withComponents [
-        "rustc"
-        "cargo"
-        "clippy"
-        "rustfmt"
-        "rust-src"
-        "rust-std"
-        "rust-analyzer"
-      ];
+      rust_build_components = ["rustc" "cargo" "rust-src" "rust-std"];
+      rust_dev_components = ["clippy" "rustfmt" "rust-analyzer"] ++ rust_build_components;
+
+      rust_toolchain = fenix.packages.${system}.stable.withComponents rust_dev_components;
+
+      fast_rust_toolchain =
+        fenix.packages.${system}.latest.withComponents
+        (rust_dev_components ++ ["rustc-codegen-cranelift-preview"]);
+
       fast_run_command = pkgs.writeShellApplication {
         name = "frun";
         text = ''
@@ -51,16 +37,8 @@
         '';
       };
 
-      run_command = pkgs.writeShellApplication {
-        name = "run";
-        text = ''
-          cargo run \$@
-        '';
-      };
-      # rust_toolchain
-
-      nativeBuildInputs = with pkgs; [pkg-config cmake pkg-config freetype expat fontconfig] ++ linker_pkgs;
-      buildInputs = with pkgs; [lldb_15 udev alsa-lib vulkan-loader libxkbcommon wayland wasm-bindgen-cli];
+      nativeBuildInputs = with pkgs; [pkg-config cmake pkg-config freetype expat fontconfig wasm-bindgen-cli] ++ linker_pkgs;
+      buildInputs = with pkgs; [lldb_15 udev alsa-lib vulkan-loader libxkbcommon wayland];
     in
       with pkgs; {
         nixpkgs.overlays = [fenix.overlays.complete];
