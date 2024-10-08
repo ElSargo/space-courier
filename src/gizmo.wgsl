@@ -33,7 +33,7 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(
-    @builtin(vertex_index) in_vertex_index: u32, vert: VertexInput,     instance: InstanceInput,
+    @builtin(vertex_index) in_vertex_index: u32, vert: VertexInput, instance: InstanceInput,
 ) -> VertexOutput {
     var out: VertexOutput;
 
@@ -45,7 +45,7 @@ fn vs_main(
     );
 
     let vert_position = model_matrix * vec4(vert.position, 1.0);
-    out.clip_position =  camera.view_proj * vert_position;
+    out.clip_position = camera.view_proj * vert_position;
     out.normal = vert.normal;
     out.color = instance.color;
     return out;
@@ -54,6 +54,6 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color  * 10.0;
+    return in.color * 10.0;
 }
 

@@ -44,7 +44,7 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(
-    @builtin(vertex_index) in_vertex_index: u32, vert: VertexInput,     instance: InstanceInput,
+    @builtin(vertex_index) in_vertex_index: u32, vert: VertexInput, instance: InstanceInput,
 ) -> VertexOutput {
     var out: VertexOutput;
 
@@ -60,41 +60,42 @@ fn vs_main(
         instance.rotation_only_matrix_1,
         instance.rotation_only_matrix_2,
     );
-    
+
     let vert_position = model_matrix * vec4(vert.position, 1.0);
     out.world_position = vert_position.xyz;
-    out.world_normal =  rotation_matrix * vert.normal;
+    out.world_normal = rotation_matrix * vert.normal;
     out.distance = distance(vert_position.xyz, camera.view_pos.xyz);
-    out.clip_position =  camera.view_proj * vert_position;
+    out.clip_position = camera.view_proj * vert_position;
     out.uv = vert.uv;
     return out;
 }
 
 
-fn blend(a: vec3f, b: vec3f, t: f32) -> vec3f{
+fn blend(a: vec3f, b: vec3f, t: f32) -> vec3f {
     let delta = a - b;
-    let maxDelta =     max(
+    let maxDelta = max(
         max(
             abs(delta.x),
-            abs(delta.y)),
-            abs(delta.z)
+            abs(delta.y)
+        ),
+        abs(delta.z)
     );
     let s = sign(delta);
-    let c = a - s*maxDelta*t;
-    
+    let c = a - s * maxDelta * t;
+
     let minc = vec3(
         min(a.x, b.x),
         min(a.y, b.y),
         min(a.z, b.z)
     );
-    
+
     let maxc = vec3(
         max(a.x, b.x),
         max(a.y, b.y),
         max(a.z, b.z)
     );
-    
-    return clamp(c,minc,maxc);
+
+    return clamp(c, minc, maxc);
 }
 
 @fragment
@@ -102,10 +103,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let h = in.world_position.y;
     // let color = blend(vec3(1.0,0.0,0.3), vec3(1.0,0.0,1.0),-0.5+h*0.5);
-    let color = vec3(0.2,0.4,1.0);
-    let threshold = -0.1 - 0.05*h;
+    let color = vec3(0.2, 0.4, 1.0);
+    let threshold = -0.1 - 0.05 * h;
     // let alpha = smoothstep(threshold,threshold + 2.1, 0.2 +  sin(h*1.));
-    let alpha  =  1.0;
-    return vec4(color * alpha * 40.0,alpha);
+    let alpha = 1.0;
+    return vec4(color * alpha * 40.0, alpha);
 }
 

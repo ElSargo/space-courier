@@ -62,7 +62,7 @@ fn nfbm(p: vec3f) -> f32 {
 
 fn height(p: vec2f) -> f32 {
     let h = nfbm(vec3(p.x * 0.1, 0.0, p.y * 0.1)) - 0.5;
-    return max(h,0.0) * 15.0   ;
+    return max(h, 0.0) * 15.0   ;
 }
 
 @compute
@@ -71,7 +71,7 @@ fn full(
     @builtin(global_invocation_id)
     gid: vec3<u32>,
 ) {
-    if gid.x >= arrayLength(&inputs)    {
+    if gid.x >= arrayLength(&inputs) {
         return;
     }
 
@@ -79,6 +79,5 @@ fn full(
 
     let y = height(x.xz);
 
-    outputs[gid.x] = vec4(x.x,y,x.z,x.w);
-    
+    outputs[gid.x] = vec4(x.x, y, x.z, x.w);
 }

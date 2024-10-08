@@ -21,10 +21,10 @@ struct VertexOutput {
 };
 
 fn vs_main(
-    @builtin(vertex_index) in_vertex_index: u32, vert: VertexInput,     instance: InstanceInput,
+    @builtin(vertex_index) in_vertex_index: u32, vert: VertexInput, instance: InstanceInput,
 ) -> VertexOutput {
     var out: VertexOutput;
-    let view_position = camera.view * vec4(instance.position,1.0) + vec4(vert.position, 0.0, 0.0);
+    let view_position = camera.view * vec4(instance.position, 1.0) + vec4(vert.position, 0.0, 0.0);
     out.clip_position = camera_proj * view_position;
     out.uv = vert.uv;
 }

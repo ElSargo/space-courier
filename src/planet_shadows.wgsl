@@ -89,7 +89,7 @@ fn sd_line(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>) -> f32 {
     let pa = p - a;
     let ba = b - a;
     var h = dot(pa, ba) / dot(ba, ba);
-    h = clamp(h,0.,1.);
+    h = clamp(h, 0., 1.);
     return length(pa - ba * h);
 }
 
@@ -131,17 +131,15 @@ fn cone(s: Cone, r: Ray) -> ICone {
         out.far = t2 * 1.;
         out.hit = true;
         return ICone(t1, t2, true);
-    } 
-    else if !t1v && t2v {
+    } else if !t1v && t2v {
         out.near = t2;
         out.far = 10000.0;
         out.hit = true;
         return ICone(t2, 10000.0, true);
-    } 
-    else if !t1v && !t2v {
+    } else if !t1v && !t2v {
         // return out;
-    } 
-    
+    }
+
     return out;
 }
 
@@ -241,7 +239,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let ro = camera.view_pos.xyz;
     let rd = normalize(in.world_position - ro);
     let depth_inv = textureSample(depth_texture, depth_sampler, screen_uv);
-    let view_pos = camera.inv_proj * (vec4( screen_uv * 2.0 - 1.0, depth_inv, 1.0) );
+    let view_pos = camera.inv_proj * (vec4(screen_uv * 2.0 - 1.0, depth_inv, 1.0));
     let depth_lin = length(view_pos.xyz / view_pos.w);
 
     // var penumbra_cone = cone_intersecttion(ro,rd,0.9,100.0,in.penumbra_origin, in.shadow_dir);
@@ -260,7 +258,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // umbra.far = min(umbra.far, depth_lin);
     var penumbra = cone(
         Cone(
-            pow(in.penumbra_cosa,1.),
+            pow(in.penumbra_cosa, 1.),
             0.0,
             in.penumbra_origin,
             in.shadow_dir
@@ -281,11 +279,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     penumbra.far = min(penumbra.far, depth_lin);
     if penumbra.hit && penumbra.near < depth_lin {
 
-        let cp = lines_closest_points(ro,rd,in.planet_position,-in.shadow_dir);
+        let cp = lines_closest_points(ro, rd, in.planet_position, -in.shadow_dir);
         let rd_mid = ro + rd * cp.x;
         let sh_mid = in.planet_position + cp.y * -in.shadow_dir;
         let p_mid = (penumbra.near + penumbra.far) * 0.5;
-    
+
         let h_near = sd_line(ro + rd * penumbra.near, in.penumbra_origin, in.shadow_dir);
         let h_mid = sd_line(ro + rd * p_mid, in.penumbra_origin, in.shadow_dir);
         let h_far = sd_line(ro + rd * penumbra.far, in.penumbra_origin, in.shadow_dir);
@@ -294,14 +292,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let mid_point = ro + rd * p_mid;
         let md = distance(mid_point, in.penumbra_origin);
         let b = pow2(in.radius / md) / max(0.0, pow2(20.0 / length(mid_point)))  ;
-        let k = normalize( rd_mid - sh_mid );
-        let v = normalize( in.planet_position - k * 10.);
+        let k = normalize(rd_mid - sh_mid);
+        let v = normalize(in.planet_position - k * 10.);
         let sina = sqrt(1.0 - in.penumbra_cosa * in.penumbra_cosa);
-        let radi = pow( in.radius + sina * -cp.y, 1.0 ) / in.radius;
-        let a = max(0.0,sphSoftShadow(
+        let radi = pow(in.radius + sina * -cp.y, 1.0) / in.radius;
+        let a = max(0.0, sphSoftShadow(
             rd_mid,
             -v,
-            vec4(in.penumbra_origin, in.radius ),
+            vec4(in.penumbra_origin, in.radius),
             0.2
         ));
 
@@ -334,10 +332,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         //     // a += *0.1;
         // }
 
-        fog +=  (fog_int(ro, rd, penumbra.near) - fog_int(ro, rd, penumbra.far)) * (1.0 - a) * 1.0 / max(0.01,radi) ;
+        fog += (fog_int(ro, rd, penumbra.near) - fog_int(ro, rd, penumbra.far)) * (1.0 - a) * 1.0 / max(0.01, radi) ;
         // fog += (1.0 - a);
-
     }
     return vec4(fog);
-
 }

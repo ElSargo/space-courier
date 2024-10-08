@@ -290,7 +290,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Ecretion disk inner ring
-    {
+        {
         let light_color = vec3(1.0, 0.0, 0.15);
         let light_direction = normalize(vec3(-1.0, 0.7, 0.0)); 
         // let distance_scaled = length(in.world_position * 0.002);
@@ -305,16 +305,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Emission 
-    {
+        {
         color += ems;
     }
 
 
     // Stars / background 
-    {
+        {
         let light_color = textureSample(background, diff_sampler, reflect_direction).rgb;
         color += freznel * light_color   ;
-        color += vec3(0.4,0.3,2.0) * freznel * max(0.0,reflect_direction.y);
+        color += vec3(0.4, 0.3, 2.0) * freznel * max(0.0, reflect_direction.y);
     }
 
 

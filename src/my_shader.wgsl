@@ -15,9 +15,9 @@ fn vs_main(
     out.clip_position = vec4<f32>(x, y, 0.0, 1.0);
     out.vert_pos = out.clip_position.xyz;
     out.vert_color = vec3(
-      -out.clip_position.x,
-      out.clip_position.x  ,
-      out.clip_position.y  
+        -out.clip_position.x,
+        out.clip_position.x,
+        out.clip_position.y
     );
     return out;
 }

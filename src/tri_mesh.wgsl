@@ -94,7 +94,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let line_color = vec3(1.0, 0.0, 0.23) * 20.0 * (1.0 - exp(-in.mesh_position.y) + 0.03);
     let reflection_color = reflection_strength * reflection_incident;
     // let color = mix(reflection_color, line_color, line_signal);
-    let color = reflection_color + line_color * line_signal + vec3(0.4,0.3,2.0) * 0.001  ;
+    let color = reflection_color + line_color * line_signal + vec3(0.4, 0.3, 2.0) * 0.001  ;
 
     return vec4(color, 1.0);
 }
