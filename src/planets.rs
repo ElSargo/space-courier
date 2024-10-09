@@ -101,7 +101,7 @@ fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
 fn make_planets(mut commands: Commands) {
     let mut rng = thread_rng();
     for _ in 0..40 {
-        make_planet(&mut rng, &mut commands);
+        // make_planet(&mut rng, &mut commands);
     }
 }
 
