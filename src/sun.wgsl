@@ -1,7 +1,15 @@
 @group(0) @binding(0) var<uniform> camera: Camera;
 
-@group(1) @binding(0) var diff: texture_2d<f32>;
-@group(1) @binding(1) var diff_sampler: sampler;
+@group(1) @binding(0) var background: texture_cube<f32>;
+@group(1) @binding(1) var background_sampler: sampler;
+
+@group(2) @binding(0) var color_texture: texture_2d<f32>;
+@group(2) @binding(1) var color_sampler: sampler;
+@group(2) @binding(2) var depth_texture: texture_depth_2d;
+@group(2) @binding(3) var depth_sampler: sampler;
+
+@group(3) @binding(0) var diff: texture_2d<f32>;
+@group(3) @binding(1) var diff_sampler: sampler;
 
 
 // @group(2) @binding(0) var<uniform> model: Model;

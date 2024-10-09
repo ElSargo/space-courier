@@ -1,50 +1,32 @@
 use crate::gpu;
+use crate::gpu::pack_buffers;
 use crate::gpu::RD;
 use crate::gpu::RQ;
 use crate::gpu::RTBL;
+use crate::model;
 use crate::model_loader;
 
 use crate::physics::Physics;
+use crate::renderables::SolidRenderable;
 use crate::shader_manager::Marker;
-use crate::shader_manager::UnifiedPipelineModuleResource;
-use crate::QueueResource;
+use crate::shader_manager::SolidPipelineModuleResourceExtras;
+use crate::shader_manager::SolidShader;
 use bevy_ecs::prelude::Res;
 use bevy_ecs::schedule::IntoSystemConfigs;
 use bevy_ecs::system::Commands;
-use bevy_ecs::system::In;
 
+use glam::vec3;
 use glam::Quat;
 
-use bevy_ecs::{
-    component::Component,
-    query::With,
-    system::{Query, Resource},
-};
+use bevy_ecs::{component::Component, query::With, system::Resource};
 use glam::Vec3;
 
 use crate::{
-    camera::{Camera, CameraUniform},
-    ecs::Initailiser,
-    instance_buffer::InstanceBuffer,
-    instance_buffer_bytes, mk_pipeline, mk_pipeline_layout,
-    shader_manager::ShaderManagerCtrl,
-    transform::Transform,
-    RawInstance,
+    camera::CameraUniform, ecs::Initailiser, instance_buffer::InstanceBuffer, mk_pipeline_layout,
+    shader_manager::ShaderManagerCtrl, transform::Transform, RawInstance,
 };
 
 pub(crate) const SUN_MASS: f32 = 20000.0;
-
-pub fn update_instance_buffer(
-    camera: Res<Camera>,
-    transforms: Query<&Transform, With<Sun>>,
-    ib: Query<&InstanceBuffer, With<Sun>>,
-    device: RD,
-    queue: Res<QueueResource>,
-    // ship_data: ResMut<ShipGpuResources>,
-) {
-    let ship_bytes = instance_buffer_bytes(transforms.iter(), camera.eye);
-    ib.single().write(&device, &ship_bytes.as_slice(), &queue);
-}
 
 #[derive(Component)]
 pub struct Sun;
@@ -65,17 +47,6 @@ pub fn init(
             queue.0.clone(),
             texture_bind_group_layout.0.clone(),
         );
-        // .unwrap();
-
-        // let sun_transforms = vec![];
-
-        commands.spawn((
-            Sun,
-            Transform {
-                scale: Vec3::ONE * 20.0,
-                ..Default::default()
-            },
-        ));
 
         let sun_transform_instance_buffer = InstanceBuffer::new_init::<RawInstance>(
             Some("Sun instance Buffer".to_owned()),
@@ -94,23 +65,30 @@ pub fn init(
         ));
 
         let sun_shader = shader_manager.load_shader("./src/sun.wgsl");
-        // commands.spawn((
-        //     SolidRenderable {
-        //         pipeline_handle: shader_manager.add_render_pipeline(
-        //             UnifiedPipelineModuleDescriptor { handle: sun_shader },
-        //             pipeline_constructor,
-        //         ),
-        //         model: sun_model,
-        //     },
-        //     Sun,
-        //     sun_transform_instance_buffer,
-        // ));
+        commands.spawn((
+            SolidRenderable {
+                pipeline: shader_manager.add_render_pipeline(
+                    SolidShader { handle: sun_shader },
+                    move || SolidPipelineModuleResourceExtras {
+                        vertex_buffers: [model::ModelVertex::desc(), RawInstance::desc()].into(),
+                        extra_bind_groups: vec![],
+                        label: Some("Sun pipeline"),
+                    },
+                ),
+                renderable: Box::new(sun_model),
+            },
+            Sun,
+            sun_transform_instance_buffer,
+        ));
     }
 }
 
 fn spawn_sun(mut commands: Commands) {
     commands.spawn((
-        Transform::default(),
+        Transform {
+            translation: vec3(50.0, 10.0, 50.0),
+            ..Default::default()
+        },
         Physics {
             velocity: Vec3::ZERO,
             angular_velocity: Quat::IDENTITY,
@@ -123,21 +101,14 @@ fn spawn_sun(mut commands: Commands) {
 #[derive(Resource)]
 struct SunPipelineLayout;
 
-fn pipeline_constructor(
-    In(module): In<UnifiedPipelineModuleResource>,
-    layout: Res<Marker<wgpu::PipelineLayout, SunPipelineLayout>>,
-    device: RD,
-) -> wgpu::RenderPipeline {
-    mk_pipeline(&device, &layout, None, &module, "sun", RawInstance::desc())
-}
-
 pub fn init_mod(ecs: &mut Initailiser) {
     // let pipeline_constructor = ecs.world.register_system(pipeline_constructor);
 
     ecs.init.add_systems((
-        // spawn_sun,
+        spawn_sun,
         init.after(gpu::mk_texture_bind_group_layout_resource),
     ));
 
-    // ecs.prepare_buffers.add_systems(update_instance_buffer);
+    ecs.prepare_buffers
+        .add_systems(pack_buffers::<RawInstance, With<Sun>, With<Sun>>);
 }
