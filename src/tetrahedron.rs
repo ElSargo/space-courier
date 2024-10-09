@@ -89,8 +89,8 @@ fn init(device: RD, mut commands: Commands, shader_manager: Res<ShaderManagerCtr
         },
         || SolidPipelineModuleResourceExtras {
             vertex_buffers: Arc::new([Vertex::desc(), Instance::desc()]),
-            extra_bind_groups: vec![],
             label: Some("Stars pipeline"),
+            ..Default::default()
         },
     );
 
