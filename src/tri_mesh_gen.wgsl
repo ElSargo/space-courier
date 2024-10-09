@@ -1,7 +1,14 @@
 @group(0) 
 @binding(0)  
 var<storage,read_write> vertex_data: array<f32>;
-var<push_constant> size: u32;
+var<push_constant> size: Push;
+
+struct Push {
+    offset: u32,
+    size: u32,
+    position: vec2f
+}
+
 
 fn hash13(p: vec3f) -> f32 {
     let q = vec3<u32>(vec3<i32>(p)) * vec3<u32>(1597334673u, 3812015801u, 2798796415u);
@@ -45,7 +52,7 @@ fn nfbm(p: vec3f) -> f32 {
     var s = p;
     var a = 0.5;
     var t = 0.0;
-    for (var i = 0; i < 6; i += 1) {
+    for (var i = 0; i < 4; i += 1) {
         t += a * noise3(s);
         s *= 2.0;
         a *= 0.5;
@@ -64,17 +71,17 @@ fn full(
     @builtin(global_invocation_id)
     gid: vec3<u32>,
 ) {
-    if gid.x >= size {
+    if max(gid.x,gid.y) >= size.size {
         return;
     }
 
-    let output_index = size * gid.y + gid.x;
+    let output_index = size.offset + size.size * gid.y + gid.x;
 
     // 3_f32.sqrt() / 2.0
     let x = f32(gid.x) + 0.5 * f32(gid.y % 2);
     let z = f32(gid.y) * sqrt(3.0) * 0.5;
 
-    let y = height(vec2(x,z));
+    let y = height(vec2(x,z) + size.position);
 
     vertex_data[output_index] = y;
 }

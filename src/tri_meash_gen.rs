@@ -1,26 +1,31 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, mem::size_of, sync::Arc};
 
 use bevy_ecs::{
     component::Component,
-    query::With,
+    event::{Event, EventReader, EventWriter, Events},
+    query::{With, Without},
     schedule::IntoSystemConfigs,
-    system::{Commands, In, Res, ResMut, Resource},
+    system::{Commands, In, Local, Query, Res, ResMut, Resource},
 };
 
-use glam::{Vec2, Vec3Swizzles};
+use bytemuck::cast_slice;
+use glam::{vec3, Vec2, Vec3Swizzles};
 
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
     ComputePipeline, ComputePipelineDescriptor, Device, PushConstantRange, ShaderStages,
 };
+use winit::keyboard::KeyCode;
 
 use crate::{
     ecs::Initailiser,
     gpu::{pack_buffers, Packable, RD, RQ},
+    input::ButtonInput,
     instance_buffer::InstanceBuffer,
     instance_layout,
+    player_controller::{PlayerController, PlayerControllerUpright},
     renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{
         PipelineHandle, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras,
@@ -57,7 +62,7 @@ pub struct TriMesh {
 pub fn index_buffer(width: IndexType, device: &Device) -> wgpu::Buffer {
     assert!(width > 2);
     assert!(width * width < IndexType::MAX);
-    assert_eq!(width % 2, 0);
+    assert_eq!(width % 2, 1);
     let mut idxs: Vec<IndexType> = Vec::with_capacity((width as usize - 1).pow(2) * 6);
 
     for y in 0..width - 1 {
@@ -100,7 +105,8 @@ pub fn init_mod(i: &mut Initailiser) {
         .add_systems(init_res.after(crate::background::init_background));
     i.prepare_buffers
         .add_systems(pack_buffers::<Instance, (), With<TriMeshInstanceBufferMarker>>);
-    i.update.add_systems(gen_height);
+    i.update.add_systems((/*test,*/ gen_height, regen_meshes));
+    i.world.init_resource::<Events<ReGenMeshes>>();
 }
 
 impl Packable for Instance {
@@ -108,7 +114,7 @@ impl Packable for Instance {
     fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
         Self {
             position: (input.0.translation.xz() - eye).to_array(),
-            offset: input.1.offset,
+            offset: input.1.offset * CHUNK_SIZE as u32,
         }
     }
 }
@@ -119,7 +125,7 @@ impl SolidDrawable for TriMesh {
     fn draw<'a: 'b, 'b>(
         &self,
         render_pass: &mut wgpu::RenderPass,
-        _instances: std::ops::Range<u32>,
+        instances: std::ops::Range<u32>,
         _asset: &'a Self::Resource,
     ) {
         // TODO set instance buffer properly
@@ -127,7 +133,7 @@ impl SolidDrawable for TriMesh {
         render_pass.set_bind_group(3, &self.vertex_storage, &[]);
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.set_push_constants(ShaderStages::VERTEX, 0, &(CHUNK_DIM as u32).to_ne_bytes());
-        render_pass.draw_indexed(0..self.index_buffer.size() as u32 / 2, 0, 0..1);
+        render_pass.draw_indexed(0..self.index_buffer.size() as u32 / 2, 0, instances);
     }
 
     fn aquire(&self) -> Option<Arc<Self::Resource>> {
@@ -135,10 +141,13 @@ impl SolidDrawable for TriMesh {
     }
 }
 
-const CHUNKS: usize = 1;
-const CHUNK_DIM: usize = 100;
+const CHUNKS: usize = 3;
+const CHUNK_DIM: usize = 251;
 const CHUNK_SIZE: usize = CHUNK_DIM * CHUNK_DIM;
-const TOTAL_CHUNK_DATA_SIZE: usize = std::mem::size_of::<f32>() * CHUNKS * CHUNK_SIZE;
+const TOTAL_CHUNK_DATA_SIZE: usize = size_of::<f32>() * CHUNKS * CHUNK_SIZE;
+
+#[derive(Event)]
+struct ReGenMeshes;
 
 pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, device: RD) {
     let output_compute_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -160,15 +169,17 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
         bind_group_layouts: &[&output_compute_layout],
         push_constant_ranges: &[PushConstantRange {
             stages: ShaderStages::COMPUTE,
-            range: 0..std::mem::size_of::<u32>() as u32,
+            range: 0..size_of::<Push>() as u32,
         }],
     });
-
     let compute_pipeline = shader_manager.add_compute_pipeline(
         UnifiedShaders {
             handle: shader_manager.load_shader("src/tri_mesh_gen.wgsl"),
         },
-        move |In(mo): In<UnifiedPipelineModuleResource>, device: RD| {
+        move |In(mo): In<UnifiedPipelineModuleResource>,
+              device: RD,
+              mut ew: EventWriter<ReGenMeshes>| {
+            ew.send(ReGenMeshes);
             device.create_compute_pipeline(&ComputePipelineDescriptor {
                 label: Some("Tri mesh generator"),
                 layout: Some(&pipeline_layout),
@@ -179,11 +190,6 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
             })
         },
     );
-
-    let mut tq = TriQueue {
-        queue: VecDeque::new(),
-        pipeline: compute_pipeline,
-    };
 
     let output_vertex_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
         label: Some("Background outpus buffer layout"),
@@ -232,7 +238,11 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
         }],
     }));
 
-    tq.queue.push_front(output_compute_bind.clone());
+    let mut tq = TriQueue {
+        queue: VecDeque::new(),
+        pipeline: compute_pipeline,
+        bind: output_compute_bind.clone(),
+    };
 
     let mesh = TriMesh {
         vertex_storage: output_vertex_bind,
@@ -273,6 +283,20 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
 
     commands.insert_resource(tq);
     commands.spawn((Transform::default(), TriMeshMarker { offset: 0 }));
+    // commands.spawn((
+    //     Transform {
+    //         translation: vec3(CHUNK_DIM as f32, 0.0, 0.0),
+    //         ..Default::default()
+    //     },
+    //     TriMeshMarker { offset: 1 },
+    // ));
+    // commands.spawn((
+    //     Transform {
+    //         translation: vec3(0.0, 0.0, CHUNK_DIM as f32 * 3.0f32.sqrt() / 2.0),
+    //         ..Default::default()
+    //     },
+    //     TriMeshMarker { offset: 2 },
+    // ));
 }
 
 #[derive(Component)]
@@ -285,8 +309,17 @@ pub struct TriMeshInstanceBufferMarker;
 
 #[derive(Resource)]
 pub struct TriQueue {
-    queue: VecDeque<Arc<wgpu::BindGroup>>,
+    queue: VecDeque<(Vec2, u32)>,
     pipeline: PipelineHandle,
+    bind: Arc<wgpu::BindGroup>,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct Push {
+    offset: u32,
+    size: u32,
+    position: Vec2,
 }
 
 fn gen_height(
@@ -300,19 +333,58 @@ fn gen_height(
         let mut enc = device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("Tri mesh enc"),
         });
-        while let Some(bind) = to_process.queue.pop_front() {
+        while let Some((position, offset_index)) = to_process.queue.pop_front() {
             println!("Dispatcing compute");
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Tri mesh compute"),
                 timestamp_writes: None,
             });
 
-            pass.set_bind_group(0, &bind, &[]);
+            pass.set_bind_group(0, &to_process.bind, &[]);
             pass.set_pipeline(&p);
             let work = (CHUNK_DIM as u32).div_ceil(16);
-            pass.set_push_constants(0, &(CHUNK_DIM as u32).to_ne_bytes());
+            pass.set_push_constants(
+                0,
+                cast_slice(&[Push {
+                    offset: CHUNK_SIZE as u32 * offset_index,
+                    size: CHUNK_DIM as u32,
+                    position,
+                }]),
+            );
             pass.dispatch_workgroups(work, work, 1);
         }
         queue.submit(std::iter::once(enc.finish()));
+    }
+}
+
+fn regen_meshes(
+    mut er: EventReader<ReGenMeshes>,
+    mut tq: ResMut<TriQueue>,
+    meshes: Query<(&Transform, &TriMeshMarker)>,
+) {
+    if let Some(_) = er.read().last() {
+        for (transform, marker) in meshes.iter() {
+            tq.queue
+                .push_front((transform.translation.xz(), marker.offset));
+        }
+    }
+}
+
+fn test(
+    player: Query<&Transform, With<PlayerControllerUpright>>,
+    mut meshes: Query<(&mut Transform, &TriMeshMarker), Without<PlayerControllerUpright>>,
+    mut tq: ResMut<TriQueue>,
+    mut last_position: Local<Vec2>,
+) {
+    let player = player.single();
+    let new_p = (player.translation.xz()).floor();
+    let dif_p = last_position.abs_diff_eq(new_p, 0.1);
+
+    if !dif_p {
+        *last_position = new_p;
+        let mut mesh = meshes.single_mut();
+        mesh.0.translation.x = new_p.x - CHUNK_DIM as f32 * 0.5;
+        mesh.0.translation.z = new_p.y - CHUNK_DIM as f32 * 0.5;
+        tq.queue.push_back((mesh.0.translation.xz(), mesh.1.offset));
     }
 }
