@@ -5,7 +5,7 @@ use bevy_ecs::{
     system::{IntoSystem, SystemId},
     world::World,
 };
-use wgpu::{BindGroupLayout, ShaderModule, VertexBufferLayout};
+use wgpu::{BindGroupLayout, PushConstantRange, ShaderModule, VertexBufferLayout};
 
 use super::{
     pipeline_shader_resource::PipelineShaderDescriptor, PipelineConstructor,
@@ -61,7 +61,19 @@ where
 pub struct SolidPipelineModuleResourceExtras {
     pub vertex_buffers: Arc<[VertexBufferLayout<'static>]>,
     pub extra_bind_groups: Vec<Arc<BindGroupLayout>>,
+    pub push_constants: Vec<PushConstantRange>,
     pub label: Option<&'static str>,
+}
+
+impl Default for SolidPipelineModuleResourceExtras {
+    fn default() -> Self {
+        Self {
+            vertex_buffers: Arc::new([]),
+            extra_bind_groups: vec![],
+            push_constants: vec![],
+            label: None,
+        }
+    }
 }
 
 pub struct SolidPipelineModuleResource {

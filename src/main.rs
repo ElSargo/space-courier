@@ -199,10 +199,12 @@ impl GraphicsContext<'_> {
         let mut limits = wgpu::Limits::downlevel_defaults();
         limits.max_bind_groups = 5;
         limits.max_texture_dimension_2d = 8192;
+        limits.max_push_constant_size = 128;
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    required_features: wgpu::Features::all_webgpu_mask(),
+                    required_features: wgpu::Features::all_webgpu_mask()
+                        | wgpu::Features::PUSH_CONSTANTS,
                     required_limits: limits,
                     label: None,
                     memory_hints: wgpu::MemoryHints::Performance,

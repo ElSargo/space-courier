@@ -71,8 +71,8 @@ pub fn init(
                     SolidShader { handle: sun_shader },
                     move || SolidPipelineModuleResourceExtras {
                         vertex_buffers: [model::ModelVertex::desc(), RawInstance::desc()].into(),
-                        extra_bind_groups: vec![],
                         label: Some("Sun pipeline"),
+                        ..Default::default()
                     },
                 ),
                 renderable: Box::new(sun_model),

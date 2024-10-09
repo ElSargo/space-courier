@@ -6,8 +6,8 @@ use bevy_ecs::{
     system::{Commands, In, Query, Res, ResMut},
 };
 use wgpu::{
-    Color, CommandEncoder, FragmentState, PipelineLayoutDescriptor, RenderPipeline, TextureFormat,
-    TextureView,
+    Color, CommandEncoder, FragmentState, PipelineLayoutDescriptor, RenderBundleDescriptor,
+    RenderPipeline, TextureFormat, TextureView,
 };
 
 use crate::{
@@ -79,7 +79,7 @@ fn solid_pass(
                 }
             }
 
-            render_pass.set_instance_buffer(1, ib);
+            render_pass.set_instance_buffer(renderable.instance_buffer_slot(), ib);
             renderable.draw(&mut render_pass, 0..ib.len(), asset.as_ref());
         }
     }
@@ -130,6 +130,7 @@ pub fn init_normal_pipeline(shader_manager: Res<ShaderManagerCtrl>, mut commands
                 vertex_buffers: Arc::new([model::ModelVertex::desc(), RawInstance::desc()]),
                 extra_bind_groups: vec![texture_bind_group_layout.0.clone()],
                 label: Some("Standard pipeline"),
+                ..Default::default()
             },
         ),
     })
@@ -162,7 +163,7 @@ pub fn solid_pass_render_descriptor<'a>(
             .flat_map(|x| x.iter().map(|x| *x))
             .collect::<Vec<_>>()
             .as_slice(),
-        push_constant_ranges: &[],
+        push_constant_ranges: &descriptor.extras.push_constants,
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
