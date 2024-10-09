@@ -13,6 +13,7 @@ pub struct SolidRenderable {
 
 pub trait SolidDrawable {
     type Resource: 'static;
+    const INSTANCE_BUFFER_SLOT: u32 = 1;
     fn draw<'a: 'b, 'b>(
         &'a self,
         render_pass: &mut RenderPass<'b>,
@@ -23,6 +24,8 @@ pub trait SolidDrawable {
 }
 
 pub trait AnySolidDrawable {
+    fn instance_buffer_slot(&self) -> u32;
+
     fn draw<'a: 'b, 'b>(
         &'a self,
         render_pass: &mut RenderPass<'b>,
@@ -33,6 +36,10 @@ pub trait AnySolidDrawable {
 }
 
 impl<U: SolidDrawable> AnySolidDrawable for U {
+    fn instance_buffer_slot(&self) -> u32 {
+        Self::INSTANCE_BUFFER_SLOT
+    }
+
     fn draw<'a: 'b, 'b>(
         &'a self,
         render_pass: &mut RenderPass<'b>,
