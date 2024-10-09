@@ -30,11 +30,7 @@ use winit::keyboard::KeyCode;
 
 #[derive(Default, Debug, Component)]
 pub struct Planet {
-    pub translation: Vec3,
-    pub rotation: Quat,
-    pub velocity: Vec3,
     pub radius: f32,
-    pub mass: f32,
 }
 
 #[derive(Default, Debug, Component)]
@@ -104,9 +100,9 @@ fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
 
 fn make_planets(mut commands: Commands) {
     let mut rng = thread_rng();
-    // for _ in 0..40 {
-    //     make_planet(&mut rng, &mut commands);
-    // }
+    for _ in 0..40 {
+        make_planet(&mut rng, &mut commands);
+    }
 }
 
 fn destroy_planets_in_sun(

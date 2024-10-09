@@ -2,14 +2,14 @@ use bevy_ecs::{
     schedule::IntoSystemConfigs,
     system::{Commands, Res, ResMut, Resource},
 };
-use glam::{vec3, Mat4, Vec3, Vec3A, Vec4};
+use glam::{vec3, Mat4, Vec3, Vec4};
 use wgpu::{util::DeviceExt, Device};
 
 use std::default::Default;
 
 use crate::{
     ecs::Initailiser,
-    gpu::{QueueResource, ScreenResolution, ViewTexturesBindGroupLayout, RD, RQ, VTBGL},
+    gpu::{ScreenResolution, ViewTexturesBindGroupLayout, RD, RQ, VTBGL},
     make_view_texture, make_view_textures_bind_group, texture, ReflectedViewTextures, ViewTextures,
 };
 
@@ -69,19 +69,6 @@ impl ReflectedCameraUniform {
         });
 
         Self { bind_group, buffer }
-    }
-}
-
-impl CameraUniformData {
-    pub fn new() -> Self {
-        Self {
-            view_proj: Mat4::IDENTITY,
-            view_pos: Vec4::ZERO,
-            proj: Mat4::IDENTITY,
-            view: Mat4::IDENTITY,
-            inv_proj: Mat4::IDENTITY,
-            inv_view: Mat4::IDENTITY,
-        }
     }
 }
 

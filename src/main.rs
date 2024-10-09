@@ -642,18 +642,6 @@ fn instance_buffer_bytes_from_components<'a>(
         .collect::<Vec<_>>()
 }
 
-fn instance_buffer_bytes<'a>(
-    items: impl Iterator<Item = &'a Transform>,
-    origin: Vec3,
-) -> Vec<RawInstance> {
-    items
-        .map(|t| RawInstance {
-            transform: t.translated(-origin).to_mat(),
-            rotation_only: Mat3::from_quat(t.rotation),
-        })
-        .collect::<Vec<_>>()
-}
-
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct RawInstance {

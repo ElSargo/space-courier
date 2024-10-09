@@ -37,6 +37,7 @@ pub struct PlayerController {
     pub skating: bool,
 }
 
+#[allow(dead_code)]
 pub fn update<'a>(
     mut player: Query<(&mut PlayerController, &mut Transform)>,
     mut camera: ResMut<Camera>,
@@ -263,31 +264,12 @@ pub fn apply_velocity(
     }
 }
 
-pub fn bank_player(
-    mut players: Query<(&mut PlayerControllerUpright, &mut Transform)>,
-    time: Res<Time>,
-) {
+pub fn bank_player(mut players: Query<(&mut PlayerControllerUpright, &mut Transform)>) {
     for (mut pc, mut tra) in players.iter_mut() {
         let tra = &mut *tra;
         if tra.translation.y < 0.0 {
             tra.translation.y = 0.0;
-            // let rotation_correction =
-            //     Quat::from_rotation_arc(tra.forward(), tra.forward() * vec3(1.0, -1.0, 1.0));
-            // tra.rotation *= rotation_correction;
             pc.pitch = -pc.pitch.abs();
         }
-    }
-}
-
-pub fn update_momentum_from_velocity(
-    mut players: Query<&mut PlayerControllerUpright, With<Physics>>,
-    boddies: Query<(&Physics, &Transform)>,
-    time: Res<Time>,
-) {
-    for mut pc in players.iter_mut() {
-        let acceleration = gravity_all(pc.position, boddies.iter());
-        pc.momentum += time.delta_seconds
-            * acceleration.dot(Transform::forward_of_quat(pc.rotation))
-            / pc.speed;
     }
 }

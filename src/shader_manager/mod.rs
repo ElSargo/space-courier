@@ -26,17 +26,12 @@ use parking_lot::Mutex;
 use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
 use self::pipeline_shader_resource::PipelineShaderDescriptor;
-pub use self::pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor};
-pub use self::solid_pipeline::SolidPipelineModuleResource;
-pub use self::solid_pipeline::SolidPipelineModuleResourceExtras;
-pub use self::solid_pipeline::SolidShader;
-pub use self::solid_pipeline::SolidSplitShaders;
-pub use self::split_pipeline::SplitPipelineModuleDescriptor;
-pub use self::split_pipeline::SplitPipelineModuleResource;
-pub use self::split_pipeline::SplitShaders;
-pub use self::unified_pipeline::UnifiedPipelineModuleDescriptor;
-pub use self::unified_pipeline::UnifiedPipelineModuleResource;
-pub use self::unified_pipeline::UnifiedShaders;
+pub use self::{
+    pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor},
+    solid_pipeline::{SolidPipelineModuleResource, SolidPipelineModuleResourceExtras, SolidShader},
+    split_pipeline::{SplitPipelineModuleResource, SplitShaders},
+    unified_pipeline::{UnifiedPipelineModuleResource, UnifiedShaders},
+};
 
 type Adder<PipelineType> =
     Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>;
@@ -129,17 +124,6 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
             .insert(pipeline_handle, descriptor.as_arr().to_vec());
         self.pipeline_connstructors
             .insert(pipeline_handle, Box::new(descriptor.constructor(rr)));
-    }
-
-    pub fn get_pipeline<'a>(
-        &'a self,
-        pipeline_handle: &PipelineHandle,
-    ) -> Option<PipelineView<'a, PipelineType>> {
-        let guard = self.pipelines.read().unwrap();
-        guard.contains_key(pipeline_handle).then_some(PipelineView {
-            guard,
-            handle: *pipeline_handle,
-        })
     }
 
     fn proccess_pipline(
