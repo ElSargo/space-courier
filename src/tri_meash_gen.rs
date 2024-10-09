@@ -1,4 +1,4 @@
-use std::{any::Any, collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 
 use bevy_ecs::{
     component::Component,
@@ -49,8 +49,10 @@ vertex_layout!(Vertex,[0 => Float32x4 ]);
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Instance {
     position: [f32; 2],
+    offset: u32,
 }
-instance_layout!(Instance,[1 => Float32x2 ]);
+
+instance_layout!(Instance,[0 => Float32x2 , 1 => Uint32]);
 
 #[derive(Debug, Component)]
 pub struct TriMesh {
@@ -152,14 +154,17 @@ pub fn init_mod(i: &mut Initailiser) {
     i.init
         .add_systems(init_res.after(crate::background::init_background));
     i.prepare_buffers
-        .add_systems(pack_buffers::<Vec2, With<TriMeshMarker>, With<TriMeshMarker>>);
+        .add_systems(pack_buffers::<Instance, (), With<TriMeshInstanceBufferMarker>>);
     i.update.add_systems(gen_height);
 }
 
-impl Packable for Vec2 {
-    type Input<'a> = &'a Transform;
+impl Packable for Instance {
+    type Input<'a> = (&'a Transform, &'a TriMeshMarker);
     fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
-        input.translation.xz() - eye
+        Self {
+            position: (input.0.translation.xz() - eye).to_array(),
+            offset: input.1.offset,
+        }
     }
 }
 
@@ -171,7 +176,8 @@ impl SolidDrawable for TriMesh {
         _instances: std::ops::Range<u32>,
         _asset: &'a Self::Resource,
     ) {
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        // TODO set instance buffer properly
+        // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..self.index_buffer.size() as u32 / 2, 0, 0..1);
     }
@@ -184,7 +190,7 @@ impl SolidDrawable for TriMesh {
 pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, device: RD) {
     let shader = shader_manager.load_shader("./src/tri_mesh.wgsl");
 
-    let flat_mesh = gen_mesh(100, 100);
+    let flat_mesh = gen_mesh(20, 20);
     let inputs_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
         label: Some("Background inputs buffer layout"),
         entries: &[BindGroupLayoutEntry {
@@ -247,7 +253,7 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
             pipeline: shader_manager.add_render_pipeline(
                 SolidShader { handle: shader },
                 move || SolidPipelineModuleResourceExtras {
-                    vertex_buffers: Arc::new([Vertex::desc(), Instance::desc()]),
+                    vertex_buffers: Arc::new([Instance::desc()]),
                     extra_bind_groups: vec![],
                     label: Some("Tri mesh pipeline"),
                 },
@@ -260,15 +266,20 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
             &device,
             &[RawInstance::from_transform(&Transform::default())],
         ),
-        TriMeshMarker,
+        TriMeshInstanceBufferMarker,
     ));
 
     commands.insert_resource(tq);
-    commands.spawn((Transform::default(), TriMeshMarker));
+    commands.spawn((Transform::default(), TriMeshMarker { offset: 0 }));
 }
 
 #[derive(Component)]
-pub struct TriMeshMarker;
+pub struct TriMeshMarker {
+    offset: u32,
+}
+
+#[derive(Component)]
+pub struct TriMeshInstanceBufferMarker;
 
 pub fn prepare_mesh(
     tri_mesh: &FlatMesh,
@@ -285,7 +296,7 @@ pub fn prepare_mesh(
 
     let output = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Tri mesh vertex_buffer"),
-        usage: BufferUsages::VERTEX | BufferUsages::STORAGE,
+        usage: BufferUsages::STORAGE,
         contents: bytemuck::cast_slice(
             tri_mesh
                 .positions
