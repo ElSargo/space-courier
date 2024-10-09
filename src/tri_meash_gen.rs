@@ -7,13 +7,13 @@ use bevy_ecs::{
     system::{Commands, In, Res, ResMut, Resource},
 };
 
-use glam::{vec2, vec4, Vec2, Vec3Swizzles};
+use glam::{Vec2, Vec3Swizzles};
 
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BufferBinding, BufferUsages, CommandEncoderDescriptor, ComputePipeline,
-    ComputePipelineDescriptor, Device, ShaderStages,
+    BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
+    ComputePipeline, ComputePipelineDescriptor, Device, PushConstantRange, ShaderStages,
 };
 
 use crate::{
@@ -31,12 +31,6 @@ use crate::{
 };
 
 type IndexType = u16;
-
-#[derive(Debug)]
-pub struct FlatMesh {
-    indices: Vec<IndexType>,
-    positions: Vec<Vec2>,
-}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -56,98 +50,49 @@ instance_layout!(Instance,[0 => Float32x2 , 1 => Uint32]);
 
 #[derive(Debug, Component)]
 pub struct TriMesh {
-    vertex_buffer: wgpu::Buffer,
+    vertex_storage: Arc<wgpu::BindGroup>,
     index_buffer: wgpu::Buffer,
 }
 
-pub fn gen_mesh(width: usize, depth: usize) -> FlatMesh {
-    let num_chunks = (depth - 1) / 2;
-    assert!(num_chunks > 0);
+pub fn index_buffer(width: IndexType, device: &Device) -> wgpu::Buffer {
     assert!(width > 2);
-    assert!(width * depth < IndexType::MAX as usize);
-    let mut positions = Vec::with_capacity(width + num_chunks * (width * 2 - 1));
-    let mut idxs: Vec<IndexType> = Vec::with_capacity(num_chunks * 3 * ((width - 2) * 4 + 2));
-    // Positions
-    {
-        // Insert header
-        // let dx = 1.0;
-        let dy = 3_f32.sqrt() / 2.0;
-        let mut x = 0.0;
-        for _ in 0..width {
-            positions.push(vec2(x, 0.0));
-            x += 1.0;
-        }
-        // Chunks
-        x = 0.0;
-        let mut y = dy;
-        for _ in 0..num_chunks {
-            // Add positions
-            for o in 0..=1 {
-                let mut x = x + if o == 0 { 0.5 } else { 0.0 };
-                for _ in 0..width - 1 + o {
-                    positions.push(vec2(x, y));
-                    x += 1.0;
-                }
-                // x = 0.0;
-                y += dy;
+    assert!(width * width < IndexType::MAX);
+    assert_eq!(width % 2, 0);
+    let mut idxs: Vec<IndexType> = Vec::with_capacity((width as usize - 1).pow(2) * 6);
+
+    for y in 0..width - 1 {
+        for x in 0..width - 1 {
+            let this_row_base = x + width * y;
+            let next_row_base = x + width * (y + 1);
+            if y % 2 == 0 {
+                idxs.extend_from_slice(&[
+                    this_row_base,
+                    next_row_base,
+                    this_row_base + 1,
+                    //
+                    next_row_base,
+                    next_row_base + 1,
+                    this_row_base + 1,
+                ]);
+            } else {
+                idxs.extend_from_slice(&[
+                    next_row_base,
+                    next_row_base + 1,
+                    this_row_base,
+                    //
+                    this_row_base,
+                    next_row_base + 1,
+                    this_row_base + 1,
+                ]);
             }
         }
     }
 
-    // Idxs
-    {
-        let width = width as IndexType;
-        let num_chunks = num_chunks as IndexType;
-        let idxs_per_chunk = 2 * width - 1;
-        for chunk in 0..num_chunks {
-            // Indexes of the starts of the relavant rows
-            let (row_previous_idx, row_short_idx, row_long_idx) = (
-                (chunk * idxs_per_chunk),
-                (chunk * idxs_per_chunk + width),
-                (chunk * idxs_per_chunk + (2 * width - 1)),
-            );
-            // Inner quads
-            for i in 0..width - 2 {
-                let a = [
-                    i + row_previous_idx,
-                    i + row_short_idx,
-                    i + row_previous_idx + 1,
-                    // i + row_short_idx + 1,
-                ];
-                let b = [
-                    i + row_short_idx,
-                    i + row_short_idx + 1,
-                    i + row_previous_idx + 1,
-                ];
-                let c = [
-                    i + row_short_idx,
-                    i + row_long_idx + 1,
-                    i + row_short_idx + 1,
-                ];
-                let d = [i + row_short_idx, i + row_long_idx, i + row_long_idx + 1];
-                let data: [IndexType; 12] = unsafe { std::mem::transmute([a, b, c, d]) };
-                idxs.extend_from_slice(&data);
-            }
-            // End tris
-            let top = [
-                row_previous_idx + width - 2,
-                row_previous_idx + width - 1,
-                row_short_idx + width - 2,
-            ];
-            let bottom = [
-                row_short_idx + width - 2,
-                row_long_idx + width - 2,
-                row_long_idx + width - 1,
-            ];
-            let chunk_end_idxs: [IndexType; 6] = unsafe { std::mem::transmute([bottom, top]) };
-            idxs.extend_from_slice(&chunk_end_idxs)
-        }
-    }
-
-    FlatMesh {
-        indices: idxs,
-        positions,
-    }
+    device.create_buffer_init(&BufferInitDescriptor {
+        label: Some("Tri mesh index_buffer"),
+        usage: BufferUsages::INDEX,
+        contents: bytemuck::cast_slice(idxs.as_slice()),
+    })
 }
 
 pub fn init_mod(i: &mut Initailiser) {
@@ -170,6 +115,7 @@ impl Packable for Instance {
 
 impl SolidDrawable for TriMesh {
     type Resource = ();
+    const INSTANCE_BUFFER_SLOT: u32 = 0;
     fn draw<'a: 'b, 'b>(
         &self,
         render_pass: &mut wgpu::RenderPass,
@@ -178,7 +124,9 @@ impl SolidDrawable for TriMesh {
     ) {
         // TODO set instance buffer properly
         // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_bind_group(3, &self.vertex_storage, &[]);
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.set_push_constants(ShaderStages::VERTEX, 0, &(CHUNK_DIM as u32).to_ne_bytes());
         render_pass.draw_indexed(0..self.index_buffer.size() as u32 / 2, 0, 0..1);
     }
 
@@ -187,25 +135,13 @@ impl SolidDrawable for TriMesh {
     }
 }
 
+const CHUNKS: usize = 1;
+const CHUNK_DIM: usize = 100;
+const CHUNK_SIZE: usize = CHUNK_DIM * CHUNK_DIM;
+const TOTAL_CHUNK_DATA_SIZE: usize = std::mem::size_of::<f32>() * CHUNKS * CHUNK_SIZE;
+
 pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, device: RD) {
-    let shader = shader_manager.load_shader("./src/tri_mesh.wgsl");
-
-    let flat_mesh = gen_mesh(20, 20);
-    let inputs_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-        label: Some("Background inputs buffer layout"),
-        entries: &[BindGroupLayoutEntry {
-            binding: 0,
-            visibility: ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
-    });
-
-    let output_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+    let output_compute_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
         label: Some("Background outpus buffer layout"),
         entries: &[BindGroupLayoutEntry {
             binding: 0,
@@ -221,8 +157,11 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Tri mesh gen layout"),
-        bind_group_layouts: &[&inputs_layout, &output_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[&output_compute_layout],
+        push_constant_ranges: &[PushConstantRange {
+            stages: ShaderStages::COMPUTE,
+            range: 0..std::mem::size_of::<u32>() as u32,
+        }],
     });
 
     let compute_pipeline = shader_manager.add_compute_pipeline(
@@ -246,16 +185,79 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
         pipeline: compute_pipeline,
     };
 
-    let mesh = prepare_mesh(&flat_mesh, &device, &inputs_layout, &output_layout, &mut tq);
+    let output_vertex_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("Background outpus buffer layout"),
+        entries: &[BindGroupLayoutEntry {
+            binding: 0,
+            visibility: ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+
+    let buffer = device.create_buffer(&BufferDescriptor {
+        label: Some("Tri mesh vertex_buffer"),
+        usage: BufferUsages::STORAGE,
+        size: TOTAL_CHUNK_DATA_SIZE as u64,
+        mapped_at_creation: false,
+    });
+
+    let output_compute_bind = Arc::new(device.create_bind_group(&BindGroupDescriptor {
+        label: Some("Tri mesh storage bind"),
+        layout: &output_compute_layout,
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Buffer(BufferBinding {
+                buffer: &buffer,
+                offset: 0,
+                size: None,
+            }),
+        }],
+    }));
+
+    let output_vertex_bind = Arc::new(device.create_bind_group(&BindGroupDescriptor {
+        label: Some("Tri mesh uniform bind"),
+        layout: &output_vertex_layout,
+        entries: &[BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::Buffer(BufferBinding {
+                buffer: &buffer,
+                offset: 0,
+                size: None,
+            }),
+        }],
+    }));
+
+    tq.queue.push_front(output_compute_bind.clone());
+
+    let mesh = TriMesh {
+        vertex_storage: output_vertex_bind,
+        index_buffer: index_buffer(CHUNK_DIM as u16, &device),
+    };
+
+    #[derive(Resource)]
+    struct S(Arc<BindGroupLayout>);
+
+    commands.insert_resource(S(output_vertex_layout.into()));
 
     commands.spawn((
         SolidRenderable {
             pipeline: shader_manager.add_render_pipeline(
-                SolidShader { handle: shader },
-                move || SolidPipelineModuleResourceExtras {
+                SolidShader {
+                    handle: shader_manager.load_shader("./src/tri_mesh.wgsl"),
+                },
+                move |vertex_storage_buffer_bgl: Res<S>| SolidPipelineModuleResourceExtras {
                     vertex_buffers: Arc::new([Instance::desc()]),
-                    extra_bind_groups: vec![],
+                    extra_bind_groups: vec![vertex_storage_buffer_bgl.0.clone()],
                     label: Some("Tri mesh pipeline"),
+                    push_constants: vec![PushConstantRange {
+                        stages: ShaderStages::VERTEX,
+                        range: 0..std::mem::size_of::<u32>() as u32,
+                    }],
                 },
             ),
             renderable: Box::new(mesh),
@@ -281,86 +283,9 @@ pub struct TriMeshMarker {
 #[derive(Component)]
 pub struct TriMeshInstanceBufferMarker;
 
-pub fn prepare_mesh(
-    tri_mesh: &FlatMesh,
-    device: &Device,
-    input_layout: &BindGroupLayout,
-    output_layout: &BindGroupLayout,
-    tri_q: &mut TriQueue,
-) -> TriMesh {
-    let inputs = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("Tri mesh vertex_buffer"),
-        usage: BufferUsages::STORAGE,
-        contents: bytemuck::cast_slice(tri_mesh.positions.as_slice()),
-    });
-
-    let output = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("Tri mesh vertex_buffer"),
-        usage: BufferUsages::STORAGE,
-        contents: bytemuck::cast_slice(
-            tri_mesh
-                .positions
-                .iter()
-                .map(|xy| vec4(xy.x, 0.0, xy.y, 0.0))
-                .collect::<Vec<_>>()
-                .as_slice(),
-        ),
-    });
-
-    let input_bind = Arc::new(device.create_bind_group(&BindGroupDescriptor {
-        label: Some("Tri mesh storage layout"),
-        layout: input_layout,
-        entries: &[BindGroupEntry {
-            binding: 0,
-            resource: wgpu::BindingResource::Buffer(BufferBinding {
-                buffer: &inputs,
-                offset: 0,
-                size: None,
-            }),
-        }],
-    }));
-
-    let output_bind = Arc::new(device.create_bind_group(&BindGroupDescriptor {
-        label: Some("Tri mesh storage layout"),
-        layout: output_layout,
-        entries: &[BindGroupEntry {
-            binding: 0,
-            resource: wgpu::BindingResource::Buffer(BufferBinding {
-                buffer: &output,
-                offset: 0,
-                size: None,
-            }),
-        }],
-    }));
-
-    tri_q.queue.push_front((
-        tri_mesh.positions.len() as u32,
-        IOL {
-            i: input_bind,
-            o: output_bind,
-        },
-    ));
-
-    let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
-        label: Some("Tri mesh index_buffer"),
-        usage: BufferUsages::INDEX,
-        contents: bytemuck::cast_slice(tri_mesh.indices.as_slice()),
-    });
-
-    TriMesh {
-        vertex_buffer: output,
-        index_buffer,
-    }
-}
-
-struct IOL {
-    i: Arc<BindGroup>,
-    o: Arc<BindGroup>,
-}
-
 #[derive(Resource)]
 pub struct TriQueue {
-    queue: VecDeque<(u32, IOL)>,
+    queue: VecDeque<Arc<wgpu::BindGroup>>,
     pipeline: PipelineHandle,
 }
 
@@ -375,17 +300,18 @@ fn gen_height(
         let mut enc = device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("Tri mesh enc"),
         });
-        while let Some((count, bind)) = to_process.queue.pop_front() {
+        while let Some(bind) = to_process.queue.pop_front() {
             println!("Dispatcing compute");
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Tri mesh compute"),
                 timestamp_writes: None,
             });
 
-            pass.set_bind_group(0, &bind.i, &[]);
-            pass.set_bind_group(1, &bind.o, &[]);
+            pass.set_bind_group(0, &bind, &[]);
             pass.set_pipeline(&p);
-            pass.dispatch_workgroups((count / 256) + 1, 1, 1);
+            let work = (CHUNK_DIM as u32).div_ceil(16);
+            pass.set_push_constants(0, &(CHUNK_DIM as u32).to_ne_bytes());
+            pass.dispatch_workgroups(work, work, 1);
         }
         queue.submit(std::iter::once(enc.finish()));
     }

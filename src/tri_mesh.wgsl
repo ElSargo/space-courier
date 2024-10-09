@@ -8,7 +8,8 @@
 @group(2) @binding(2) var depth_texture: texture_depth_2d;
 @group(2) @binding(3) var depth_sampler: sampler;
 
-@group(3) @binding(0) var<storage, read> vertex_data: array<vec4<f32>>;
+@group(3) @binding(0) var<storage> vertex_data: array<f32>;
+var<push_constant> size: u32;
 
 struct Camera {
     view_pos: vec4<f32>,
@@ -18,10 +19,6 @@ struct Camera {
     inv_proj: mat4x4<f32>,
     inv_view: mat4x4<f32>,
 };
-
-// struct VertexInput {
-//     @location(0) position: vec4<f32>,
-// }
 
 struct InstanceInput {
     @location(0) translation: vec2<f32>,
@@ -38,12 +35,15 @@ struct VertexOutput {
 fn vs_main(
     @builtin(vertex_index) in_vertex_index: u32, instance: InstanceInput,
 ) -> VertexOutput {
-    let vertex = vertex_data[instance.buffer_offset + in_vertex_index];
-    let vert_position = vec4(vertex.xz + instance.translation.xy, vertex.y, 1.0).xzyw  ;
+    let z_index = in_vertex_index / size;
+    let z = f32(z_index) * sqrt(3.0) * 0.5;
+    let x = f32(in_vertex_index % size) + 0.5 * f32( z_index % 2);
+    let y = vertex_data[instance.buffer_offset + in_vertex_index];
+    let vert_position = vec4(x + instance.translation.x, y, z + instance.translation.y, 1.0);
     return VertexOutput(
         camera.view_proj * vert_position,
         vert_position.xyz - vec3(0.0, camera.view_pos.y, 0.0),
-        vertex.xyz
+        vec3(x,y,z),
     );
 }
 

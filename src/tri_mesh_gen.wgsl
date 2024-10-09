@@ -1,14 +1,7 @@
-@group(0) @binding(0)  var<storage,read> inputs: array<vec2<f32>>;
-@group(1) @binding(0)  var<storage,read_write> outputs: array<vec4<f32>>;
-
-// Required to wrok around 16 byte alignment issues
-// struct V3x3 {
-//     a: vec3<f32>,
-//     b: vec3<f32>,
-//     c: vec3<f32>
-// };
-
-
+@group(0) 
+@binding(0)  
+var<storage,read_write> vertex_data: array<f32>;
+var<push_constant> size: u32;
 
 fn hash13(p: vec3f) -> f32 {
     let q = vec3<u32>(vec3<i32>(p)) * vec3<u32>(1597334673u, 3812015801u, 2798796415u);
@@ -66,18 +59,22 @@ fn height(p: vec2f) -> f32 {
 }
 
 @compute
-@workgroup_size(256, 1, 1)
+@workgroup_size(16, 16, 1)
 fn full(
     @builtin(global_invocation_id)
     gid: vec3<u32>,
 ) {
-    if gid.x >= arrayLength(&inputs) {
+    if gid.x >= size {
         return;
     }
 
-    let x = outputs[gid.x];
+    let output_index = size * gid.y + gid.x;
 
-    let y = height(x.xz);
+    // 3_f32.sqrt() / 2.0
+    let x = f32(gid.x) + 0.5 * f32(gid.y % 2);
+    let z = f32(gid.y) * sqrt(3.0) * 0.5;
 
-    outputs[gid.x] = vec4(x.x, y, x.z, x.w);
+    let y = height(vec2(x,z));
+
+    vertex_data[output_index] = y;
 }
