@@ -95,7 +95,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let fresnel_strength = fresnel(ray_direction, flat_normal, 5.0);
     let reflection_strength = pow(max(0.0, dot(reflected_ray_direction, ray_direction)), 2.0) * fresnel_strength + 0.2;
 
-    let line_color = vec3(1.0, 0.0, 0.23) * 20.0 * (1.0 - exp(-in.mesh_position.y) + 0.03);
+    let h_factor = exp(-in.mesh_position.y);
+    
+    let line_color = mix(vec3(0.2, 0.23, 1.0) * (2.0 + 10.0 * pow(flat_normal.y,5.0)),vec3(1.0, 0.0, 0.23) * 20.0,smoothstep(0.1,0.2,h_factor))   * ((1.0 - h_factor)  + 0.03);
     let reflection_color = reflection_strength * reflection_incident;
     // let color = mix(reflection_color, line_color, line_signal);
     let color = reflection_color + line_color * line_signal + vec3(0.4, 0.3, 2.0) * 0.001  ;

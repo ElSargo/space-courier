@@ -52,17 +52,19 @@ fn nfbm(p: vec3f) -> f32 {
     var s = p;
     var a = 0.5;
     var t = 0.0;
-    for (var i = 0; i < 4; i += 1) {
+    for (var i = 0; i < 8; i += 1) {
         t += a * noise3(s);
         s *= 2.0;
-        a *= 0.5;
+        a *= 0.7;
     }
     return t;
 }
 
 fn height(p: vec2f) -> f32 {
-    let h = nfbm(vec3(p.x * 0.1, 0.0, p.y * 0.1)) - 0.5;
-    return max(h, 0.0) * 15.0   ;
+    let h = max(nfbm(vec3(p.x * 0.005, 0.0, p.y * 0.005 + 1.0)) - 0.9,0.0) * 100.0;
+    let g = max(nfbm(vec3(p.x * 0.02, 0.0, p.y * 0.02)) - 0.8,0.0) * 20.0;
+    let k = max(nfbm(vec3(p.x * 0.2, 0.0, p.y * 0.5)) - 0.9,0.0) * 5.0;
+    return h + g + k;
 }
 
 @compute
