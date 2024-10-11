@@ -259,10 +259,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //Light sources
     var color = vec3(0.0);
     // Sun
-        {
+    {
         let light_color = vec3(0.2, 0.4, 1.0);
-        let light_direction = normalize(-world_position);
-        let distance_scaled = length(world_position * 0.004);
+        let light_direction = normalize(vec3(50.0,10.0,50.0)-world_position);
+        let distance_scaled = length((vec3(50.0,10.0,50.0)-world_position)* 0.04);
         let light_intensity = 1.0 / (distance_scaled * distance_scaled);
         let light_dot_normal = dot(nor, light_direction);
 
@@ -272,8 +272,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // let diffuse = max(0.0,light_dot_normal );
         let specular = (8.0 * angle_atenuation + 0.5) * pow(max(0.0, dot(light_direction, reflect_direction)), (8.0 + angle_atenuation)) * (0.05 + 0.95 * freznel) * diffuse;
 
-        // color += albedo * light_color * light_intensity * diffuse;
-        // color += light_intensity * sqrt(light_color) * specular;
+        color += albedo * light_color * light_intensity * diffuse;
+        color += light_intensity * sqrt(light_color) * specular;
     }
     // Ecretion disk
         {

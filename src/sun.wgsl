@@ -115,6 +115,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let threshold = -0.1 - 0.05 * h;
     // let alpha = smoothstep(threshold,threshold + 2.1, 0.2 +  sin(h*1.));
     let alpha = 1.0;
-    return vec4(color * alpha * 40.0, alpha);
+    return vec4(color * alpha * 240.0, alpha);
 }
 
