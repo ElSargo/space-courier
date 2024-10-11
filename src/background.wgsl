@@ -448,7 +448,7 @@ fn full(
             prev_l = length_p;
         }
 
-        // col += stars(ro + rd * t, d) * black_hole_suck * transmission;
+        col += stars(ro + rd * t, d) * black_hole_suck * transmission;
         col = col * transmission + emsission;
         // col += photon_shere_light;
     }
