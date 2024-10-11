@@ -10,13 +10,14 @@ struct Camera {
 
 struct VertexInput {
     @location(0) position: vec3f,
+    @location(1) color: f32,
 };
 
 struct InstanceInput {
-    @location(1) model_matrix_0: vec4<f32>,
-    @location(2) model_matrix_1: vec4<f32>,
-    @location(3) model_matrix_2: vec4<f32>,
-    @location(4) model_matrix_3: vec4<f32>,
+    @location(2) model_matrix_0: vec4<f32>,
+    @location(3) model_matrix_1: vec4<f32>,
+    @location(4) model_matrix_2: vec4<f32>,
+    @location(5) model_matrix_3: vec4<f32>,
     
 };
 
@@ -36,7 +37,7 @@ fn vs_main(
         instance.model_matrix_3,
     );
 
-    var color = vec3(0.0);
+    var color = pow(mix( vec3(0.6, 0.45, 2.0), vec3(2.0, 0.45, 0.6), vert.color ),vec3(2.0));
     let i = in_vertex_index % 4;
     if i == 1 {
         color.r = 1.0;
@@ -60,5 +61,5 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4(4.0 * vec3(0.6, 0.45, 2.0), 1.0);
+    return vec4(4.0 * in.color, 1.0);
 }

@@ -31,15 +31,16 @@ const VERTS: [Vec3; 4] = [
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Vertex {
     position: [f32; 3],
+    color: f32,
 }
-vertex_layout!(Vertex,[0 => Float32x3] );
+vertex_layout!(Vertex,[0 => Float32x3, 1 => Float32] );
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Instance {
     mat: Mat4,
 }
-instance_layout!(Instance,[ 1 => Float32x4  ,2 => Float32x4,  3 => Float32x4,  4 => Float32x4 ]);
+instance_layout!(Instance,[ 2 => Float32x4  ,3 => Float32x4,  4 => Float32x4,  5 => Float32x4 ]);
 
 impl Packable for Instance {
     type Input<'a> = &'a Transform;
@@ -54,7 +55,7 @@ impl Packable for Instance {
     }
 }
 
-const BATCH_SIZE: usize = 1_000;
+const BATCH_SIZE: usize = 3_000;
 fn init(device: RD, mut commands: Commands, shader_manager: Res<ShaderManagerCtrl>) {
     let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Stars batch vertex buffer"),
@@ -134,8 +135,8 @@ pub fn init_mod(initailiser: &mut Initailiser) {
 #[derive(Component)]
 struct Star;
 
-fn make_vertex_data(batch_size: usize) -> Vec<Vec3> {
-    let batch_bounds = vec3(1.0, 0.2, 1.0);
+fn make_vertex_data(batch_size: usize) -> Vec<Vertex> {
+    let batch_bounds = vec3(1.0, 0.5, 1.0);
     let scale_bounds = 0.001..0.003;
     let mut rng = thread_rng();
 
@@ -146,8 +147,12 @@ fn make_vertex_data(batch_size: usize) -> Vec<Vec3> {
         let rotation: Quat = rng.gen();
         let scale = rng.gen_range(scale_bounds.clone());
 
+        let color = rng.gen();
         for vert in VERTS {
-            batch.push(rotation.mul_vec3(vert) * scale + position);
+            batch.push(Vertex {
+                position: (rotation.mul_vec3(vert) * scale + position).to_array(),
+                color,
+            })
         }
     }
 
