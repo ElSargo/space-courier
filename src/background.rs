@@ -12,7 +12,11 @@ use crate::{
     time::Time,
 };
 
-use bevy_ecs::system::{Commands, In, Local, Res, ResMut, Resource};
+use bevy_ecs::{
+    event::{Event, EventReader, EventWriter, Events},
+    schedule::IntoSystemConfigs,
+    system::{Commands, In, Local, Res, ResMut, Resource},
+};
 use wgpu::{
     util::DeviceExt, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferBinding, BufferUsages, CommandEncoder, ComputePassDescriptor,
@@ -48,7 +52,9 @@ static SIZE: wgpu::Extent3d = wgpu::Extent3d {
 pub fn init_mod(ecs: &mut Initailiser) {
     ecs.prepare_buffers.add_systems(update_time_buffer);
     ecs.init.add_systems(init_background);
-    ecs.render.add_systems(generate_background);
+    ecs.render.add_systems(fire_bg_gen);
+    ecs.update.add_systems(keyboard_generate_background);
+    ecs.world.init_resource::<Events<FireBGGenEvent>>();
 }
 
 pub fn init_background(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands) {
@@ -232,17 +238,15 @@ pub fn init_background(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut c
     commands.insert_resource(TimeBuffer(time_buffer));
 }
 
-pub fn generate_background(
+#[derive(Event)]
+pub struct FireBGGenEvent;
+
+pub fn keyboard_generate_background(
     bg: ResMut<Background>,
-    mut cmd_encoder: ResMut<Marker<CommandEncoder, Background>>,
-    shader_manager: Res<PipelinesView<wgpu::ComputePipeline>>,
-    mut callbacks: ResMut<RenderCompleteCallBack>,
+    mut fire_bg: EventWriter<FireBGGenEvent>,
     input: Res<ButtonInput>,
-    time: Res<Time>,
-    mut first_run: Local<bool>,
 ) {
-    if input.just_down(winit::keyboard::KeyCode::KeyB) || !*first_run {
-        *first_run = true; // Will be false initialy
+    if input.just_down(winit::keyboard::KeyCode::KeyB) {
         let old = bg.generating.compare_exchange(
             false,
             true,
@@ -250,23 +254,35 @@ pub fn generate_background(
             std::sync::atomic::Ordering::Relaxed,
         );
         if old.is_ok() {
-            println!("BG gen");
-            if let Some(pipeline) = shader_manager.get(&bg.pipeline) {
-                let mut pass = cmd_encoder.begin_compute_pass(&ComputePassDescriptor {
-                    label: Some("Background pass"),
-                    ..Default::default()
-                });
-
-                pass.set_pipeline(&pipeline);
-                pass.set_bind_group(0, &bg.texture_array_bind_group, &[]);
-                pass.dispatch_workgroups(DIM / 16, DIM / 16, 6);
-            }
-
-            let v = bg.generating.clone();
-            callbacks.push(Box::new(move || {
-                v.store(false, std::sync::atomic::Ordering::SeqCst)
-            }));
+            fire_bg.send(FireBGGenEvent);
         }
+    }
+}
+
+fn fire_bg_gen(
+    shader_manager: Res<PipelinesView<wgpu::ComputePipeline>>,
+    bg: ResMut<Background>,
+    mut cmd_encoder: ResMut<Marker<CommandEncoder, Background>>,
+    mut callbacks: ResMut<RenderCompleteCallBack>,
+    mut fire_bg: EventReader<FireBGGenEvent>,
+) {
+    if fire_bg.read().last().is_some() {
+        println!("BG gen");
+        if let Some(pipeline) = shader_manager.get(&bg.pipeline) {
+            let mut pass = cmd_encoder.begin_compute_pass(&ComputePassDescriptor {
+                label: Some("Background pass"),
+                ..Default::default()
+            });
+
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &bg.texture_array_bind_group, &[]);
+            pass.dispatch_workgroups(DIM / 16, DIM / 16, 6);
+        }
+
+        let v = bg.generating.clone();
+        callbacks.push(Box::new(move || {
+            v.store(false, std::sync::atomic::Ordering::SeqCst)
+        }));
     }
 }
 
@@ -274,7 +290,9 @@ fn background_pipeline_constructor(
     In(module): In<UnifiedPipelineModuleResource>,
     device: RD,
     layout: Res<ConstructorReasources>,
+    mut fire_bg: EventWriter<FireBGGenEvent>,
 ) -> wgpu::ComputePipeline {
+    fire_bg.send(FireBGGenEvent);
     device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("Background pipeline"),
         layout: Some(&layout.pipeline_layout),
