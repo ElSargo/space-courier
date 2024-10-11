@@ -1,7 +1,6 @@
 use crate::{
     camera::Camera,
     ecs::Initailiser,
-    gravity::gravity_all,
     input::{
         AxisInput, ButtonInput,
         Inputs::{Back, Forward},
@@ -13,7 +12,6 @@ use crate::{
 };
 use bevy_ecs::{
     component::Component,
-    query::With,
     schedule::IntoSystemConfigs,
     system::{Commands, Local, Query, Res, ResMut},
 };
@@ -34,7 +32,7 @@ pub struct PlayerControllerUpright {
 pub struct PlayerController {
     pub speed: f32,
     pub momentum: f32,
-    pub skating: bool,
+    pub _skating: bool,
 }
 
 #[allow(dead_code)]
@@ -45,7 +43,6 @@ pub fn update<'a>(
     kb: Res<ButtonInput>,
     axis: Res<AxisInput>,
     look_ahead: Local<Quat>,
-    // bodies: Query<(&Physics, &Transform), Without<PlayerController>>,
 ) {
     let (mut player_controller, mut transform) = player.single_mut();
     let (player_controller, transform) = (&mut *player_controller, &mut *transform);

@@ -322,7 +322,7 @@ pub fn init_view_textures(device: RD, mut commands: Commands, resolution: Res<Sc
                 &depth_texture,
                 &null_texture,
             ),
-            null_texture,
+            _null_texture: null_texture,
             depth_texture,
             color_texture,
         });

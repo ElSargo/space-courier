@@ -2,7 +2,6 @@
 use lazy_static::lazy_static;
 use pollster::FutureExt;
 use std::{
-    any::Any,
     ops::Range,
     sync::{atomic::AtomicUsize, Arc},
 };

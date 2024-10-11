@@ -1,4 +1,3 @@
-use crate::model::{DrawModel, Model};
 use arc_swap::ArcSwap;
 use bevy_ecs::component::Component;
 use std::{num::NonZeroU64, sync::atomic::AtomicU32};
@@ -8,7 +7,6 @@ use wgpu::{util::DeviceExt, BufferDescriptor, BufferUsages, Device, Queue};
 pub struct InstanceBufferDescriptor {
     pub label: Option<String>,
     pub usages: BufferUsages,
-    pub mapped_at_creation: bool,
 }
 
 #[derive(Component)]
@@ -34,11 +32,7 @@ impl InstanceBuffer {
             mapped_at_creation: false,
         });
         Self {
-            descriptor: InstanceBufferDescriptor {
-                label,
-                usages,
-                mapped_at_creation: false,
-            },
+            descriptor: InstanceBufferDescriptor { label, usages },
             buffer: ArcSwap::new(buffer.into()),
             instances: 0.into(),
         }
@@ -59,11 +53,7 @@ impl InstanceBuffer {
             usage: usages,
         });
         Self {
-            descriptor: InstanceBufferDescriptor {
-                label,
-                usages,
-                mapped_at_creation: false,
-            },
+            descriptor: InstanceBufferDescriptor { label, usages },
             buffer: ArcSwap::new(buffer.into()),
             instances: (instances.len() as u32).into(),
         }
@@ -136,12 +126,6 @@ impl InstanceBuffer {
 pub trait RenderPassExt<'a> {
     // render_pass.set_vertex_buffer(1, *ib.buffer_slice());
     fn set_instance_buffer(&mut self, slot: u32, instance_buffer: &InstanceBuffer);
-    fn draw_model_instances(
-        &mut self,
-        slot: u32,
-        instance_buffer: &InstanceBuffer,
-        model: &'a Model,
-    );
 }
 
 impl<'a, 'b> RenderPassExt<'b> for wgpu::RenderPass<'a>
@@ -151,16 +135,6 @@ where
     fn set_instance_buffer(&mut self, slot: u32, instance_buffer: &InstanceBuffer) {
         let b = instance_buffer.buffer.load();
         self.set_vertex_buffer(slot, b.slice(..));
-    }
-
-    fn draw_model_instances(
-        &mut self,
-        slot: u32,
-        instance_buffer: &InstanceBuffer,
-        model: &'b Model,
-    ) {
-        self.set_instance_buffer(slot, instance_buffer);
-        self.draw_model_instanced(model, 0..instance_buffer.len());
     }
 }
 

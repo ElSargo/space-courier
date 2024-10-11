@@ -14,21 +14,18 @@ use crate::{
 
 use bevy_ecs::{
     event::{Event, EventReader, EventWriter, Events},
-    schedule::IntoSystemConfigs,
-    system::{Commands, In, Local, Res, ResMut, Resource},
+    system::{Commands, In, Res, ResMut, Resource},
 };
 use wgpu::{
     util::DeviceExt, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferBinding, BufferUsages, CommandEncoder, ComputePassDescriptor,
     PipelineLayout, ShaderStages, TextureDescriptor, TextureDimension, TextureFormat,
-    TextureUsages, TextureView, TextureViewDescriptor,
+    TextureUsages, TextureViewDescriptor,
 };
 
 #[derive(Resource)]
 pub struct Background {
     pub texture: TexCube,
-    time_buffer: Arc<wgpu::Buffer>,
-    texture_array_view: TextureView,
     texture_array_bind_group: wgpu::BindGroup,
     pub texture_cube_bind_group: wgpu::BindGroup,
     pub texture_cube_bind_group_layout: wgpu::BindGroupLayout,
@@ -151,16 +148,6 @@ pub fn init_background(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut c
         ..Default::default()
     });
 
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("Background sampler"),
-        address_mode_u: wgpu::AddressMode::ClampToEdge,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        address_mode_w: wgpu::AddressMode::ClampToEdge,
-        min_filter: wgpu::FilterMode::Linear,
-        mag_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::FilterMode::Linear,
-        ..Default::default()
-    });
     let time_buffer = Arc::new(
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Background time buffer"),
@@ -217,18 +204,12 @@ pub fn init_background(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut c
         ],
     });
 
-    let cube = TexCube {
-        texture: tex,
-        view: view_cube,
-        sampler,
-    };
+    let cube = TexCube { view: view_cube };
 
     let me = Background {
         texture: cube,
-        time_buffer: time_buffer.clone(),
         pipeline,
         texture_array_bind_group,
-        texture_array_view: view_array,
         texture_cube_bind_group,
         texture_cube_bind_group_layout: cube_layout,
         generating: Arc::new(false.into()),

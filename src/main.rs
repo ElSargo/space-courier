@@ -42,7 +42,7 @@ use bevy_ecs::{
     world::World,
 };
 use ecs::{InitSchedual, Initailiser, ResizeSchedual};
-use glam::{Mat3, Mat4, Quat, Vec3};
+use glam::{Mat3, Mat4};
 use gpu::{
     DeviceResource, OutputTextureResource, QueueResource, RenderCompleteCallBack, ScreenResolution,
 };
@@ -53,10 +53,7 @@ use std::{collections::VecDeque, sync::Arc};
 use texture::Texture;
 use time::Time;
 use transform::Transform;
-use wgpu::{
-    BindGroup, BindGroupLayout, Device, PipelineLayout, ShaderModule, TextureFormat,
-    VertexBufferLayout,
-};
+use wgpu::{BindGroup, BindGroupLayout, Device, TextureFormat};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -122,7 +119,7 @@ struct ReflectedViewTextures {
     color_texture: Texture,
     depth_texture: Texture,
     bind_group: BindGroup,
-    null_texture: Texture,
+    _null_texture: Texture,
     null_bind_group: BindGroup,
 }
 
@@ -133,7 +130,7 @@ struct GraphicsContext<'a> {
     queue: QueueResource,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    adapter: wgpu::Adapter,
+    _adapter: wgpu::Adapter,
     shader_manager: ShaderManager,
     shader_manager_ctl: ShaderManagerCtrl,
     render_pipelines_view: PipelinesView<wgpu::RenderPipeline>,
@@ -228,7 +225,7 @@ impl GraphicsContext<'_> {
             queue,
             config,
             size,
-            adapter,
+            _adapter: adapter,
             shader_manager,
             shader_manager_ctl,
             render_pipelines_view,
@@ -283,8 +280,8 @@ impl<'a> ApplicationHandler for State<'a> {
 
     fn device_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
         event: winit::event::DeviceEvent,
     ) {
         match event {
@@ -315,7 +312,7 @@ impl<'a> ApplicationHandler for State<'a> {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
         match event {
@@ -340,7 +337,7 @@ impl<'a> ApplicationHandler for State<'a> {
                             self.resize(physical_size);
                             self.window().request_redraw();
                         },
-                        WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                        WindowEvent::ScaleFactorChanged { .. } => {
                             // new_inner_size is &&mut so we have to dereference it twice
                             // self.resize(**new_inner_size);
                         },
@@ -420,14 +417,7 @@ impl<'a> State<'a> {
     }
 
     fn update(&mut self) {
-        // println!()
-        // assert!(self.graphics_ctx.is_some());
-        // assert!(self.world.is_some());
         if let Some((g_ctx, world)) = self.graphics_ctx.as_mut().zip(self.world.as_mut()) {
-            let tick = world.resource::<Time>().tick + 1;
-
-            // world.resource_mut::<AxisInput>().update(&mut self.gilrs);
-
             while let Some(key_event) = self.key_events.pop_front() {
                 world.send_event(key_event);
             }
@@ -543,74 +533,7 @@ fn make_view_texture(resolution: &ScreenResolution, device: &wgpu::Device) -> Te
         mipmap_filter: wgpu::FilterMode::Linear,
         ..Default::default()
     });
-    Texture {
-        texture,
-        view,
-        sampler,
-    }
-}
-
-fn mk_pipeline(
-    device: &wgpu::Device,
-    layout: &PipelineLayout,
-    format: Option<TextureFormat>,
-    shader: &ShaderModule,
-    label: &str,
-    descritptor: VertexBufferLayout,
-) -> wgpu::RenderPipeline {
-    let render_pipeline = {
-        use model::Vertex;
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(format!("{label} Render Pipeline").as_str()),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vs_main", // 1.
-                buffers: &[model::ModelVertex::desc(), descritptor],
-                compilation_options: Default::default(), // 2.
-            },
-            fragment: Some(wgpu::FragmentState {
-                // 3.
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    // 4.
-                    format: format.unwrap_or(TextureFormat::Rgba16Float),
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList, // 1.
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Cw, // 2.
-                cull_mode: Some(wgpu::Face::Back),
-                // cull_mode: None,
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: texture::Texture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Greater, // 1.
-                stencil: wgpu::StencilState::default(),        // 2.
-                bias: wgpu::DepthBiasState::default(),
-            }), // 1.
-            multisample: wgpu::MultisampleState {
-                count: 1,                         // 2.
-                mask: !0,                         // 3.
-                alpha_to_coverage_enabled: false, // 4.
-            },
-            multiview: None,
-            cache: None, // 5.
-        })
-    };
-    render_pipeline
+    Texture { view, sampler }
 }
 
 fn mk_pipeline_layout(
@@ -624,24 +547,6 @@ fn mk_pipeline_layout(
         push_constant_ranges: &[],
     });
     render_pipeline_layout
-}
-
-fn instance_buffer_bytes_from_components<'a>(
-    items: impl Iterator<Item = (Vec3, Quat, Vec3)>,
-) -> Vec<RawInstance> {
-    items
-        .map(|(translation, rotation, scale)| {
-            let t = Transform {
-                translation,
-                rotation,
-                scale,
-            };
-            RawInstance {
-                transform: t.to_mat(),
-                rotation_only: Mat3::from_quat(t.rotation),
-            }
-        })
-        .collect::<Vec<_>>()
 }
 
 #[repr(C)]

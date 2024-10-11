@@ -87,7 +87,6 @@ pub async fn load_model(
 
         materials.push(model::Material {
             name: m.name,
-            diffuse_texture,
             bind_group,
         })
     }

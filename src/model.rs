@@ -1,11 +1,6 @@
 use std::ops::Range;
 
-use crate::{texture, vertex_layout};
-
-// model.rs
-pub trait Vertex {
-    fn desc() -> wgpu::VertexBufferLayout<'static>;
-}
+use crate::vertex_layout;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -24,7 +19,6 @@ pub struct Model {
 
 pub struct Material {
     pub name: String,
-    pub diffuse_texture: texture::Texture,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -54,14 +48,12 @@ impl std::fmt::Debug for Mesh {
 
 // model.rs
 pub trait DrawModel<'a> {
-    fn draw_mesh(&mut self, mesh: &'a Mesh, material: &'a Material);
     fn draw_mesh_instanced(
         &mut self,
         mesh: &'a Mesh,
         material: &'a Material,
         instances: Range<u32>,
     );
-    fn draw_model(&mut self, model: &'a Model);
     fn draw_model_instanced(&mut self, model: &'a Model, instances: Range<u32>);
 }
 
@@ -69,10 +61,6 @@ impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
-    fn draw_mesh(&mut self, mesh: &'b Mesh, material: &'b Material) {
-        self.draw_mesh_instanced(mesh, material, 0..1);
-    }
-
     fn draw_mesh_instanced(
         &mut self,
         mesh: &'b Mesh,
@@ -83,10 +71,6 @@ where
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         self.set_bind_group(3, &material.bind_group, &[]);
         self.draw_indexed(0..mesh.num_elements, 0, instances);
-    }
-
-    fn draw_model(&mut self, model: &'b Model) {
-        self.draw_model_instanced(model, 0..1);
     }
 
     fn draw_model_instanced(&mut self, model: &'b Model, instances: Range<u32>) {

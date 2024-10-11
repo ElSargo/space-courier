@@ -6,7 +6,6 @@ use crate::{
     gravity::G,
     input::ButtonInput,
     instance_buffer::InstanceBuffer,
-    model::Model,
     model_loader,
     physics::Physics,
     transform::Transform,
@@ -17,14 +16,11 @@ use bevy_ecs::{
     entity::Entity,
     query::With,
     schedule::IntoSystemConfigs,
-    system::{Commands, Query, Res, Resource},
+    system::{Commands, Query, Res},
 };
-use glam::{Quat, Vec3};
+use glam::Quat;
 use rand::{thread_rng, Rng};
-use std::{
-    default::Default,
-    sync::{Arc, Mutex},
-};
+use std::default::Default;
 use wgpu::BufferUsages;
 use winit::keyboard::KeyCode;
 
@@ -101,7 +97,7 @@ fn add_planet(kb: Res<ButtonInput>, mut commands: Commands) {
 fn make_planets(mut commands: Commands) {
     let mut rng = thread_rng();
     for _ in 0..40 {
-        // make_planet(&mut rng, &mut commands);
+        make_planet(&mut rng, &mut commands);
     }
 }
 
@@ -155,10 +151,4 @@ fn make_planet(rng: &mut rand::prelude::ThreadRng, commands: &mut Commands) -> E
             },
         ))
         .id()
-}
-
-#[derive(Resource)]
-pub struct PlanetGpuData {
-    pub instance_buffer: Arc<Mutex<InstanceBuffer>>,
-    pub model: Model,
 }

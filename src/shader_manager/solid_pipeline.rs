@@ -83,7 +83,6 @@ pub struct SolidPipelineModuleResource {
 }
 
 impl<
-        'a,
         const N: usize,
         System: bevy_ecs::system::IntoSystem<(), SolidPipelineModuleResourceExtras, M>,
         M,
@@ -91,7 +90,10 @@ impl<
     for SolidPipelineModuleDescriptor<N, System, M>
 {
     // type Shaders = SolidSplitShaders;
-    fn constructor(self, world: &mut World) -> SolidPipelineConstructor {
+    fn constructor(
+        self,
+        world: &mut World,
+    ) -> impl PipelineConstructor<wgpu::RenderPipeline> + 'static {
         SolidPipelineConstructor {
             descriptor_system_id: world.register_system(self.system),
             system_id: world.register_system(solid_pass_render_descriptor),

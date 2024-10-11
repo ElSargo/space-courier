@@ -64,7 +64,7 @@ impl<'a> From<[Arc<ShaderModule>; 2]> for SplitPipelineModuleResource {
     }
 }
 
-impl<'a, PipelineType, S, M> PipelineModuleDescriptor<2, PipelineType, S, M>
+impl<PipelineType, S, M> PipelineModuleDescriptor<2, PipelineType, S, M>
     for SplitPipelineModuleDescriptor<PipelineType, S, M>
 where
     S: IntoSystem<SplitPipelineModuleResource, PipelineType, M> + 'static,
@@ -77,7 +77,7 @@ where
         // system_ids: Vec<SystemId<SplitPipelineModuleResource, PipelineType>>,
         self,
         world: &mut World,
-    ) -> SplitPipelineConstructor<PipelineType> {
+    ) -> impl PipelineConstructor<PipelineType> + 'static {
         SplitPipelineConstructor {
             system_id: world.register_system(self.system),
         }

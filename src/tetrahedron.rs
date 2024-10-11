@@ -13,7 +13,7 @@ use bevy_ecs::system::{Commands, Res};
 use bytemuck::cast_slice;
 use glam::{vec3, Mat4, Quat, Vec3, Vec3Swizzles};
 use rand::{thread_rng, Rng};
-use std::{any::Any, sync::Arc};
+use std::sync::Arc;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BufferUsages, IndexFormat,

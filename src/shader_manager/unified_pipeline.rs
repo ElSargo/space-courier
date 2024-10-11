@@ -52,7 +52,6 @@ pub struct UnifiedPipelineConstructor<PipelineType> {
 }
 
 impl<
-        'a,
         PipelineType: 'static,
         S: bevy_ecs::system::IntoSystem<UnifiedPipelineModuleResource, PipelineType, M>,
         M,
@@ -62,7 +61,7 @@ impl<
     fn as_arr(&self) -> [ShaderHandle; 1] {
         [self.handle]
     }
-    fn constructor(self, world: &mut World) -> UnifiedPipelineConstructor<PipelineType> {
+    fn constructor(self, world: &mut World) -> impl PipelineConstructor<PipelineType> + 'static {
         UnifiedPipelineConstructor {
             system_id: world.register_system(self.system),
         }

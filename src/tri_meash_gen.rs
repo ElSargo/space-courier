@@ -3,13 +3,13 @@ use std::{collections::VecDeque, mem::size_of, sync::Arc};
 use bevy_ecs::{
     component::Component,
     event::{Event, EventReader, EventWriter, Events},
-    query::{With, Without},
+    query::With,
     schedule::IntoSystemConfigs,
-    system::{Commands, In, Local, Query, Res, ResMut, Resource},
+    system::{Commands, In, Query, Res, ResMut, Resource},
 };
 
 use bytemuck::cast_slice;
-use glam::{vec3, Vec2, Vec3Swizzles};
+use glam::{Vec2, Vec3Swizzles};
 
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
@@ -17,32 +17,22 @@ use wgpu::{
     BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
     ComputePipeline, ComputePipelineDescriptor, Device, PushConstantRange, ShaderStages,
 };
-use winit::keyboard::KeyCode;
 
 use crate::{
     ecs::Initailiser,
     gpu::{pack_buffers, Packable, RD, RQ},
-    input::ButtonInput,
     instance_buffer::InstanceBuffer,
     instance_layout,
-    player_controller::{PlayerController, PlayerControllerUpright},
     renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{
         PipelineHandle, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras,
         SolidShader, UnifiedPipelineModuleResource, UnifiedShaders,
     },
     transform::Transform,
-    vertex_layout, RawInstance,
+    RawInstance,
 };
 
 type IndexType = u16;
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
-pub struct Vertex {
-    position: [f32; 4],
-}
-vertex_layout!(Vertex,[0 => Float32x4 ]);
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -238,7 +228,7 @@ pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, 
         }],
     }));
 
-    let mut tq = TriQueue {
+    let tq = TriQueue {
         queue: VecDeque::new(),
         pipeline: compute_pipeline,
         bind: output_compute_bind.clone(),
@@ -367,24 +357,5 @@ fn regen_meshes(
             tq.queue
                 .push_front((transform.translation.xz(), marker.offset));
         }
-    }
-}
-
-fn test(
-    player: Query<&Transform, With<PlayerControllerUpright>>,
-    mut meshes: Query<(&mut Transform, &TriMeshMarker), Without<PlayerControllerUpright>>,
-    mut tq: ResMut<TriQueue>,
-    mut last_position: Local<Vec2>,
-) {
-    let player = player.single();
-    let new_p = (player.translation.xz()).floor();
-    let dif_p = last_position.abs_diff_eq(new_p, 0.1);
-
-    if !dif_p {
-        *last_position = new_p;
-        let mut mesh = meshes.single_mut();
-        mesh.0.translation.x = new_p.x - CHUNK_DIM as f32 * 0.5;
-        mesh.0.translation.z = new_p.y - CHUNK_DIM as f32 * 0.5;
-        tq.queue.push_back((mesh.0.translation.xz(), mesh.1.offset));
     }
 }

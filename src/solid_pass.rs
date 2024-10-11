@@ -6,8 +6,8 @@ use bevy_ecs::{
     system::{Commands, In, Query, Res, ResMut},
 };
 use wgpu::{
-    Color, CommandEncoder, FragmentState, PipelineLayoutDescriptor, RenderBundleDescriptor,
-    RenderPipeline, TextureFormat, TextureView,
+    Color, CommandEncoder, FragmentState, PipelineLayoutDescriptor, RenderPipeline, TextureFormat,
+    TextureView,
 };
 
 use crate::{
@@ -16,8 +16,8 @@ use crate::{
     ecs::Initailiser,
     gpu::{RD, RTBL, VTBGL},
     instance_buffer::{InstanceBuffer, RenderPassExt},
-    model::{self, Vertex},
-    renderables::{SolidDrawable, SolidRenderable},
+    model::{self},
+    renderables::SolidRenderable,
     shader_manager::{
         Marker, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras, SolidShader,
     },
