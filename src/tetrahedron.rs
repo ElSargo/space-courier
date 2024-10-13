@@ -95,11 +95,6 @@ fn init(device: RD, mut commands: Commands, shader_manager: Res<ShaderLoader>) {
         },
     );
 
-    println!(
-        "Verts {:?}",
-        vertex_buffer.size() as usize / std::mem::size_of::<Vertex>()
-    );
-
     commands.spawn((
         SolidRenderable {
             pipeline,

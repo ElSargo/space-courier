@@ -205,7 +205,6 @@ pub fn insert_camera(resolution: Res<ScreenResolution>, device: RD, mut commands
     commands.insert_resource(camera_uniform);
     commands.insert_resource(ref_cam_uni);
     commands.insert_resource(camera);
-    println!("Camera inserted");
 }
 
 pub fn init_mod(ecs: &mut Initailiser) {
