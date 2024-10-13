@@ -525,10 +525,6 @@ macro_rules! load_shader {
 
 impl ShaderManagerCtrl {
     pub fn load_shader(&self, path: impl Into<PathBuf>) -> ShaderHandle {
-        let mut p: PathBuf = ".src/main.rs".into();
-        p.pop();
-        p.push("src/");
-
         let path = path.into();
         let path = path
             .canonicalize()
