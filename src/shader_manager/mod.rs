@@ -3,11 +3,12 @@ mod pipeline_shader_resource;
 mod solid_pipeline;
 mod split_pipeline;
 mod unified_pipeline;
-use bevy_ecs::{component::Component, system::Resource, world::World};
 
+use bevy_ecs::{component::Component, system::Resource, world::World};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use notify::{
     event::{AccessMode, MetadataKind},
-    recommended_watcher, Event, Watcher,
+    recommended_watcher, Event, RecommendedWatcher, Watcher,
 };
 use parking_lot::Mutex;
 use pollster::FutureExt;
@@ -21,10 +22,6 @@ use std::{
     thread,
     time::{self, Instant},
 };
-
-// use std::sync::mpsc::{channel, Receiver, Sender};
-use crossbeam_channel::{unbounded, Receiver, Sender};
-
 use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
 pub use self::{
@@ -39,28 +36,24 @@ type Adder<PipelineType> =
     Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>;
 
 pub struct ShaderManager {
+    _file_whatcher: RecommendedWatcher,
     compiled_shaders_queue: Receiver<(ShaderModule, ShaderHandle)>,
-    shaders: ShaderStorage,
-
+    shaders: HashMap<ShaderHandle, StoredShader>,
     compute_manager: PipelineManager<wgpu::ComputePipeline>,
-    compute_creation_queue: Receiver<Adder<wgpu::ComputePipeline>>,
-
     render_manager: PipelineManager<wgpu::RenderPipeline>,
-    render_creation_queue: Receiver<Adder<wgpu::RenderPipeline>>,
 }
 
 struct PipelineManager<PipelineType> {
+    creation_queue: Receiver<Adder<PipelineType>>,
     pipelines_requirements: BTreeMap<ShaderHandle, Vec<PipelineHandle>>,
     pipline_reasoureces: BTreeMap<PipelineHandle, Vec<ShaderHandle>>,
     pipeline_connstructors: BTreeMap<PipelineHandle, Box<dyn PipelineConstructor<PipelineType>>>,
-    pipelines: Arc<RwLock<BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>>,
+    pipelines: Arc<RwLock<BTreeMap<PipelineHandle, PipelineType>>>,
     pipelines_to_init: BTreeSet<PipelineHandle>,
 }
 
 #[derive(Resource)]
-pub struct PipelinesView<PipelineType>(
-    Arc<RwLock<BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>>,
-);
+pub struct PipelinesView<PipelineType>(Arc<RwLock<BTreeMap<PipelineHandle, PipelineType>>>);
 
 impl<T> Clone for PipelinesView<T> {
     fn clone(&self) -> Self {
@@ -69,7 +62,7 @@ impl<T> Clone for PipelinesView<T> {
 }
 
 pub struct PipelineView<'a, PipelineType> {
-    guard: RwLockReadGuard<'a, BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>,
+    guard: RwLockReadGuard<'a, BTreeMap<PipelineHandle, PipelineType>>,
     handle: PipelineHandle,
 }
 
@@ -77,7 +70,7 @@ impl<'a, PipelineType> Deref for PipelineView<'a, PipelineType> {
     type Target = PipelineType;
 
     fn deref(&self) -> &Self::Target {
-        self.guard.get(&self.handle).map(|sp|&sp.render_pipeline).expect(
+        self.guard.get(&self.handle).map(|sp|sp).expect(
             "\
 Pipeline dereferenced without being created, something is broken with the shader manager, 
 this shouldn't happen since the manager validates that the pipeline exists before returning the view"
@@ -86,17 +79,28 @@ this shouldn't happen since the manager validates that the pipeline exists befor
 }
 
 impl<PipelineType: 'static> PipelineManager<PipelineType> {
-    fn new(pipelines: Arc<RwLock<BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>>) -> Self {
-        Self {
-            pipelines_requirements: BTreeMap::new(),
-            pipelines_to_init: BTreeSet::new(),
+    fn new() -> (
+        Self,
+        PipelinesView<PipelineType>,
+        Sender<Adder<PipelineType>>,
+    ) {
+        let pipelines = Arc::new(RwLock::new(BTreeMap::new()));
+        let (send, rcv) = unbounded();
+        (
+            Self {
+                creation_queue: rcv,
+                pipelines_requirements: BTreeMap::new(),
+                pipelines_to_init: BTreeSet::new(),
 
-            pipelines,
+                pipelines: pipelines.clone(),
 
-            pipeline_connstructors: BTreeMap::new(),
+                pipeline_connstructors: BTreeMap::new(),
 
-            pipline_reasoureces: BTreeMap::new(),
-        }
+                pipline_reasoureces: BTreeMap::new(),
+            },
+            PipelinesView(pipelines),
+            send,
+        )
     }
 
     pub fn add_pipeline<const N: usize, Descriptor, System, M>(
@@ -123,63 +127,30 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
     fn proccess_pipline(
         &mut self,
         pipline_handle: &PipelineHandle,
-        shaders: &ShaderStorage,
+        shaders: &HashMap<ShaderHandle, StoredShader>,
         rr: &mut World,
     ) {
         self.pipelines_to_init.remove(pipline_handle);
         if let Some(reasources) = self.pipline_reasoureces.get(pipline_handle) {
             let mut compiled_shaders = Vec::with_capacity(reasources.len());
             for sh in reasources {
-                if let Some(shader) = shaders.get(*sh) {
+                if let Some(shader) = shaders.get(sh) {
                     compiled_shaders.push(shader);
                 } else {
                     return;
                 }
             }
-
-            let shader_generations = compiled_shaders
-                .iter()
-                .map(|s| s.generation)
-                .collect::<Vec<_>>();
-
-            let should_recompile =
-                if let Some(cached_pipeline) = self.pipelines.read().unwrap().get(pipline_handle) {
-                    shader_generations != cached_pipeline.generations
-                } else {
-                    true
-                };
-
-            if should_recompile {
-                if let Some(constructor) = self.pipeline_connstructors.get_mut(pipline_handle) {
-                    // let shader_modules = compiled_shaders.iter().map(|s| &s.module).collect();
-                    let new_pipeline = constructor.construct(
-                        compiled_shaders
-                            .iter()
-                            .map(|s| s.module.clone())
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                        rr,
-                    );
-                    // = self
-                    //     .gpu_device
-                    //     .create_render_pipeline(&new_pipeline_descriptor);
-                    let mut guard = self.pipelines.write().unwrap();
-                    match guard.get_mut(pipline_handle) {
-                        Some(stored_pipeline) => {
-                            stored_pipeline.render_pipeline = new_pipeline;
-                            stored_pipeline.generations = shader_generations;
-                        }
-                        None => {
-                            guard.insert(
-                                *pipline_handle,
-                                StoredPipeline {
-                                    render_pipeline: new_pipeline,
-                                    generations: shader_generations,
-                                },
-                            );
-                        }
-                    }
-                }
+            if let Some(constructor) = self.pipeline_connstructors.get_mut(pipline_handle) {
+                let new_pipeline = constructor.construct(
+                    compiled_shaders
+                        .iter()
+                        .map(|s| s.module.clone())
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                    rr,
+                );
+                let mut guard = self.pipelines.write().unwrap();
+                guard.insert(*pipline_handle, new_pipeline);
             }
         }
     }
@@ -187,7 +158,7 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
     fn recompile_dependants(
         &mut self,
         shader: ShaderHandle,
-        shaders: &ShaderStorage,
+        shaders: &HashMap<ShaderHandle, StoredShader>,
         rr: &mut World,
     ) {
         if let Some(pipelines_to_reconstruct) = self.pipelines_requirements.get(&shader).cloned() {
@@ -206,11 +177,6 @@ pub struct ShaderHandle {
 struct StoredShader {
     module: Arc<ShaderModule>,
     generation: u64,
-}
-
-struct StoredPipeline<T> {
-    render_pipeline: T,
-    generations: Vec<u64>,
 }
 
 #[derive(Component, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
@@ -243,29 +209,6 @@ macro_rules! log {
     }
 }
 
-pub struct ShaderStorage {
-    shaders: HashMap<ShaderHandle, StoredShader>,
-}
-impl ShaderStorage {
-    fn new() -> Self {
-        Self {
-            shaders: HashMap::new(),
-        }
-    }
-
-    fn get_mut<'a>(&'a mut self, handle: ShaderHandle) -> Option<&'a mut StoredShader> {
-        self.shaders.get_mut(&handle)
-    }
-
-    fn insert(&mut self, handle: ShaderHandle, item: StoredShader) {
-        self.shaders.insert(handle, item);
-    }
-
-    fn get<'a>(&'a self, handle: ShaderHandle) -> Option<&'a StoredShader> {
-        self.shaders.get(&handle)
-    }
-}
-
 impl ShaderManager {
     pub fn new(
         device: Arc<Device>,
@@ -278,41 +221,39 @@ impl ShaderManager {
         ),
         notify::Error,
     > {
-        let (compile_queue_sender, rcv) = unbounded();
+        let (compile_queue_sender, compile_queue_rcv) = unbounded();
         let (to_filter_sender, to_filter_rcv) = unbounded();
-
-        begin_whatching_fs(to_filter_rcv, compile_queue_sender);
 
         let (compiled_shaders_queue_sender, compiled_shaders_queue) = unbounded();
 
         std::thread::spawn(move || {
-            compile_shaders(rcv, device.clone(), compiled_shaders_queue_sender)
+            compile_shaders(
+                compile_queue_rcv,
+                device.clone(),
+                compiled_shaders_queue_sender,
+            )
         });
 
-        let (compute_queue_send, compute_queue_rcv) = unbounded();
-        let (render_queue_send, render_queue_rcv) = unbounded();
-
-        let render_pipelines = Arc::new(RwLock::new(BTreeMap::new()));
-        let compute_pipelines = Arc::new(RwLock::new(BTreeMap::new()));
+        let (compute_manager, compute_view, compute_queue_send) = PipelineManager::new();
+        let (render_manager, render_view, render_queue_send) = PipelineManager::new();
 
         Ok((
             Self {
+                _file_whatcher: begin_whatching_fs(to_filter_rcv, compile_queue_sender),
                 compiled_shaders_queue,
-                shaders: ShaderStorage::new(), // constructors: HashMap::new(),
-                compute_manager: PipelineManager::new(compute_pipelines.clone()),
-                compute_creation_queue: compute_queue_rcv,
-                render_manager: PipelineManager::new(render_pipelines.clone()),
-                render_creation_queue: render_queue_rcv,
+                shaders: HashMap::new(),
+                compute_manager,
+                render_manager,
             },
             ShaderLoader::new(to_filter_sender, compute_queue_send, render_queue_send),
-            PipelinesView(render_pipelines),
-            PipelinesView(compute_pipelines),
+            render_view,
+            compute_view,
         ))
     }
 
     pub fn construct_piplines(&mut self, rr: &mut World) {
         while let Ok((module, shader_handle)) = self.compiled_shaders_queue.try_recv() {
-            match self.shaders.get_mut(shader_handle) {
+            match self.shaders.get_mut(&shader_handle) {
                 Some(ss) => {
                     ss.module = module.into();
                     ss.generation += 1;
@@ -330,14 +271,11 @@ impl ShaderManager {
 
             fn process_pipelines<PipelineType: 'static>(
                 render_manager: &mut PipelineManager<PipelineType>,
-                render_creation_queue: &Receiver<
-                    Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>,
-                >,
-                shaders: &ShaderStorage,
+                shaders: &HashMap<ShaderHandle, StoredShader>,
                 rr: &mut World,
                 shader_handle: ShaderHandle,
             ) {
-                while let Ok(f) = render_creation_queue.try_recv() {
+                while let Ok(f) = render_manager.creation_queue.try_recv() {
                     f(render_manager, rr);
                 }
                 render_manager.recompile_dependants(shader_handle, &shaders, rr);
@@ -346,20 +284,8 @@ impl ShaderManager {
                 }
             }
 
-            process_pipelines(
-                &mut self.render_manager,
-                &self.render_creation_queue,
-                &self.shaders,
-                rr,
-                shader_handle,
-            );
-            process_pipelines(
-                &mut self.compute_manager,
-                &self.compute_creation_queue,
-                &self.shaders,
-                rr,
-                shader_handle,
-            );
+            process_pipelines(&mut self.render_manager, &self.shaders, rr, shader_handle);
+            process_pipelines(&mut self.compute_manager, &self.shaders, rr, shader_handle);
         }
     }
 }
@@ -370,45 +296,50 @@ const UNIX_EPOCH: Instant = unsafe { std::mem::transmute(time::UNIX_EPOCH) };
 fn begin_whatching_fs(
     to_unfilter: Receiver<(PathBuf, ShaderHandle)>,
     to_compile: Sender<(PathBuf, ShaderHandle)>,
-) {
+) -> RecommendedWatcher {
     let compile_time_map = Arc::new(Mutex::new(HashMap::new()));
     let (a, b) = (to_compile.clone(), compile_time_map.clone());
     thread::spawn(move || add_filters(to_unfilter.clone(), a, b));
 
-    let handler = move |event| {
-        println!("Recived event: {:#?}", event);
-        match event {
-            Ok(Event { kind, paths, .. }) if fs_event_is_relevent(kind) => {
-                log!("Sending paths: {paths:?} to be compiled");
-                send_paths(
-                    paths
-                        .into_iter()
-                        .flat_map(|p| {
-                            p.canonicalize().map(|path| {
-                                let id = path_to_shader_id(&path);
-                                (path, id)
-                            })
-                        })
-                        .collect(),
-                    &compile_time_map,
-                    &to_compile,
-                );
-            }
-
-            Err(ref e) => eprintln!("Whatcher error: {e}"),
-            // Ignore everything else;
-            _ => {}
-        }
-    };
-
-    let mut whatcher = recommended_watcher(handler)
+    let mut whatcher = recommended_watcher(create_fs_event_handler(compile_time_map, to_compile))
         .expect("Whatcher failed to spawn: can't load anything, exiting");
 
     whatcher
         .watch(&Path::new("./src"), notify::RecursiveMode::Recursive)
         .expect("Can't whatch paths");
 
-    Box::leak(Box::new(whatcher));
+    whatcher
+}
+
+fn create_fs_event_handler(
+    compile_time_map: Arc<Mutex<HashMap<ShaderHandle, Instant>>>,
+    to_compile: Sender<(PathBuf, ShaderHandle)>,
+) -> impl Fn(Result<Event, notify::Error>) {
+    move |event| {
+        match event {
+            Ok(Event { kind, paths, .. }) if fs_event_is_relevent(kind) => {
+                send_paths(gen_path_ids(paths), &compile_time_map, &to_compile);
+            }
+
+            Err(ref e) => eprintln!("Whatcher error: {e}"),
+
+            // Ignore everything else;
+            _ => {}
+        }
+    }
+}
+
+fn gen_path_ids(paths: Vec<PathBuf>) -> Vec<(PathBuf, ShaderHandle)> {
+    let paths = paths
+        .into_iter()
+        .flat_map(|p| {
+            p.canonicalize().map(|path| {
+                let id = path_to_shader_id(&path);
+                (path, id)
+            })
+        })
+        .collect();
+    paths
 }
 
 fn add_filters(
@@ -443,17 +374,15 @@ fn send_paths(
 ) {
     let recived_on = std::time::Instant::now();
     let mut lk = compile_time_map.lock();
-    for (path, id, last_time) in paths
-        .into_iter()
-        .filter_map(|(path, id)| lk.get_mut(&id).map(move |x| (path, id, *x)))
-    {
-        println!("Sending: {:#?}", path);
+    for (path, id) in paths.into_iter() {
+        let Some(last_time) = lk.get_mut(&id) else {
+            continue;
+        };
 
-        if recived_on.duration_since(last_time).as_millis() < 100 {
-            println!("Skipping {:#?}", path);
+        if recived_on.duration_since(*last_time).as_millis() < 100 {
             continue;
         }
-
+        *last_time = recived_on;
         cqs.send((path, id))
             .expect("Unable to send fs-msg from whatcher to shader loader, channel error");
     }
@@ -493,12 +422,12 @@ fn compile_shaders(
 }
 
 fn compile_shader(
-    id: (PathBuf, ShaderHandle),
+    (path, id): (PathBuf, ShaderHandle),
     device: Arc<Device>,
     outgoing: Sender<(ShaderModule, ShaderHandle)>,
 ) {
-    log!("Compiling ", bright_yellow, "{id:#?}", bright_purple);
-    match std::fs::read_to_string(&id.0) {
+    log!("Compiling ", bright_yellow, "{path:#?}", bright_purple);
+    match std::fs::read_to_string(&path) {
         Ok(source) => {
             let shader;
             {
@@ -515,8 +444,8 @@ fn compile_shader(
                 }
             }
 
-            log!("Compiled ", green, "{shader:#?}", bright_purple);
-            outgoing.send((shader, id.1)).unwrap();
+            log!("Compiled ", green, "{path:#?}", bright_purple);
+            outgoing.send((shader, id)).unwrap();
         }
         Err(e) => eprintln!("{e}"),
     }
