@@ -1,28 +1,9 @@
 use crate::{
-    background::Background,
-    bloom::Bloom,
-    camera::CameraUniform,
-    ecs::Initailiser,
-    fullscreen::FullscreenQuad,
-    gpu::{OutputTextureResource, ScreenFormat, RD, VTBGL},
-    input::ButtonInput,
-    marker::Marker,
+    gpu::{OutputTextureResource, ScreenFormat, VTBGL},
     planet_shadows::PlanetShadows,
-    shader_manager::{
-        PipelineHandle, PipelinesView, ShaderLoader, SplitPipelineModuleResource, SplitShaders,
-    },
-    ViewTextures,
+    prelude::*,
+    Background, ViewTextures,
 };
-
-use bevy_ecs::system::Local;
-use bevy_ecs::{
-    schedule::IntoSystemConfigs,
-    system::{Commands, In, Res, ResMut, Resource},
-};
-use wgpu::{
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, CommandEncoder, RenderPipeline, ShaderStages,
-};
-use winit::keyboard::KeyCode;
 
 #[derive(Resource)]
 pub struct Postprocessing {

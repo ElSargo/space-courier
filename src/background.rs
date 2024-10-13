@@ -1,27 +1,5 @@
-use std::sync::{atomic::AtomicBool, Arc};
-
-use crate::{
-    ecs::Initailiser,
-    gpu::{RenderCompleteCallBack, RD, RQ},
-    input::ButtonInput,
-    marker::Marker,
-    shader_manager::{
-        PipelineHandle, PipelinesView, ShaderLoader, UnifiedPipelineModuleResource, UnifiedShaders,
-    },
-    texture::TexCube,
-    time::Time,
-};
-
-use bevy_ecs::{
-    event::{Event, EventReader, EventWriter, Events},
-    system::{Commands, In, Res, ResMut, Resource},
-};
-use wgpu::{
-    util::DeviceExt, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BufferBinding, BufferUsages, CommandEncoder, ComputePassDescriptor,
-    PipelineLayout, ShaderStages, TextureDescriptor, TextureDimension, TextureFormat,
-    TextureUsages, TextureViewDescriptor,
-};
+use crate::prelude::*;
+use std::sync::atomic::AtomicBool;
 
 #[derive(Resource)]
 pub struct Background {
@@ -261,9 +239,7 @@ fn fire_bg_gen(
         }
 
         let v = bg.generating.clone();
-        callbacks.push(Box::new(move || {
-            v.store(false, std::sync::atomic::Ordering::SeqCst)
-        }));
+        callbacks.push(Box::new(move || v.store(false, Ordering::SeqCst)));
     }
 }
 

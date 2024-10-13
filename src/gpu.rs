@@ -1,18 +1,4 @@
-use crate::{camera::Camera, ecs::Initailiser, instance_buffer::InstanceBuffer};
-use bevy_ecs::prelude::Res;
-use bevy_ecs::{
-    prelude::{Query, Resource},
-    query::{QueryData, QueryFilter, WorldQuery},
-    system::Commands,
-};
-use bytemuck::Pod;
-use glam::{Vec2, Vec3Swizzles};
-use std::{
-    collections::VecDeque,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
-use wgpu::{BindGroupLayout, Device, TextureFormat, TextureView};
+use crate::prelude::*;
 
 // #[derive(Resource, Clone)]
 // pub struct DeviceResource(pub Arc<wgpu::Device>);

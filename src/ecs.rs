@@ -1,7 +1,5 @@
-use bevy_ecs::{
-    schedule::{Schedule, ScheduleLabel},
-    world::World,
-};
+use crate::prelude::*;
+use bevy_ecs::schedule::ScheduleLabel;
 
 pub struct Initailiser {
     pub world: World,

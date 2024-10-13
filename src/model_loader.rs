@@ -1,20 +1,7 @@
+use crate::{model::DrawModel, prelude::*, renderables::SolidDrawable};
+use std::sync::atomic::AtomicUsize;
+
 // Quick hax for removing async from model loader
-use lazy_static::lazy_static;
-use pollster::FutureExt;
-use std::{
-    ops::Range,
-    sync::{atomic::AtomicUsize, Arc},
-};
-
-use arc_swap::ArcSwap;
-use wgpu::{Device, Queue, RenderPass};
-
-use crate::{
-    model::{DrawModel, Model},
-    renderables::SolidDrawable,
-    resources,
-};
-
 lazy_static! {
     static ref DUMMY_MODEL: Arc<Model> = Arc::new(Model {
         meshes: vec![],
@@ -46,7 +33,7 @@ pub fn load_model(
     let idx = MODEL_INDEX.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     std::thread::spawn(move || {
-        let model = resources::load_model(file_name, &device, &queue, &layout)
+        let model = crate::resources::load_model(file_name, &device, &queue, &layout)
             .block_on()
             .unwrap();
 

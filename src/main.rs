@@ -17,6 +17,7 @@ mod planet_shadows;
 mod planets;
 mod player_controller;
 mod post;
+mod prelude;
 mod renderables;
 mod resources;
 mod shader_manager;
@@ -34,34 +35,13 @@ use crate::{
     gpu::ScreenFormat,
     input::AxisEvent,
     post::Postprocessing,
+    prelude::*,
     solid_pass::Solidpass,
 };
 use background::Background;
-use bevy_ecs::{
-    prelude::Resource,
-    system::{Local, Res},
-    world::World,
-};
-use ecs::{InitSchedual, Initailiser, ResizeSchedual};
-use glam::{Mat3, Mat4};
+
 use gpu::{
     DeviceResource, OutputTextureResource, QueueResource, RenderCompleteCallBack, ScreenResolution,
-};
-use input::KeyEvent;
-use pollster::FutureExt;
-use shader_manager::{PipelineHandle, PipelinesView, ShaderLoader, ShaderManager};
-use std::{collections::VecDeque, sync::Arc};
-use texture::Texture;
-use time::Time;
-use transform::Transform;
-use wgpu::{BindGroup, BindGroupLayout, Device, TextureFormat};
-use winit::{
-    application::ApplicationHandler,
-    dpi::PhysicalSize,
-    event::WindowEvent,
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    keyboard::{Key, NamedKey, PhysicalKey},
-    window::WindowAttributes,
 };
 
 fn init_modules(initialiser: &mut Initailiser) {
@@ -106,7 +86,14 @@ pub fn run() {
 }
 
 // lib.rs
-use winit::window::Window;
+use winit::{
+    application::ApplicationHandler,
+    dpi::PhysicalSize,
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    keyboard::{Key, NamedKey, PhysicalKey},
+    window::{Window, WindowAttributes},
+};
 
 #[derive(Resource)]
 struct ViewTextures {

@@ -1,28 +1,4 @@
-use bevy_ecs::{
-    schedule::IntoSystemConfigs,
-    system::{Commands, In, Res, ResMut, Resource},
-};
-use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, Color, CommandEncoder,
-    Device, PipelineLayout, RenderPipeline, ShaderModule, ShaderStages, TextureDescriptor,
-    TextureFormat, TextureUsages, TextureView, TextureViewDescriptor, VertexBufferLayout,
-};
-
-use crate::{
-    background::{self, Background},
-    camera::CameraUniform,
-    ecs::Initailiser,
-    fullscreen::FullscreenQuad,
-    gpu::{QueueResource, ScreenResolution, RD},
-    input::ButtonInput,
-    load_shader,
-    marker::Marker,
-    shader_manager::{
-        PipelineHandle, PipelinesView, ShaderLoader, SplitPipelineModuleResource, SplitShaders,
-    },
-    ViewTextures,
-};
+use crate::{background, prelude::*, ViewTextures};
 
 pub fn init_mod(ecs: &mut Initailiser) {
     ecs.init.add_systems(

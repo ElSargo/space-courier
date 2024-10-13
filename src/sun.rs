@@ -1,25 +1,9 @@
-use crate::shader_manager::SolidShader;
 use crate::{
-    gpu::{self, pack_buffers, RD, RQ, RTBL},
-    marker::Marker,
-    model, model_loader,
-    physics::Physics,
+    gpu::{self, RTBL},
+    mk_pipeline_layout, model, model_loader,
+    prelude::*,
     renderables::SolidRenderable,
-    shader_manager::SolidPipelineModuleResourceExtras,
-};
-use bevy_ecs::prelude::Res;
-use bevy_ecs::schedule::IntoSystemConfigs;
-use bevy_ecs::system::Commands;
-
-use glam::vec3;
-use glam::Quat;
-
-use bevy_ecs::{component::Component, query::With, system::Resource};
-use glam::Vec3;
-
-use crate::{
-    camera::CameraUniform, ecs::Initailiser, instance_buffer::InstanceBuffer, mk_pipeline_layout,
-    shader_manager::ShaderLoader, transform::Transform, RawInstance,
+    shader_manager::{SolidPipelineModuleResourceExtras, SolidShader},
 };
 
 pub(crate) const SUN_MASS: f32 = 20000.0;
