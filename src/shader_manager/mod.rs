@@ -1,3 +1,4 @@
+mod loader;
 mod pipeline_shader_resource;
 mod solid_pipeline;
 mod split_pipeline;
@@ -10,7 +11,6 @@ use notify::{
 };
 use parking_lot::Mutex;
 use pollster::FutureExt;
-use rand::random;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     marker::PhantomData,
@@ -27,8 +27,8 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 
 use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
-use self::pipeline_shader_resource::PipelineShaderDescriptor;
 pub use self::{
+    loader::ShaderLoader,
     pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor},
     solid_pipeline::{SolidPipelineModuleResource, SolidPipelineModuleResourceExtras, SolidShader},
     split_pipeline::{SplitPipelineModuleResource, SplitShaders},
@@ -55,20 +55,6 @@ struct PipelineManager<PipelineType> {
     pipeline_connstructors: BTreeMap<PipelineHandle, Box<dyn PipelineConstructor<PipelineType>>>,
     pipelines: Arc<RwLock<BTreeMap<PipelineHandle, StoredPipeline<PipelineType>>>>,
     pipelines_to_init: BTreeSet<PipelineHandle>,
-}
-
-/// Ecs accesible struct to obtain shader and pipeline handles
-/// Each method imideatly returns a handle without blocking and
-/// shceduals the requested reasorce to be created
-#[derive(Resource, Clone)]
-pub struct ShaderManagerCtrl {
-    /// Used to tell the whatcher which files should be compiled
-    shader_src_filter_adder: Sender<(PathBuf, ShaderHandle)>,
-    /// Used to create render pipelines, they are queues beacuse the creation
-    /// is defered until right before the render stage when the provied consturtors
-    /// can have exclusive access to the ecs world
-    compute_creation_queue: Sender<Adder<wgpu::ComputePipeline>>,
-    render_creation_queue: Sender<Adder<wgpu::RenderPipeline>>,
 }
 
 #[derive(Resource)]
@@ -232,6 +218,7 @@ pub struct PipelineHandle {
     id: u64,
 }
 
+#[macro_export]
 macro_rules! log_expand {
     (  $txt:expr, $col:ident ) => {
         &color_eyre::owo_colors::OwoColorize::$col(&format!($txt))
@@ -243,6 +230,7 @@ macro_rules! log_expand {
 
 }
 
+#[macro_export]
 macro_rules! log {
     ($($t:tt), +) => {
         println!(
@@ -284,7 +272,7 @@ impl ShaderManager {
     ) -> Result<
         (
             Self,
-            ShaderManagerCtrl,
+            ShaderLoader,
             PipelinesView<wgpu::RenderPipeline>,
             PipelinesView<wgpu::ComputePipeline>,
         ),
@@ -316,11 +304,7 @@ impl ShaderManager {
                 render_manager: PipelineManager::new(render_pipelines.clone()),
                 render_creation_queue: render_queue_rcv,
             },
-            ShaderManagerCtrl {
-                shader_src_filter_adder: to_filter_sender,
-                compute_creation_queue: compute_queue_send,
-                render_creation_queue: render_queue_send,
-            },
+            ShaderLoader::new(to_filter_sender, compute_queue_send, render_queue_send),
             PipelinesView(render_pipelines),
             PipelinesView(compute_pipelines),
         ))
@@ -548,100 +532,6 @@ fn print_complile_error(e: wgpu::Error) {
             source: _,
             description: _,
         } => todo!(),
-    }
-}
-
-#[macro_export]
-macro_rules! load_shader {
-    ( $sm:expr, $path:expr) => {{
-        let mut path: std::path::PathBuf = file!().into();
-        path.pop();
-        path.push($path);
-        $sm.load_shader(path)
-    }};
-}
-
-impl ShaderManagerCtrl {
-    pub fn load_shader(&self, path: impl Into<PathBuf>) -> ShaderHandle {
-        let path = path.into();
-        let path = path
-            .canonicalize()
-            .expect(&format!("Unable to resolve file path {path:#?}"));
-
-        log!(
-            "Sent ",
-            bright_red,
-            "{path:#?}",
-            bright_purple,
-            " to queue",
-            white
-        );
-
-        let handle = path_to_shader_id(&path);
-
-        self.shader_src_filter_adder
-            .send((path, handle))
-            .expect("Unable to send shader to load queue");
-
-        handle
-    }
-
-    pub fn add_render_pipeline<'a, const N: usize, System, Shaders, M>(
-        &'a self,
-        shaders: Shaders,
-        system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::RenderPipeline, M> + Send + Sync + 'static,
-    ) -> PipelineHandle
-    where
-        Shaders: PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>
-            + std::marker::Send
-            + std::marker::Sync,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor: Send,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor: Sync,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor:
-            'static,
-    {
-        let pipeline_handle = PipelineHandle { id: random() };
-
-        let descriptor = Shaders::into_descriptor(shaders, system);
-
-        self.render_creation_queue
-            .send(Box::new(
-                move |render_manager: &mut PipelineManager<wgpu::RenderPipeline>, rr| {
-                    render_manager.add_pipeline(descriptor, pipeline_handle, rr)
-                },
-            ))
-            .expect("Render creatation queue closed for some reason, this shouldn't happen");
-        pipeline_handle
-    }
-
-    pub fn add_compute_pipeline<'a, const N: usize, System, Shaders, M>(
-        &'a self,
-        shaders: Shaders,
-        system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::ComputePipeline, M> + Send + Sync + 'static,
-    ) -> PipelineHandle
-    where
-        Shaders: PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>
-            + std::marker::Send
-            + std::marker::Sync,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
-            Send,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
-            Sync,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
-            'static,
-    {
-        let pipeline_handle = PipelineHandle { id: random() };
-
-        let descriptor = Shaders::into_descriptor(shaders, system);
-
-        self.compute_creation_queue
-            .send(Box::new(
-                move |compute_manager: &mut PipelineManager<wgpu::ComputePipeline>, rr| {
-                    compute_manager.add_pipeline(descriptor, pipeline_handle, rr)
-                },
-            ))
-            .expect("Compute creatation queue closed for some reason, this shouldn't happen");
-        pipeline_handle
     }
 }
 

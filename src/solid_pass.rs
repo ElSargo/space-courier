@@ -19,7 +19,7 @@ use crate::{
     model::{self},
     renderables::SolidRenderable,
     shader_manager::{
-        Marker, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras, SolidShader,
+        Marker, PipelinesView, ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader,
     },
     texture, RawInstance, ReflectedViewTextures, StandardRenderPipeline, ViewTextures,
 };
@@ -119,7 +119,7 @@ pub fn init_mod(ecs: &mut Initailiser) {
         .add_systems(init_normal_pipeline.after(crate::gpu::mk_texture_bind_group_layout_resource));
 }
 
-pub fn init_normal_pipeline(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands) {
+pub fn init_normal_pipeline(shader_manager: Res<ShaderLoader>, mut commands: Commands) {
     let normal_shader = shader_manager.load_shader("./src/shader.wgsl");
     commands.insert_resource(StandardRenderPipeline {
         handle: shader_manager.add_render_pipeline(

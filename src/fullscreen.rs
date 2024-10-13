@@ -9,7 +9,7 @@ use wgpu::{
 use crate::{
     ecs::Initailiser,
     gpu::RD,
-    shader_manager::{ShaderHandle, ShaderManagerCtrl},
+    shader_manager::{ShaderHandle, ShaderLoader},
     vertex_layout,
 };
 
@@ -47,7 +47,7 @@ pub struct FullscreenQuad {
 }
 
 impl FullscreenQuad {
-    pub fn init(device: &wgpu::Device, shader_manager: &ShaderManagerCtrl) -> Self {
+    pub fn init(device: &wgpu::Device, shader_manager: &ShaderLoader) -> Self {
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("post_buffer_index"),
             contents: cast_slice(INDICES),
@@ -77,7 +77,7 @@ impl FullscreenQuad {
     }
 }
 
-pub fn init_fsq(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands) {
+pub fn init_fsq(device: RD, shader_manager: Res<ShaderLoader>, mut commands: Commands) {
     let fs = FullscreenQuad::init(&device, shader_manager.as_ref());
 
     commands.insert_resource(fs);

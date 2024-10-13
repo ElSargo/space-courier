@@ -23,7 +23,7 @@ use glam::Vec3;
 
 use crate::{
     camera::CameraUniform, ecs::Initailiser, instance_buffer::InstanceBuffer, mk_pipeline_layout,
-    shader_manager::ShaderManagerCtrl, transform::Transform, RawInstance,
+    shader_manager::ShaderLoader, transform::Transform, RawInstance,
 };
 
 pub(crate) const SUN_MASS: f32 = 20000.0;
@@ -34,7 +34,7 @@ pub struct Sun;
 pub fn init(
     device: RD,
     queue: RQ,
-    shader_manager: Res<ShaderManagerCtrl>,
+    shader_manager: Res<ShaderLoader>,
     texture_bind_group_layout: RTBL,
     cgs: Res<CameraUniform>,
     mut commands: Commands,

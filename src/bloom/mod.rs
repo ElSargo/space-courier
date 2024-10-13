@@ -18,7 +18,7 @@ use crate::{
     input::ButtonInput,
     load_shader,
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleResource,
+        Marker, PipelineHandle, PipelinesView, ShaderLoader, SplitPipelineModuleResource,
         SplitShaders,
     },
     ViewTextures,
@@ -387,7 +387,7 @@ pub fn init_res(
     fsq: Res<FullscreenQuad>,
 
     mut commands: Commands,
-    shader_manager: Res<ShaderManagerCtrl>,
+    shader_manager: Res<ShaderLoader>,
 ) {
     // let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
     //     label: Some("Bloom bind group layout"),

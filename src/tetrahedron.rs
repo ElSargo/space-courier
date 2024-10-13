@@ -4,7 +4,7 @@ use crate::{ecs::Initailiser, gpu::RD};
 use crate::{
     instance_buffer,
     renderables::{SolidDrawable, SolidRenderable},
-    shader_manager::{ShaderManagerCtrl, SolidPipelineModuleResourceExtras, SolidShader},
+    shader_manager::{ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader},
 };
 use crate::{instance_layout, vertex_layout};
 use bevy_ecs::component::Component;
@@ -56,7 +56,7 @@ impl Packable for Instance {
 }
 
 const BATCH_SIZE: usize = 3_000;
-fn init(device: RD, mut commands: Commands, shader_manager: Res<ShaderManagerCtrl>) {
+fn init(device: RD, mut commands: Commands, shader_manager: Res<ShaderLoader>) {
     let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Stars batch vertex buffer"),
         usage: BufferUsages::VERTEX,

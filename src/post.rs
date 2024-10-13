@@ -8,7 +8,7 @@ use crate::{
     input::ButtonInput,
     planet_shadows::PlanetShadows,
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, SplitPipelineModuleResource,
+        Marker, PipelineHandle, PipelinesView, ShaderLoader, SplitPipelineModuleResource,
         SplitShaders,
     },
     ViewTextures,
@@ -35,7 +35,7 @@ impl Postprocessing {
         fullscreen_quad: Res<FullscreenQuad>,
         planet_shadows: Option<Res<PlanetShadows>>,
         bg: Res<Background>,
-        shader_manager: Res<ShaderManagerCtrl>,
+        shader_manager: Res<ShaderLoader>,
         mut commands: Commands,
         vtbgl: VTBGL,
     ) {

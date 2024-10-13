@@ -24,7 +24,7 @@ use crate::{
     instance_layout,
     planets::Planet,
     shader_manager::{
-        PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleResource,
+        PipelineHandle, PipelinesView, ShaderLoader, UnifiedPipelineModuleResource,
         UnifiedShaders,
     },
     transform::Transform,
@@ -70,7 +70,7 @@ impl PlanetShadows {
     pub fn new(
         device: &Device,
         resolution: &ScreenResolution,
-        shader_manager: ShaderManagerCtrl,
+        shader_manager: ShaderLoader,
         view_textures_bind_group_layout: &BindGroupLayout,
     ) -> Self {
         let camera_bind_group_layout =

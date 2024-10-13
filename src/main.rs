@@ -48,7 +48,7 @@ use gpu::{
 };
 use input::KeyEvent;
 use pollster::FutureExt;
-use shader_manager::{PipelineHandle, PipelinesView, ShaderManager, ShaderManagerCtrl};
+use shader_manager::{PipelineHandle, PipelinesView, ShaderLoader, ShaderManager};
 use std::{collections::VecDeque, sync::Arc};
 use texture::Texture;
 use time::Time;
@@ -132,7 +132,7 @@ struct GraphicsContext<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     _adapter: wgpu::Adapter,
     shader_manager: ShaderManager,
-    shader_manager_ctl: ShaderManagerCtrl,
+    shader_manager_ctl: ShaderLoader,
     render_pipelines_view: PipelinesView<wgpu::RenderPipeline>,
     compute_pipelines_view: PipelinesView<wgpu::ComputePipeline>,
 }

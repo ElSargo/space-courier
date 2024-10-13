@@ -5,7 +5,7 @@ use crate::{
     gpu::{RenderCompleteCallBack, RD, RQ},
     input::ButtonInput,
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderManagerCtrl, UnifiedPipelineModuleResource,
+        Marker, PipelineHandle, PipelinesView, ShaderLoader, UnifiedPipelineModuleResource,
         UnifiedShaders,
     },
     texture::TexCube,
@@ -54,7 +54,7 @@ pub fn init_mod(ecs: &mut Initailiser) {
     ecs.world.init_resource::<Events<FireBGGenEvent>>();
 }
 
-pub fn init_background(device: RD, shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands) {
+pub fn init_background(device: RD, shader_manager: Res<ShaderLoader>, mut commands: Commands) {
     let storage_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
         label: Some("Background storage texture layout"),
         entries: &[

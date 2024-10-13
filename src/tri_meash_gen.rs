@@ -25,7 +25,7 @@ use crate::{
     instance_layout,
     renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{
-        PipelineHandle, PipelinesView, ShaderManagerCtrl, SolidPipelineModuleResourceExtras,
+        PipelineHandle, PipelinesView, ShaderLoader, SolidPipelineModuleResourceExtras,
         SolidShader, UnifiedPipelineModuleResource, UnifiedShaders,
     },
     transform::Transform,
@@ -139,7 +139,7 @@ const TOTAL_CHUNK_DATA_SIZE: usize = size_of::<f32>() * CHUNKS * CHUNK_SIZE;
 #[derive(Event)]
 struct ReGenMeshes;
 
-pub fn init_res(shader_manager: Res<ShaderManagerCtrl>, mut commands: Commands, device: RD) {
+pub fn init_res(shader_manager: Res<ShaderLoader>, mut commands: Commands, device: RD) {
     let output_compute_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
         label: Some("Background outpus buffer layout"),
         entries: &[BindGroupLayoutEntry {
