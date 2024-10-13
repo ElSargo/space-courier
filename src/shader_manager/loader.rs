@@ -1,6 +1,6 @@
 use super::{
-    path_to_shader_id, pipeline_shader_resource::PipelineShaderDescriptor, Adder, PipelineHandle,
-    PipelineManager, ShaderHandle,
+    path_to_shader_id, pipeline_manager::Adder, pipeline_shader_resource::PipelineShaderDescriptor,
+    PipelineHandle, PipelineManager, ShaderHandle,
 };
 use crate::{log, log_expand};
 use bevy_ecs::system::Resource;

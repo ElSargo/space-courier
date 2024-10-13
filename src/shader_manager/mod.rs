@@ -1,9 +1,18 @@
 mod loader;
+mod pipeline_manager;
 mod pipeline_shader_resource;
 mod solid_pipeline;
 mod split_pipeline;
 mod unified_pipeline;
 
+pub use self::{
+    loader::ShaderLoader,
+    pipeline_manager::PipelinesView,
+    pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor},
+    solid_pipeline::{SolidPipelineModuleResource, SolidPipelineModuleResourceExtras, SolidShader},
+    split_pipeline::{SplitPipelineModuleResource, SplitShaders},
+    unified_pipeline::{UnifiedPipelineModuleResource, UnifiedShaders},
+};
 use bevy_ecs::{component::Component, system::Resource, world::World};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use notify::{
@@ -11,172 +20,31 @@ use notify::{
     recommended_watcher, Event, RecommendedWatcher, Watcher,
 };
 use parking_lot::Mutex;
+use pipeline_manager::PipelineManager;
 use pollster::FutureExt;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::HashMap,
     marker::PhantomData,
     ops::{Deref, DerefMut},
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock, RwLockReadGuard},
+    sync::Arc,
     thread,
     time::{self, Instant},
 };
 use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
-pub use self::{
-    loader::ShaderLoader,
-    pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor},
-    solid_pipeline::{SolidPipelineModuleResource, SolidPipelineModuleResourceExtras, SolidShader},
-    split_pipeline::{SplitPipelineModuleResource, SplitShaders},
-    unified_pipeline::{UnifiedPipelineModuleResource, UnifiedShaders},
-};
-
-type Adder<PipelineType> =
-    Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>;
-
 pub struct ShaderManager {
     _file_whatcher: RecommendedWatcher,
     compiled_shaders_queue: Receiver<(ShaderModule, ShaderHandle)>,
-    shaders: HashMap<ShaderHandle, StoredShader>,
+    shaders: HashMap<ShaderHandle, Arc<ShaderModule>>,
     compute_manager: PipelineManager<wgpu::ComputePipeline>,
     render_manager: PipelineManager<wgpu::RenderPipeline>,
-}
-
-struct PipelineManager<PipelineType> {
-    creation_queue: Receiver<Adder<PipelineType>>,
-    pipelines_requirements: BTreeMap<ShaderHandle, Vec<PipelineHandle>>,
-    pipline_reasoureces: BTreeMap<PipelineHandle, Vec<ShaderHandle>>,
-    pipeline_connstructors: BTreeMap<PipelineHandle, Box<dyn PipelineConstructor<PipelineType>>>,
-    pipelines: Arc<RwLock<BTreeMap<PipelineHandle, PipelineType>>>,
-    pipelines_to_init: BTreeSet<PipelineHandle>,
-}
-
-#[derive(Resource)]
-pub struct PipelinesView<PipelineType>(Arc<RwLock<BTreeMap<PipelineHandle, PipelineType>>>);
-
-impl<T> Clone for PipelinesView<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-pub struct PipelineView<'a, PipelineType> {
-    guard: RwLockReadGuard<'a, BTreeMap<PipelineHandle, PipelineType>>,
-    handle: PipelineHandle,
-}
-
-impl<'a, PipelineType> Deref for PipelineView<'a, PipelineType> {
-    type Target = PipelineType;
-
-    fn deref(&self) -> &Self::Target {
-        self.guard.get(&self.handle).map(|sp|sp).expect(
-            "\
-Pipeline dereferenced without being created, something is broken with the shader manager, 
-this shouldn't happen since the manager validates that the pipeline exists before returning the view"
-        )
-    }
-}
-
-impl<PipelineType: 'static> PipelineManager<PipelineType> {
-    fn new() -> (
-        Self,
-        PipelinesView<PipelineType>,
-        Sender<Adder<PipelineType>>,
-    ) {
-        let pipelines = Arc::new(RwLock::new(BTreeMap::new()));
-        let (send, rcv) = unbounded();
-        (
-            Self {
-                creation_queue: rcv,
-                pipelines_requirements: BTreeMap::new(),
-                pipelines_to_init: BTreeSet::new(),
-
-                pipelines: pipelines.clone(),
-
-                pipeline_connstructors: BTreeMap::new(),
-
-                pipline_reasoureces: BTreeMap::new(),
-            },
-            PipelinesView(pipelines),
-            send,
-        )
-    }
-
-    pub fn add_pipeline<const N: usize, Descriptor, System, M>(
-        &mut self,
-        descriptor: Descriptor,
-        pipeline_handle: PipelineHandle,
-        rr: &mut World,
-    ) where
-        Descriptor: PipelineModuleDescriptor<N, PipelineType, System, M>, // Descriptor: PipelineModuleDescriptor<N, PipelineType, System, M> + Send + Sync,
-    {
-        for shader_handle in descriptor.as_arr() {
-            self.pipelines_requirements
-                .entry(shader_handle)
-                .or_insert(vec![])
-                .push(pipeline_handle)
-        }
-
-        self.pipline_reasoureces
-            .insert(pipeline_handle, descriptor.as_arr().to_vec());
-        self.pipeline_connstructors
-            .insert(pipeline_handle, Box::new(descriptor.constructor(rr)));
-    }
-
-    fn proccess_pipline(
-        &mut self,
-        pipline_handle: &PipelineHandle,
-        shaders: &HashMap<ShaderHandle, StoredShader>,
-        rr: &mut World,
-    ) {
-        self.pipelines_to_init.remove(pipline_handle);
-        if let Some(reasources) = self.pipline_reasoureces.get(pipline_handle) {
-            let mut compiled_shaders = Vec::with_capacity(reasources.len());
-            for sh in reasources {
-                if let Some(shader) = shaders.get(sh) {
-                    compiled_shaders.push(shader);
-                } else {
-                    return;
-                }
-            }
-            if let Some(constructor) = self.pipeline_connstructors.get_mut(pipline_handle) {
-                let new_pipeline = constructor.construct(
-                    compiled_shaders
-                        .iter()
-                        .map(|s| s.module.clone())
-                        .collect::<Vec<_>>()
-                        .as_slice(),
-                    rr,
-                );
-                let mut guard = self.pipelines.write().unwrap();
-                guard.insert(*pipline_handle, new_pipeline);
-            }
-        }
-    }
-
-    fn recompile_dependants(
-        &mut self,
-        shader: ShaderHandle,
-        shaders: &HashMap<ShaderHandle, StoredShader>,
-        rr: &mut World,
-    ) {
-        if let Some(pipelines_to_reconstruct) = self.pipelines_requirements.get(&shader).cloned() {
-            for pipline_handle in pipelines_to_reconstruct {
-                self.proccess_pipline(&pipline_handle, &shaders, rr);
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ShaderHandle {
     id: u64,
-}
-
-struct StoredShader {
-    module: Arc<ShaderModule>,
-    generation: u64,
 }
 
 #[derive(Component, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
@@ -253,39 +121,12 @@ impl ShaderManager {
 
     pub fn construct_piplines(&mut self, rr: &mut World) {
         while let Ok((module, shader_handle)) = self.compiled_shaders_queue.try_recv() {
-            match self.shaders.get_mut(&shader_handle) {
-                Some(ss) => {
-                    ss.module = module.into();
-                    ss.generation += 1;
-                }
-                None => {
-                    self.shaders.insert(
-                        shader_handle,
-                        StoredShader {
-                            module: module.into(),
-                            generation: 0,
-                        },
-                    );
-                }
-            }
+            self.shaders.insert(shader_handle, module.into());
 
-            fn process_pipelines<PipelineType: 'static>(
-                render_manager: &mut PipelineManager<PipelineType>,
-                shaders: &HashMap<ShaderHandle, StoredShader>,
-                rr: &mut World,
-                shader_handle: ShaderHandle,
-            ) {
-                while let Ok(f) = render_manager.creation_queue.try_recv() {
-                    f(render_manager, rr);
-                }
-                render_manager.recompile_dependants(shader_handle, &shaders, rr);
-                for pipeline_handle in render_manager.pipelines_to_init.clone().iter() {
-                    render_manager.proccess_pipline(&pipeline_handle, &shaders, rr);
-                }
-            }
-
-            process_pipelines(&mut self.render_manager, &self.shaders, rr, shader_handle);
-            process_pipelines(&mut self.compute_manager, &self.shaders, rr, shader_handle);
+            self.render_manager
+                .process_pipelines(&self.shaders, rr, shader_handle);
+            self.compute_manager
+                .process_pipelines(&self.shaders, rr, shader_handle);
         }
     }
 }
@@ -329,6 +170,16 @@ fn create_fs_event_handler(
     }
 }
 
+/// Stable hash
+fn path_to_shader_id(path: &PathBuf) -> ShaderHandle {
+    use std::hash::Hasher;
+    let mut hasher = seahash::SeaHasher::default();
+    hasher.write(path.as_os_str().as_bytes());
+    ShaderHandle {
+        id: hasher.finish(),
+    }
+}
+
 fn gen_path_ids(paths: Vec<PathBuf>) -> Vec<(PathBuf, ShaderHandle)> {
     let paths = paths
         .into_iter()
@@ -367,6 +218,7 @@ fn add_filters(
         );
     }
 }
+
 fn send_paths(
     paths: Vec<(PathBuf, ShaderHandle)>,
     compile_time_map: &Mutex<HashMap<ShaderHandle, std::time::Instant>>,
@@ -398,16 +250,6 @@ fn fs_event_is_relevent(kind: notify::EventKind) -> bool {
                     | notify::event::ModifyKind::Name(notify::event::RenameMode::From),
             )
     )
-}
-
-/// Stable hash
-fn path_to_shader_id(path: &PathBuf) -> ShaderHandle {
-    use std::hash::Hasher;
-    let mut hasher = seahash::SeaHasher::default();
-    hasher.write(path.as_os_str().as_bytes());
-    ShaderHandle {
-        id: hasher.finish(),
-    }
 }
 
 fn compile_shaders(
@@ -461,16 +303,6 @@ fn print_complile_error(e: wgpu::Error) {
             source: _,
             description: _,
         } => todo!(),
-    }
-}
-
-impl<PipelineType> PipelinesView<PipelineType> {
-    pub fn get(&self, handle: &PipelineHandle) -> Option<PipelineView<PipelineType>> {
-        let guard = self.0.read().unwrap();
-        guard.contains_key(handle).then_some(PipelineView {
-            guard,
-            handle: *handle,
-        })
     }
 }
 
