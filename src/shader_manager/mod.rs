@@ -6,8 +6,9 @@ use bevy_ecs::{component::Component, system::Resource, world::World};
 
 use notify::{
     event::{AccessMode, MetadataKind},
-    recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher,
+    recommended_watcher, Event, Watcher,
 };
+use parking_lot::Mutex;
 use pollster::FutureExt;
 use rand::random;
 use std::{
@@ -15,14 +16,15 @@ use std::{
     marker::PhantomData,
     ops::{Deref, DerefMut},
     os::unix::ffi::OsStrExt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockReadGuard},
+    thread,
+    time::{self, Instant},
 };
 
 // use std::sync::mpsc::{channel, Receiver, Sender};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
-use parking_lot::Mutex;
 use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
 use self::pipeline_shader_resource::PipelineShaderDescriptor;
@@ -55,10 +57,16 @@ struct PipelineManager<PipelineType> {
     pipelines_to_init: BTreeSet<PipelineHandle>,
 }
 
+/// Ecs accesible struct to obtain shader and pipeline handles
+/// Each method imideatly returns a handle without blocking and
+/// shceduals the requested reasorce to be created
 #[derive(Resource, Clone)]
 pub struct ShaderManagerCtrl {
-    whatcher: Arc<Mutex<RecommendedWatcher>>,
-    compile_queue_sender: Sender<(PathBuf, ShaderHandle)>,
+    /// Used to tell the whatcher which files should be compiled
+    shader_src_filter_adder: Sender<(PathBuf, ShaderHandle)>,
+    /// Used to create render pipelines, they are queues beacuse the creation
+    /// is defered until right before the render stage when the provied consturtors
+    /// can have exclusive access to the ecs world
     compute_creation_queue: Sender<Adder<wgpu::ComputePipeline>>,
     render_creation_queue: Sender<Adder<wgpu::RenderPipeline>>,
 }
@@ -283,31 +291,9 @@ impl ShaderManager {
         notify::Error,
     > {
         let (compile_queue_sender, rcv) = unbounded();
-        let cqs = compile_queue_sender.clone();
-        let mut compile_time_map = HashMap::new();
+        let (to_filter_sender, to_filter_rcv) = unbounded();
 
-        let (re_whatch_send, re_whatch_rcv) = unbounded();
-
-        let whatcher = Arc::new(Mutex::new(recommended_watcher(move |event| {
-            println!("Recived event: {:#?}", event);
-            match event {
-                Ok(Event { kind, paths, .. }) if fs_event_is_relevent(kind) => {
-                    send_paths(paths, &mut compile_time_map, &cqs);
-                }
-                Ok(Event {
-                    kind: notify::event::EventKind::Remove(_),
-                    paths,
-                    ..
-                }) => {
-                    re_whatch_send.send(paths).unwrap();
-                }
-                Err(ref e) => eprintln!("Whatcher error: {e}"),
-                _ => {}
-            }
-        })?));
-
-        let wt = whatcher.clone();
-        std::thread::spawn(move || re_whatch_paths(re_whatch_rcv, wt));
+        begin_whatching_fs(to_filter_rcv, compile_queue_sender);
 
         let (compiled_shaders_queue_sender, compiled_shaders_queue) = unbounded();
 
@@ -331,8 +317,7 @@ impl ShaderManager {
                 render_creation_queue: render_queue_rcv,
             },
             ShaderManagerCtrl {
-                whatcher,
-                compile_queue_sender,
+                shader_src_filter_adder: to_filter_sender,
                 compute_creation_queue: compute_queue_send,
                 render_creation_queue: render_queue_send,
             },
@@ -395,40 +380,95 @@ impl ShaderManager {
     }
 }
 
-fn re_whatch_paths(
-    re_whatch_rcv: Receiver<Vec<PathBuf>>,
-    whatcher: Arc<Mutex<notify::INotifyWatcher>>,
+// Is safe since Instant boils down to a time spec
+const UNIX_EPOCH: Instant = unsafe { std::mem::transmute(time::UNIX_EPOCH) };
+
+fn begin_whatching_fs(
+    to_unfilter: Receiver<(PathBuf, ShaderHandle)>,
+    to_compile: Sender<(PathBuf, ShaderHandle)>,
 ) {
-    while let Ok(paths) = re_whatch_rcv.recv() {
-        {
-            let mut whatcher = whatcher.lock();
-            for path in paths {
-                whatcher.watch(&path, RecursiveMode::NonRecursive).unwrap();
+    let compile_time_map = Arc::new(Mutex::new(HashMap::new()));
+    let (a, b) = (to_compile.clone(), compile_time_map.clone());
+    thread::spawn(move || add_filters(to_unfilter.clone(), a, b));
+
+    let handler = move |event| {
+        println!("Recived event: {:#?}", event);
+        match event {
+            Ok(Event { kind, paths, .. }) if fs_event_is_relevent(kind) => {
+                log!("Sending paths: {paths:?} to be compiled");
+                send_paths(
+                    paths
+                        .into_iter()
+                        .flat_map(|p| {
+                            p.canonicalize().map(|path| {
+                                let id = path_to_shader_id(&path);
+                                (path, id)
+                            })
+                        })
+                        .collect(),
+                    &compile_time_map,
+                    &to_compile,
+                );
             }
+
+            Err(ref e) => eprintln!("Whatcher error: {e}"),
+            // Ignore everything else;
+            _ => {}
         }
-    }
+    };
+
+    let mut whatcher = recommended_watcher(handler)
+        .expect("Whatcher failed to spawn: can't load anything, exiting");
+
+    whatcher
+        .watch(&Path::new("./src"), notify::RecursiveMode::Recursive)
+        .expect("Can't whatch paths");
+
+    Box::leak(Box::new(whatcher));
 }
 
+fn add_filters(
+    to_unfilter: Receiver<(PathBuf, ShaderHandle)>,
+    to_compile: Sender<(PathBuf, ShaderHandle)>,
+    compile_time_map: Arc<Mutex<HashMap<ShaderHandle, std::time::Instant>>>,
+) {
+    loop {
+        let mut p = vec![to_unfilter.recv().unwrap()];
+        while let Ok(i) = to_unfilter.try_recv() {
+            p.push(i);
+        }
+        {
+            let mut lk = compile_time_map.lock();
+            for (_, id) in p.iter() {
+                lk.entry(*id).or_insert(UNIX_EPOCH);
+            }
+        }
+
+        send_paths(
+            // Avoid allocating unsessisary vecs by only creating a new one when needed
+            p,
+            &compile_time_map,
+            &to_compile,
+        );
+    }
+}
 fn send_paths(
-    paths: Vec<PathBuf>,
-    compile_time_map: &mut HashMap<ShaderHandle, std::time::Instant>,
+    paths: Vec<(PathBuf, ShaderHandle)>,
+    compile_time_map: &Mutex<HashMap<ShaderHandle, std::time::Instant>>,
     cqs: &Sender<(PathBuf, ShaderHandle)>,
 ) {
     let recived_on = std::time::Instant::now();
-    for path in paths {
+    let mut lk = compile_time_map.lock();
+    for (path, id, last_time) in paths
+        .into_iter()
+        .filter_map(|(path, id)| lk.get_mut(&id).map(move |x| (path, id, *x)))
+    {
         println!("Sending: {:#?}", path);
 
-        let id = path_to_shader_id(&path);
-
-        if let Some(false) = compile_time_map
-            .get(&id)
-            .map(|last_time| recived_on.duration_since(*last_time).as_millis() > 100)
-        {
+        if recived_on.duration_since(last_time).as_millis() < 100 {
             println!("Skipping {:#?}", path);
             continue;
         }
-
-        compile_time_map.insert(id, recived_on);
 
         cqs.send((path, id))
             .expect("Unable to send fs-msg from whatcher to shader loader, channel error");
@@ -462,21 +502,19 @@ fn compile_shaders(
     device: Arc<Device>,
     outgoing: Sender<(ShaderModule, ShaderHandle)>,
 ) {
-    while let Ok((path, handle)) = incomming.recv() {
-        log!("Compiling ", bright_yellow, "{path:#?}", bright_purple);
+    while let Ok(id) = incomming.recv() {
         let (outgoing, device) = (outgoing.clone(), device.clone());
-        // handle.map(| | )
-        std::thread::spawn(move || compile_shader(path, device, handle, outgoing));
+        std::thread::spawn(move || compile_shader(id, device, outgoing));
     }
 }
 
 fn compile_shader(
-    path: PathBuf,
+    id: (PathBuf, ShaderHandle),
     device: Arc<Device>,
-    handle: ShaderHandle,
     outgoing: Sender<(ShaderModule, ShaderHandle)>,
 ) {
-    match std::fs::read_to_string(&path) {
+    log!("Compiling ", bright_yellow, "{id:#?}", bright_purple);
+    match std::fs::read_to_string(&id.0) {
         Ok(source) => {
             let shader;
             {
@@ -493,8 +531,8 @@ fn compile_shader(
                 }
             }
 
-            log!("Compiled ", green, "{path:#?}", bright_purple);
-            outgoing.send((shader, handle)).unwrap();
+            log!("Compiled ", green, "{shader:#?}", bright_purple);
+            outgoing.send((shader, id.1)).unwrap();
         }
         Err(e) => eprintln!("{e}"),
     }
@@ -541,16 +579,9 @@ impl ShaderManagerCtrl {
 
         let handle = path_to_shader_id(&path);
 
-        self.compile_queue_sender
-            .send((path.clone(), handle))
+        self.shader_src_filter_adder
+            .send((path, handle))
             .expect("Unable to send shader to load queue");
-
-        let w = self.whatcher.clone();
-        std::thread::spawn(move || {
-            w.lock()
-                .watch(&path, notify::RecursiveMode::NonRecursive)
-                .expect("File whatcher failed to accept new path");
-        });
 
         handle
     }
@@ -615,20 +646,6 @@ impl ShaderManagerCtrl {
 }
 
 impl<PipelineType> PipelinesView<PipelineType> {
-    // pub fn get_render_pipeline(
-    //     &self,
-    //     pipeline_handle: &PipelineHandle,
-    // ) -> Option<PipelineView<RenderPipeline>> {
-    //     self.render_manager.get_pipeline(pipeline_handle)
-    // }
-
-    // pub fn get_compute_pipeline(
-    //     &self,
-    //     pipeline_handle: &PipelineHandle,
-    // ) -> Option<PipelineView<ComputePipeline>> {
-    //     self.compute_manager.get_pipeline(pipeline_handle)
-    // }
-
     pub fn get(&self, handle: &PipelineHandle) -> Option<PipelineView<PipelineType>> {
         let guard = self.0.read().unwrap();
         guard.contains_key(handle).then_some(PipelineView {
