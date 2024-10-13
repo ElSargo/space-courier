@@ -259,10 +259,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //Light sources
     var color = vec3(0.0);
     // Sun
-    {
+        {
         let light_color = vec3(0.2, 0.4, 1.0);
-        let light_direction = normalize(vec3(50.0,10.0,50.0)-world_position);
-        let distance_scaled = length((vec3(50.0,10.0,50.0)-world_position)* 0.04);
+        let light_direction = normalize(vec3(50.0, 10.0, 50.0) - world_position);
+        let distance_scaled = length((vec3(50.0, 10.0, 50.0) - world_position) * 0.04);
         let light_intensity = 1.0 / (distance_scaled * distance_scaled);
         let light_dot_normal = dot(nor, light_direction);
 

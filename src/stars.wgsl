@@ -37,7 +37,7 @@ fn vs_main(
         instance.model_matrix_3,
     );
 
-    var color = pow(mix( vec3(0.6, 0.45, 2.0), vec3(2.0, 0.45, 0.6), vert.color ),vec3(2.0));
+    var color = pow(mix(vec3(0.6, 0.45, 2.0), vec3(2.0, 0.45, 0.6), vert.color), vec3(2.0));
     let i = in_vertex_index % 4;
     if i == 1 {
         color.r = 1.0;

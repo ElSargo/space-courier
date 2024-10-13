@@ -37,13 +37,13 @@ fn vs_main(
 ) -> VertexOutput {
     let z_index = in_vertex_index / size;
     let z = f32(z_index) * sqrt(3.0) * 0.5;
-    let x = f32(in_vertex_index % size) + 0.5 * f32( z_index % 2);
+    let x = f32(in_vertex_index % size) + 0.5 * f32(z_index % 2);
     let y = vertex_data[instance.buffer_offset + in_vertex_index];
     let vert_position = vec4(x + instance.translation.x, y, z + instance.translation.y, 1.0);
     return VertexOutput(
         camera.view_proj * vert_position,
         vert_position.xyz - vec3(0.0, camera.view_pos.y, 0.0),
-        vec3(x,y,z),
+        vec3(x, y, z),
     );
 }
 
@@ -74,6 +74,34 @@ fn sample_planar_reflection(clip_coords: vec2f) -> vec4f {
     return textureLoad(color_texture, sample_coords, 0);
 }
 
+
+const s3: f32 = sqrt(3.);
+const s34: f32 = sqrt(3. / 4.);
+const c : f32 = sqrt(sqrt(3.)-1.)*2.;
+const i3: f32 = 1. / 3.;
+const axis: vec2f = vec2(s3 / 2., -.5); 
+struct Hex {
+     id: vec2<i32>,
+    position: vec2f
+};
+
+fn hex_tile(p: vec2f) -> Hex {
+    let t = dot(p, axis);
+    let j = 1.48194195; // Floating point jank
+    let s = fract((p.x + j * 2. * i3)/j)*j - j * i3;
+    let l = select(2. * s, -s  ,s > 0.0);
+    let u = round((p.x * 4. + l + 0.5 ) * i3 - t / s34);
+    let b = vec2(0, u * 2. * s34);
+    let t1 = dot(p - b, axis);
+    let v = round(t1 / c);
+    return Hex(
+        vec2<i32>(i32(u), i32(v)),
+        b + v * c * axis
+    );
+}
+
+
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sin_60 = sqrt(3.0) / 2.0;
@@ -96,11 +124,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let reflection_strength = pow(max(0.0, dot(reflected_ray_direction, ray_direction)), 2.0) * fresnel_strength + 0.2;
 
     let h_factor = exp(-in.mesh_position.y);
-    
-    let line_color = mix(vec3(0.2, 0.23, 1.0) * (2.0 + 10.0 * pow(flat_normal.y,5.0)),vec3(1.0, 0.0, 0.23) * 20.0,smoothstep(0.1,0.2,h_factor))   * ((1.0 - h_factor)  + 0.03);
+
+    let line_color = mix(vec3(0.2, 0.23, 1.0) * (2.0 + 10.0 * pow(flat_normal.y, 5.0)), vec3(1.0, 0.0, 0.23) * 20.0, smoothstep(0.1, 0.2, h_factor)) * ((1.0 - h_factor) + 0.03);
     let reflection_color = reflection_strength * reflection_incident;
     // let color = mix(reflection_color, line_color, line_signal);
     let color = reflection_color + line_color * line_signal + vec3(0.4, 0.3, 2.0) * 0.001  ;
 
     return vec4(color, 1.0);
+    // let hx = hex_tile((in.relative_position.xz + camera.view_pos.xz)*0.5).position;
 }
