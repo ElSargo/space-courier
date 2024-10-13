@@ -24,11 +24,12 @@ use pipeline_manager::PipelineManager;
 use pollster::FutureExt;
 use std::{
     collections::HashMap,
+    mem::transmute,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::Arc,
     thread,
-    time::{self, Instant},
+    time::Instant,
 };
 use wgpu::{Device, ShaderModule, ShaderModuleDescriptor};
 
@@ -129,8 +130,8 @@ impl ShaderManager {
     }
 }
 
-// Is safe since Instant boils down to a time spec
-const UNIX_EPOCH: Instant = unsafe { std::mem::transmute(time::UNIX_EPOCH) };
+// Is safe since Instant boils down to a time spec which is two i64s
+const UNIX_EPOCH: Instant = unsafe { transmute(0u128) };
 
 fn begin_whatching_fs(
     to_unfilter: Receiver<(PathBuf, ShaderHandle)>,
