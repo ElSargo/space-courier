@@ -16,11 +16,10 @@ use crate::{
     ecs::Initailiser,
     gpu::{RD, RTBL, VTBGL},
     instance_buffer::{InstanceBuffer, RenderPassExt},
+    marker::Marker,
     model::{self},
     renderables::SolidRenderable,
-    shader_manager::{
-        Marker, PipelinesView, ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader,
-    },
+    shader_manager::{PipelinesView, ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader},
     texture, RawInstance, ReflectedViewTextures, StandardRenderPipeline, ViewTextures,
 };
 

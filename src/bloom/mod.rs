@@ -17,9 +17,9 @@ use crate::{
     gpu::{QueueResource, ScreenResolution, RD},
     input::ButtonInput,
     load_shader,
+    marker::Marker,
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderLoader, SplitPipelineModuleResource,
-        SplitShaders,
+        PipelineHandle, PipelinesView, ShaderLoader, SplitPipelineModuleResource, SplitShaders,
     },
     ViewTextures,
 };

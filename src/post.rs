@@ -6,10 +6,10 @@ use crate::{
     fullscreen::FullscreenQuad,
     gpu::{OutputTextureResource, ScreenFormat, RD, VTBGL},
     input::ButtonInput,
+    marker::Marker,
     planet_shadows::PlanetShadows,
     shader_manager::{
-        Marker, PipelineHandle, PipelinesView, ShaderLoader, SplitPipelineModuleResource,
-        SplitShaders,
+        PipelineHandle, PipelinesView, ShaderLoader, SplitPipelineModuleResource, SplitShaders,
     },
     ViewTextures,
 };

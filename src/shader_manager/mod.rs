@@ -13,7 +13,7 @@ pub use self::{
     split_pipeline::{SplitPipelineModuleResource, SplitShaders},
     unified_pipeline::{UnifiedPipelineModuleResource, UnifiedShaders},
 };
-use bevy_ecs::{component::Component, system::Resource, world::World};
+use bevy_ecs::{component::Component, world::World};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use notify::{
     event::{AccessMode, MetadataKind},
@@ -24,8 +24,6 @@ use pipeline_manager::PipelineManager;
 use pollster::FutureExt;
 use std::{
     collections::HashMap,
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     sync::Arc,
@@ -303,32 +301,5 @@ fn print_complile_error(e: wgpu::Error) {
             source: _,
             description: _,
         } => todo!(),
-    }
-}
-
-#[derive(Resource, Component)]
-pub struct Marker<T, Id>(T, PhantomData<Id>);
-
-impl<T, I> Marker<T, I> {
-    pub fn new(value: T) -> Self {
-        Self(value, PhantomData)
-    }
-
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl<T, I> Deref for Marker<T, I> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T, I> DerefMut for Marker<T, I> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }

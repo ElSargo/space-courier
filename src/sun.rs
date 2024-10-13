@@ -1,16 +1,12 @@
-use crate::gpu;
-use crate::gpu::pack_buffers;
-use crate::gpu::RD;
-use crate::gpu::RQ;
-use crate::gpu::RTBL;
-use crate::model;
-use crate::model_loader;
-
-use crate::physics::Physics;
-use crate::renderables::SolidRenderable;
-use crate::shader_manager::Marker;
-use crate::shader_manager::SolidPipelineModuleResourceExtras;
 use crate::shader_manager::SolidShader;
+use crate::{
+    gpu::{self, pack_buffers, RD, RQ, RTBL},
+    marker::Marker,
+    model, model_loader,
+    physics::Physics,
+    renderables::SolidRenderable,
+    shader_manager::SolidPipelineModuleResourceExtras,
+};
 use bevy_ecs::prelude::Res;
 use bevy_ecs::schedule::IntoSystemConfigs;
 use bevy_ecs::system::Commands;

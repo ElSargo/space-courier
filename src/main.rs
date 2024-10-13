@@ -9,6 +9,7 @@ mod gpu;
 mod gravity;
 mod input;
 mod instance_buffer;
+mod marker;
 mod model;
 mod model_loader;
 mod physics;
@@ -713,8 +714,8 @@ macro_rules! insert_run_and_retrive_marked_encoders {
             let encoder = $dev.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some(concat!(stringify!($id), " command encoder")),
             });
-            $world.insert_resource::<crate::shader_manager::Marker<wgpu::CommandEncoder, $id>>(
-                crate::shader_manager::Marker::new(encoder),
+            $world.insert_resource::<crate::marker::Marker<wgpu::CommandEncoder, $id>>(
+                crate::marker::Marker::new(encoder),
             );
 
         )*
@@ -723,7 +724,7 @@ macro_rules! insert_run_and_retrive_marked_encoders {
 
         [
             $(
-              $world.remove_resource::<crate::shader_manager::Marker<wgpu::CommandEncoder, $id>>().unwrap().into_inner(),
+              $world.remove_resource::<crate::marker::Marker<wgpu::CommandEncoder, $id>>().unwrap().into_inner(),
             )*
         ]
         }
