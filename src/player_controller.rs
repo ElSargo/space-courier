@@ -16,7 +16,6 @@ use bevy_ecs::{
     system::{Commands, Local, Query, Res, ResMut},
 };
 
-use color_eyre::owo_colors::OwoColorize;
 use glam::{vec3, Quat, Vec3};
 
 #[derive(Debug, Component)]

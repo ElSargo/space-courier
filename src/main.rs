@@ -10,8 +10,8 @@ mod gravity;
 mod input;
 mod instance_buffer;
 mod marker;
-mod model;
-mod model_loader;
+pub mod model;
+pub mod model_loader;
 mod physics;
 mod planet_shadows;
 mod planets;
@@ -29,20 +29,16 @@ mod texture;
 mod time;
 mod transform;
 mod tri_meash_gen;
-use crate::{
+pub use crate::{
     bloom::Bloom,
     ecs::{PrepareBuffersSchedual, RenderSchedual, UpdateSchedual},
     gpu::ScreenFormat,
     input::AxisEvent,
     post::Postprocessing,
-    prelude::*,
     solid_pass::Solidpass,
 };
-use background::Background;
-
-use gpu::{
-    DeviceResource, OutputTextureResource, QueueResource, RenderCompleteCallBack, ScreenResolution,
-};
+use gpu::{DeviceResource, OutputTextureResource};
+use prelude::*;
 
 fn init_modules(initialiser: &mut Initailiser) {
     [
@@ -524,7 +520,7 @@ fn make_view_texture(resolution: &ScreenResolution, device: &wgpu::Device) -> Te
     Texture { view, sampler }
 }
 
-fn mk_pipeline_layout(
+pub fn mk_pipeline_layout(
     device: &wgpu::Device,
     label: &str,
     bind_group_layouts: &[&BindGroupLayout],
@@ -716,4 +712,86 @@ macro_rules! insert_run_and_retrive_marked_encoders {
         ]
         }
     };
+}
+#[macro_export]
+macro_rules! standard_object {
+    ($ecs: expr, $renderable: expr, $marker: expr, $input_filter: ty, $buffer_filter: ty, $pipeline: tt) => {{
+        use crate::{
+            gpu::TextureBindGroupLayoutResource, model_loader, prelude::*,
+            renderables::SolidRenderable,
+        };
+
+        fn init(
+            device: RD,
+            queue: RQ,
+            tr: Res<TextureBindGroupLayoutResource>,
+            shader_manager: Res<ShaderLoader>,
+            mut commands: Commands,
+        ) {
+            commands.spawn((
+                SolidRenderable {
+                    renderable: Box::new(model_loader::load_model(
+                        $renderable,
+                        device.0.clone(),
+                        queue.0.clone(),
+                        tr.0.clone(),
+                    )),
+                    pipeline: $pipeline(shader_manager),
+                },
+                $marker,
+                InstanceBuffer::new(
+                    Some(concat![stringify!($buffer_filter), " instance Buffer"].to_owned()),
+                    wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    &device,
+                ),
+            ));
+        }
+        $ecs.prepare_buffers
+            .add_systems(pack_buffers::<RawInstance, $input_filter, $buffer_filter>);
+        $ecs.init.add_systems(
+            init.after(crate::background::init_background)
+                .after(crate::solid_pass::init_normal_pipeline),
+        );
+    }};
+
+    ($ecs: expr, $renderable: expr, $marker: ident, $input_filter: ty) => {{
+        use crate::{
+            gpu::TextureBindGroupLayoutResource, instance_buffer::InstanceBufferMarker,
+            model_loader, prelude::*, renderables::SolidRenderable, StandardRenderPipeline,
+        };
+        use std::marker::PhantomData;
+
+        pub fn init(
+            device: RD,
+            queue: RQ,
+            tr: Res<TextureBindGroupLayoutResource>,
+            pipeline: Res<StandardRenderPipeline>,
+            mut commands: Commands,
+        ) {
+            commands.spawn((
+                SolidRenderable {
+                    renderable: Box::new(model_loader::load_model(
+                        $renderable,
+                        device.0.clone(),
+                        queue.0.clone(),
+                        tr.0.clone(),
+                    )),
+                    pipeline: pipeline.handle,
+                },
+                InstanceBufferMarker(PhantomData::<$marker>),
+                InstanceBuffer::new(
+                    Some(concat![stringify!($buffer_filter), " instance Buffer"].to_owned()),
+                    wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    &device,
+                ),
+            ));
+        }
+        $ecs.prepare_buffers.add_systems(
+            pack_buffers::<RawInstance, $input_filter, With<InstanceBufferMarker<$marker>>>,
+        );
+        $ecs.init.add_systems(
+            init.after(crate::background::init_background)
+                .after(crate::solid_pass::init_normal_pipeline),
+        );
+    }};
 }

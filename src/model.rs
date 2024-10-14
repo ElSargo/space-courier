@@ -1,4 +1,4 @@
-use std::ops::Range;
+pub use std::ops::Range;
 
 use crate::vertex_layout;
 

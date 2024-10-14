@@ -1,4 +1,4 @@
-use crate::{model::DrawModel, prelude::*, renderables::SolidDrawable};
+pub(crate) use crate::{model::DrawModel, prelude::*, renderables::SolidDrawable};
 use std::sync::atomic::AtomicUsize;
 
 // Quick hax for removing async from model loader

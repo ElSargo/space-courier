@@ -1,6 +1,6 @@
 use arc_swap::ArcSwap;
 use bevy_ecs::component::Component;
-use std::{num::NonZeroU64, sync::atomic::AtomicU32};
+use std::{marker::PhantomData, num::NonZeroU64, sync::atomic::AtomicU32};
 use wgpu::{util::DeviceExt, BufferDescriptor, BufferUsages, Device, Queue};
 
 #[derive(Debug)]
@@ -153,3 +153,6 @@ macro_rules! instance_buffer {
         }
     };
 }
+
+#[derive(Component)]
+pub struct InstanceBufferMarker<T>(pub PhantomData<T>);

@@ -1,77 +1,15 @@
-use crate::renderables::SolidRenderable;
-use crate::{
-    background,
-    ecs::Initailiser,
-    gpu::{pack_buffers, QueueResource, TextureBindGroupLayoutResource, RD},
-    gravity::G,
-    input::ButtonInput,
-    instance_buffer::InstanceBuffer,
-    model_loader,
-    physics::Physics,
-    transform::Transform,
-    RawInstance, StandardRenderPipeline,
-};
-use bevy_ecs::{
-    component::Component,
-    entity::Entity,
-    query::With,
-    schedule::IntoSystemConfigs,
-    system::{Commands, Query, Res},
-};
-use glam::Quat;
-use rand::{thread_rng, Rng};
-use std::default::Default;
-use wgpu::BufferUsages;
-use winit::keyboard::KeyCode;
+use crate::{prelude::*, standard_object};
 
 #[derive(Default, Debug, Component)]
 pub struct Planet {
     pub radius: f32,
 }
 
-#[derive(Default, Debug, Component)]
-struct PlanetStuff;
-
-fn init(
-    device: RD,
-    queue: Res<QueueResource>,
-    texture_bind_group_layout: Res<TextureBindGroupLayoutResource>,
-    nor_pipe: Res<StandardRenderPipeline>,
-    mut commands: Commands,
-) {
-    let ib = InstanceBuffer::new(
-        Some("Planet Instance buffer".to_owned()),
-        BufferUsages::VERTEX | BufferUsages::COPY_DST,
-        &device,
-    );
-
-    commands.spawn((
-        ib,
-        PlanetStuff,
-        SolidRenderable {
-            pipeline: nor_pipe.handle,
-            renderable: Box::new(model_loader::load_model(
-                "wallmart.obj",
-                device.0.clone(),
-                queue.0.clone(),
-                texture_bind_group_layout.0.clone(),
-            )),
-        },
-    ));
-}
-
 pub fn init_mod(ecs: &mut Initailiser) {
-    ecs.init.add_systems((
-        make_planets,
-        init.after(background::init_background)
-            .after(crate::solid_pass::init_normal_pipeline),
-    ));
+    ecs.init.add_systems(make_planets);
     ecs.update
         .add_systems((remake_planets, add_planet, destroy_planets_in_sun));
-    ecs.prepare_buffers
-        .add_systems(pack_buffers::<RawInstance, With<Planet>, With<PlanetStuff>>);
-
-    // planets.scales[1] = Vec3::ONE;
+    standard_object!(ecs, "wallmart.obj", Planet, With<Planet>)
 }
 
 fn remake_planets(
