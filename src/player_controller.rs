@@ -16,6 +16,7 @@ use bevy_ecs::{
     system::{Commands, Local, Query, Res, ResMut},
 };
 
+use color_eyre::owo_colors::OwoColorize;
 use glam::{vec3, Quat, Vec3};
 
 #[derive(Debug, Component)]
@@ -129,7 +130,9 @@ pub fn update_camera_from_upright_player_controller(
 
     *cinematic_smoothing = cinematic_smoothing.lerp(
         player_controller.rotation,
-        1.0 - (-5.0 * (player_controller.momentum + std::f32::consts::E).ln() * time.delta_seconds)
+        1.0 - (-25.0
+            * (player_controller.momentum + std::f32::consts::E).ln()
+            * time.delta_seconds)
             .exp(),
     );
 
@@ -164,7 +167,7 @@ pub fn update_upright_player_controller<'a>(
     *roll_average = lerp(
         *roll_average,
         roll_ammount,
-        1.0 - (-time.delta_seconds * 10.0).exp(),
+        1.0 - (-time.delta_seconds * 20.0).exp(),
     );
 
     // ship_transform.rotation = full_rot;
@@ -175,7 +178,7 @@ pub fn update_upright_player_controller<'a>(
 
     ship_transform.rotation = ship_transform.rotation.lerp(
         ship_roll * player_controller.rotation,
-        1.0 - (-time.delta_seconds * 5.0).exp(),
+        1.0 - (-time.delta_seconds * 10.0).exp(),
     );
 
     let frame_translation = player_controller.momentum
@@ -185,9 +188,17 @@ pub fn update_upright_player_controller<'a>(
     ship_transform.translation += frame_translation;
     ship_transform.translation.y = 0.02;
     player_controller.position = ship_transform.translation
-        + ship_transform.back() * 0.4
-        + ship_transform.up() * 0.1
-        + ship_transform.right() * 0.04;
+        + ship_transform
+            .rotation
+            // .lerp(ship_transform.rotation.inverse(), 0.5)
+            .mul_vec3(vec3(0.04, 0.1, -0.4))
+            * vec3(1.0, 0.1, 1.0)
+        + Vec3::Y * 0.1;
+    // * vec3(1.0, 0.0, 1.0);
+
+    // + Transform::back_of_quat(player_controller.rotation) * 0.4
+    // + Transform::up_of_quat(player_controller.rotation) * 0.1
+    // + Transform::right_of_quat(player_controller.rotation) * 0.04;
 }
 
 fn spawn_player(mut commands: Commands) {

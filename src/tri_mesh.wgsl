@@ -127,8 +127,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let line_color = mix(vec3(0.2, 0.23, 1.0) * (2.0 + 10.0 * pow(flat_normal.y, 5.0)), vec3(1.0, 0.0, 0.23) * 20.0, smoothstep(0.1, 0.2, h_factor)) * ((1.0 - h_factor) + 0.03);
     let reflection_color = reflection_strength * reflection_incident;
-    // let color = mix(reflection_color, line_color, line_signal);
-    let color = reflection_color + line_color * line_signal + vec3(0.4, 0.3, 2.0) * 0.001  ;
+    let color = reflection_color + line_color * line_signal ;
 
     return vec4(color, 1.0);
     // let hx = hex_tile((in.relative_position.xz + camera.view_pos.xz)*0.5).position;

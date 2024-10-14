@@ -104,7 +104,7 @@ fn height(p: vec2f) -> f32 {
     // return h + g + k;
 
     // let l = hash12(hx.position);
-    return max(0.0,0 - 0.9) * 9.0 + h + g + k;
+    return  h + g ;
 }
 
 @compute

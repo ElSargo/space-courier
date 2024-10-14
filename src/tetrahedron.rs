@@ -55,7 +55,7 @@ impl Packable for Instance {
     }
 }
 
-const BATCH_SIZE: usize = 3_000;
+const BATCH_SIZE: usize = 500;
 fn init(device: RD, mut commands: Commands, shader_manager: Res<ShaderLoader>) {
     let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
         label: Some("Stars batch vertex buffer"),
