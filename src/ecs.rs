@@ -24,7 +24,7 @@ pub struct RenderSchedual;
 impl Initailiser {
     pub fn new() -> Self {
         let mut init = Schedule::new(InitSchedual);
-        init.set_executor_kind(bevy_ecs::schedule::ExecutorKind::Simple);
+        init.set_executor_kind(bevy_ecs::schedule::ExecutorKind::MultiThreaded);
         let mut resize = Schedule::new(ResizeSchedual);
         resize.set_executor_kind(bevy_ecs::schedule::ExecutorKind::MultiThreaded);
         let mut render = Schedule::new(RenderSchedual);
