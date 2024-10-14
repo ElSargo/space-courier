@@ -440,8 +440,11 @@ impl<'a> State<'a> {
 
         g_ctx.device.poll(wgpu::MaintainBase::Wait);
 
-        while let Some(cb) = world.resource_mut::<RenderCompleteCallBack>().pop() {
-            g_ctx.queue.on_submitted_work_done(cb);
+        {
+            let mut queue = world.resource_mut::<RenderCompleteCallBack>();
+            while let Some(cb) = queue.pop() {
+                g_ctx.queue.on_submitted_work_done(cb);
+            }
         }
 
         g_ctx
