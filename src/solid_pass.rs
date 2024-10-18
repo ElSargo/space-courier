@@ -5,6 +5,7 @@ use bevy_ecs::{
     schedule::IntoSystemConfigs,
     system::{Commands, In, Query, Res, ResMut},
 };
+use itertools::Itertools;
 use wgpu::{
     Color, CommandEncoder, FragmentState, PipelineLayoutDescriptor, RenderPipeline, TextureFormat,
     TextureView,
@@ -63,23 +64,19 @@ fn solid_pass(
                     .aquire()
                     .map(|asset| (obj.1.pipeline, obj.0, &obj.1.renderable, asset))
             })
-            .collect::<Vec<_>>();
+            .collect_vec();
         objects.sort_by_key(|(pipeline_handle, ..)| *pipeline_handle);
 
-        let mut last_pipeline = None;
-        for (pipeline_handle, ib, renderable, asset) in objects.iter() {
-            if Some(pipeline_handle) != last_pipeline {
-                if let Some(pipeline) = render_pipelines.get(&pipeline_handle) {
-                    render_pass.set_pipeline(&pipeline);
-                    last_pipeline = Some(pipeline_handle);
-                } else {
-                    last_pipeline = None;
-                    continue;
-                }
-            }
+        for (key, objects) in &objects.iter().chunk_by(|(handle, ..)| handle) {
+            let Some(pipeline) = render_pipelines.get(key) else {
+                continue;
+            };
+            render_pass.set_pipeline(&pipeline);
 
-            render_pass.set_instance_buffer(renderable.instance_buffer_slot(), ib);
-            renderable.draw(&mut render_pass, 0..ib.len(), asset.as_ref());
+            for (_, ib, renderable, asset) in objects {
+                render_pass.set_instance_buffer(renderable.instance_buffer_slot(), ib);
+                renderable.draw(&mut render_pass, 0..ib.len(), asset.as_ref());
+            }
         }
     }
 }

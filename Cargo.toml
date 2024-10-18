@@ -20,7 +20,6 @@ tobj = { version = "3.2.1", features = [
     "async",
 ]}
 rand = "0.8.5"
-gilrs = "0.10.4"
 bevy_ecs = { version = "0.13.0", features = ["multi-threaded", "bevy_reflect"]}
 notify = {version = "6.1.1", default_features = false, features = [] }
 seahash = "4.1.0"
@@ -29,6 +28,8 @@ arc-swap = "1.7.1"
 lazy_static = "1.5.0"
 parking_lot = "0.12.3"
 crossbeam-channel = "0.5.13"
+itertools = "0.13.0"
+
 
 [build-dependencies]
 color-eyre = "0.5.5"
