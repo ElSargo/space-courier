@@ -77,17 +77,7 @@ macro_rules! log {
 }
 
 impl ShaderManager {
-    pub fn new(
-        device: Arc<Device>,
-    ) -> Result<
-        (
-            Self,
-            ShaderLoader,
-            PipelinesView<wgpu::RenderPipeline>,
-            PipelinesView<wgpu::ComputePipeline>,
-        ),
-        notify::Error,
-    > {
+    pub fn new(device: Arc<Device>, rr: &mut World) -> Result<Self, notify::Error> {
         let (compile_queue_sender, compile_queue_rcv) = unbounded();
         let (to_filter_sender, to_filter_rcv) = unbounded();
 
@@ -101,21 +91,24 @@ impl ShaderManager {
             )
         });
 
-        let (compute_manager, compute_view, compute_queue_send) = PipelineManager::new();
-        let (render_manager, render_view, render_queue_send) = PipelineManager::new();
+        let (compute_manager, compute_queue_send) = PipelineManager::new();
+        let (render_manager, render_queue_send) = PipelineManager::new();
 
-        Ok((
-            Self {
-                _file_whatcher: begin_whatching_fs(to_filter_rcv, compile_queue_sender),
-                compiled_shaders_queue,
-                shaders: HashMap::new(),
-                compute_manager,
-                render_manager,
-            },
-            ShaderLoader::new(to_filter_sender, compute_queue_send, render_queue_send),
-            render_view,
-            compute_view,
-        ))
+        rr.insert_resource(ShaderLoader::new(
+            to_filter_sender,
+            compute_queue_send,
+            render_queue_send,
+        ));
+        rr.init_resource::<PipelinesView<wgpu::RenderPipeline>>();
+        rr.init_resource::<PipelinesView<wgpu::ComputePipeline>>();
+
+        Ok(Self {
+            _file_whatcher: begin_whatching_fs(to_filter_rcv, compile_queue_sender),
+            compiled_shaders_queue,
+            shaders: HashMap::new(),
+            compute_manager,
+            render_manager,
+        })
     }
 
     pub fn construct_piplines(&mut self, rr: &mut World) {

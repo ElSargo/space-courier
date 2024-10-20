@@ -24,8 +24,7 @@ use crate::{
     instance_layout,
     planets::Planet,
     shader_manager::{
-        PipelineHandle, PipelinesView, ShaderLoader, UnifiedPipelineModuleResource,
-        UnifiedShaders,
+        PipelineHandle, PipelinesView, ShaderLoader, UnifiedPipelineModuleResource, UnifiedShaders,
     },
     transform::Transform,
     vertex_layout, ViewTextures,
@@ -236,7 +235,7 @@ pub fn draw_planet_shadows(
     vt: Res<ViewTextures>,
     camera: Res<CameraUniform>,
 ) -> Option<()> {
-    let pipeline = shader_manager.get(&planet_shadows.pipeline)?;
+    let pipeline = shader_manager.get(planet_shadows.pipeline)?;
     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("Planet shadow volumes render pass"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {

@@ -68,7 +68,7 @@ fn solid_pass(
         objects.sort_by_key(|(pipeline_handle, ..)| *pipeline_handle);
 
         for (key, objects) in &objects.iter().chunk_by(|(handle, ..)| handle) {
-            let Some(pipeline) = render_pipelines.get(key) else {
+            let Some(pipeline) = render_pipelines.get(*key) else {
                 continue;
             };
             render_pass.set_pipeline(&pipeline);

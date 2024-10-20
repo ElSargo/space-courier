@@ -227,7 +227,7 @@ fn fire_bg_gen(
 ) {
     if fire_bg.read().last().is_some() {
         println!("BG gen");
-        if let Some(pipeline) = shader_manager.get(&bg.pipeline) {
+        if let Some(pipeline) = shader_manager.get(bg.pipeline) {
             let mut pass = cmd_encoder.begin_compute_pass(&ComputePassDescriptor {
                 label: Some("Background pass"),
                 ..Default::default()

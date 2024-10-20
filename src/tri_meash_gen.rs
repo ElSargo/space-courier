@@ -319,7 +319,7 @@ fn gen_height(
     mut to_process: ResMut<TriQueue>,
     // mut commands: Commands,
 ) {
-    if let Some(p) = pipelines.get(&to_process.pipeline) {
+    if let Some(p) = pipelines.get(to_process.pipeline) {
         let mut enc = device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("Tri mesh enc"),
         });

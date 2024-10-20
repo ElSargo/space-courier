@@ -6,7 +6,10 @@ use crate::{log, log_expand};
 use bevy_ecs::system::Resource;
 use crossbeam_channel::Sender;
 use rand::random;
-use std::path::PathBuf;
+use std::{
+    marker::{Send, Sync},
+    path::PathBuf,
+};
 
 /// Loads a shader using a path relative to the current file
 #[macro_export]
@@ -76,13 +79,9 @@ impl ShaderLoader {
         system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::RenderPipeline, M> + Send + Sync + 'static,
     ) -> PipelineHandle
     where
-        Shaders: PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>
-            + std::marker::Send
-            + std::marker::Sync,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor: Send,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor: Sync,
+        Shaders: PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M> + Send + Sync,
         <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor:
-            'static,
+            Send + Sync + 'static,
     {
         let pipeline_handle = PipelineHandle { id: random() };
 
@@ -104,15 +103,9 @@ impl ShaderLoader {
         system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::ComputePipeline, M> + Send + Sync + 'static,
     ) -> PipelineHandle
     where
-        Shaders: PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>
-            + std::marker::Send
-            + std::marker::Sync,
+        Shaders: PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M> + Send + Sync,
         <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
-            Send,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
-            Sync,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
-            'static,
+            Send + Sync + 'static,
     {
         let pipeline_handle = PipelineHandle { id: random() };
 

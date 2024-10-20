@@ -1,3 +1,5 @@
+mod compute;
+
 use crate::{background, prelude::*, ViewTextures};
 
 pub fn init_mod(ecs: &mut Initailiser) {
@@ -266,7 +268,7 @@ pub fn draw_bloom(
     br: Res<BloomReasoruces>,
     fullscreen_quad: Res<FullscreenQuad>,
 ) {
-    if let Some(pipeline) = render_pipelines.get(&br.extract_pipeline) {
+    if let Some(pipeline) = render_pipelines.get(br.extract_pipeline) {
         // println!("bloom extract drawing");
         // for i in 0..bloom.down_chain.textures.len() {
         // println!("Down: {:#?}", bloom.down_textures[i].size());
@@ -293,7 +295,7 @@ pub fn draw_bloom(
         println!("Bloom extract not drawn");
     }
 
-    if let Some(pipeline) = render_pipelines.get(&br.down_pipeline) {
+    if let Some(pipeline) = render_pipelines.get(br.down_pipeline) {
         // println!("bloom down drawing");
         for i in 0..bloom.down_chain.textures.len() {
             // println!("Down: {:#?}", bloom.down_textures[i].size());
@@ -324,7 +326,7 @@ pub fn draw_bloom(
     //up  :0 1 2 3 4 5
     //down:0 1 2 3 4 5
 
-    if let Some(pipeline) = render_pipelines.get(&br.up_pipeline) {
+    if let Some(pipeline) = render_pipelines.get(br.up_pipeline) {
         // println!("bloom up drawing");
         for i in 1..bloom.up_chain.textures.len() {
             let view = &bloom.up_chain.texture_views[i];

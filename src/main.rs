@@ -116,13 +116,10 @@ struct GraphicsContext<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     _adapter: wgpu::Adapter,
     shader_manager: ShaderManager,
-    shader_manager_ctl: ShaderLoader,
-    render_pipelines_view: PipelinesView<wgpu::RenderPipeline>,
-    compute_pipelines_view: PipelinesView<wgpu::ComputePipeline>,
 }
 
 impl GraphicsContext<'_> {
-    fn new(event_loop: &ActiveEventLoop) -> Self {
+    fn new(event_loop: &ActiveEventLoop, world: &mut World) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
@@ -199,8 +196,17 @@ impl GraphicsContext<'_> {
         let device_res: Arc<Device> = device.into();
         let device = DeviceResource(device_res.clone());
         let queue = QueueResource(queue.into());
-        let (shader_manager, shader_manager_ctl, render_pipelines_view, compute_pipelines_view) =
-            ShaderManager::new(device_res).unwrap();
+        let shader_manager = ShaderManager::new(device_res, world).unwrap();
+
+        world.insert_resource(device.clone());
+        world.insert_resource(queue.clone());
+        world.insert_resource(ScreenResolution {
+            width: config.width,
+            height: config.height,
+        });
+        world.insert_resource(ScreenFormat {
+            format: config.format,
+        });
 
         Self {
             window,
@@ -211,9 +217,6 @@ impl GraphicsContext<'_> {
             size,
             _adapter: adapter,
             shader_manager,
-            shader_manager_ctl,
-            render_pipelines_view,
-            compute_pipelines_view,
         }
     }
 }
@@ -232,25 +235,11 @@ impl<'a> ApplicationHandler for State<'a> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         println!("Resumed");
         if self.graphics_ctx.is_none() {
-            let gtx = GraphicsContext::new(event_loop);
-
             let mut initialiser = self.initialiser.take().unwrap();
             init_modules(&mut initialiser);
 
             let mut world = initialiser.finalize();
-
-            world.insert_resource(gtx.shader_manager_ctl.clone());
-            world.insert_resource(gtx.compute_pipelines_view.clone());
-            world.insert_resource(gtx.render_pipelines_view.clone());
-            world.insert_resource(gtx.device.clone());
-            world.insert_resource(gtx.queue.clone());
-            world.insert_resource(ScreenResolution {
-                width: gtx.config.width,
-                height: gtx.config.height,
-            });
-            world.insert_resource(ScreenFormat {
-                format: gtx.config.format,
-            });
+            let gtx = GraphicsContext::new(event_loop, &mut world);
 
             world.run_schedule(InitSchedual);
             world.increment_change_tick();
