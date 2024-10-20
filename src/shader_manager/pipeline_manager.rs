@@ -1,5 +1,6 @@
 use crate::shader_manager::PipelineModuleDescriptor;
-use bevy_ecs::{system::Resource, world::World};
+use crate::PipelinesView;
+use bevy_ecs::world::World;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -26,27 +27,8 @@ pub(super) struct PipelineManager<PipelineType> {
     pipeline_connstructors: BTreeMap<PipelineHandle, Box<dyn PipelineConstructor<PipelineType>>>,
 }
 
-#[derive(Resource)]
-pub struct PipelinesView<PipelineType>(BTreeMap<PipelineHandle, PipelineType>);
-
-impl<PipelineType> Default for PipelinesView<PipelineType> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<PipelineType> PipelinesView<PipelineType> {
-    pub fn get(&self, handle: PipelineHandle) -> Option<&PipelineType> {
-        self.0.get(&handle)
-    }
-
-    pub fn new() -> Self {
-        Self(BTreeMap::new())
-    }
-}
-
 impl<PipelineType: 'static + Send + Sync> PipelineManager<PipelineType> {
-    pub fn new() -> (Self, Sender<Adder<PipelineType>>) {
+    pub(super) fn new() -> (Self, Sender<Adder<PipelineType>>) {
         let (send, rcv) = unbounded();
         (
             Self {
@@ -61,7 +43,7 @@ impl<PipelineType: 'static + Send + Sync> PipelineManager<PipelineType> {
         )
     }
 
-    pub fn add_pipeline<const N: usize, Descriptor, System, M>(
+    pub(super) fn add_pipeline<const N: usize, Descriptor, System, M>(
         &mut self,
         descriptor: Descriptor,
         pipeline_handle: PipelineHandle,
@@ -82,37 +64,42 @@ impl<PipelineType: 'static + Send + Sync> PipelineManager<PipelineType> {
             .insert(pipeline_handle, Box::new(descriptor.constructor(rr)));
     }
 
-    pub fn construct_pipline(
+    pub(super) fn construct_pipline(
         &mut self,
         pipline_handle: &PipelineHandle,
         shaders: &HashMap<ShaderHandle, Arc<ShaderModule>>,
         rr: &mut World,
     ) {
-        if let Some(reasources) = self.modules_for_pipeline.get(pipline_handle) {
-            let mut compiled_shaders = Vec::with_capacity(reasources.len());
-            for sh in reasources {
-                let Some(shader) = shaders.get(sh) else {
-                    return;
-                };
-                compiled_shaders.push(shader);
-            }
-            if let Some(constructor) = self.pipeline_connstructors.get_mut(pipline_handle) {
-                let new_pipeline = constructor.construct(
-                    compiled_shaders
-                        .iter()
-                        .map(|s| (**s).clone())
-                        .collect::<Vec<_>>()
-                        .as_slice(),
-                    rr,
-                );
-                rr.resource_mut::<PipelinesView<PipelineType>>()
-                    .0
-                    .insert(*pipline_handle, new_pipeline);
-            }
+        let Some(reasources) = self.modules_for_pipeline.get(pipline_handle) else {
+            return;
+        };
+
+        let mut compiled_shaders = Vec::with_capacity(reasources.len());
+        for sh in reasources {
+            let Some(shader) = shaders.get(sh) else {
+                return;
+            };
+            compiled_shaders.push(shader);
         }
+
+        let Some(constructor) = self.pipeline_connstructors.get_mut(pipline_handle) else {
+            return;
+        };
+
+        let new_pipeline = constructor.construct(
+            compiled_shaders
+                .iter()
+                .map(|s| (**s).clone())
+                .collect::<Vec<_>>()
+                .as_slice(),
+            rr,
+        );
+        rr.resource_mut::<PipelinesView<PipelineType>>()
+            .0
+            .insert(*pipline_handle, new_pipeline);
     }
 
-    pub fn recompile_dependants(
+    pub(super) fn recompile_dependants(
         &mut self,
         shader: ShaderHandle,
         shaders: &HashMap<ShaderHandle, Arc<ShaderModule>>,
@@ -125,7 +112,7 @@ impl<PipelineType: 'static + Send + Sync> PipelineManager<PipelineType> {
         }
     }
 
-    pub fn process_pipelines(
+    pub(super) fn process_pipelines(
         &mut self,
         shaders: &HashMap<ShaderHandle, Arc<ShaderModule>>,
         rr: &mut World,

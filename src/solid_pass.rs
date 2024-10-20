@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::shader_manager::SolidPipelineModuleResource;
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ use crate::{
     marker::Marker,
     model::{self},
     renderables::SolidRenderable,
-    shader_manager::{PipelinesView, ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader},
+    shader_manager::{ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader},
     texture, RawInstance, ReflectedViewTextures, StandardRenderPipeline, ViewTextures,
 };
 

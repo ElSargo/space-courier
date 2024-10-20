@@ -1,11 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use bevy_ecs::{
-    component::Component,
-    system::{In, Res, ResMut, Resource},
-};
-
+use crate::prelude::*;
+use bevy_ecs::system::{In, Res, ResMut};
 use bytemuck::{Pod, Zeroable};
 use glam::{vec2, Vec2, Vec3};
 use wgpu::{
@@ -23,9 +20,7 @@ use crate::{
     instance_buffer::{InstanceBuffer, RenderPassExt},
     instance_layout,
     planets::Planet,
-    shader_manager::{
-        PipelineHandle, PipelinesView, ShaderLoader, UnifiedPipelineModuleResource, UnifiedShaders,
-    },
+    shader_manager::{PipelineHandle, ShaderLoader, UnifiedPipelineModuleResource, UnifiedShaders},
     transform::Transform,
     vertex_layout, ViewTextures,
 };
