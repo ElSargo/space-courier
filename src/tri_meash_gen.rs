@@ -15,7 +15,7 @@ use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
-    ComputePipeline, ComputePipelineDescriptor, Device, PushConstantRange, ShaderStages,
+    ComputePipelineDescriptor, Device, PushConstantRange, ShaderStages,
 };
 
 use crate::{
@@ -25,11 +25,11 @@ use crate::{
     instance_layout,
     renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{
-        PipelineHandle, PipelinesView, ShaderLoader, SolidPipelineModuleResourceExtras,
-        SolidShader, UnifiedPipelineModuleResource, UnifiedShaders,
+        PipelineHandle, ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader,
+        UnifiedPipelineModuleResource, UnifiedShaders,
     },
     transform::Transform,
-    RawInstance,
+    ComputePipelines, RawInstance,
 };
 
 type IndexType = u16;
@@ -315,7 +315,7 @@ pub struct Push {
 fn gen_height(
     device: RD,
     queue: RQ,
-    pipelines: Res<PipelinesView<ComputePipeline>>,
+    pipelines: Res<ComputePipelines>,
     mut to_process: ResMut<TriQueue>,
     // mut commands: Commands,
 ) {

@@ -1,5 +1,4 @@
 use crate::shader_manager::PipelineModuleDescriptor;
-use crate::PipelinesView;
 use bevy_ecs::world::World;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::{
@@ -9,7 +8,10 @@ use std::{
 };
 use wgpu::ShaderModule;
 
-use super::{pipeline_shader_resource::PipelineConstructor, PipelineHandle, ShaderHandle};
+use super::{
+    pipeline_shader_resource::PipelineConstructor, pipeline_view::PipelinesView, PipelineHandle,
+    ShaderHandle,
+};
 
 pub type Adder<PipelineType> =
     Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>;

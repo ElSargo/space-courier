@@ -8,8 +8,7 @@ use bevy_ecs::{
 };
 use itertools::Itertools;
 use wgpu::{
-    Color, CommandEncoder, FragmentState, PipelineLayoutDescriptor, RenderPipeline, TextureFormat,
-    TextureView,
+    Color, CommandEncoder, FragmentState, PipelineLayoutDescriptor, TextureFormat, TextureView,
 };
 
 use crate::{
@@ -28,7 +27,7 @@ use crate::{
 pub struct Solidpass;
 
 fn solid_pass(
-    render_pipelines: Res<PipelinesView<RenderPipeline>>,
+    render_pipelines: Res<RenderPipelines>,
     mut cmd_encoder: ResMut<Marker<CommandEncoder, Solidpass>>,
     view_textures: Res<ViewTextures>,
     reflected_view_textures: Res<ReflectedViewTextures>,

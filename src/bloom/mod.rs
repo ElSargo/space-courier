@@ -1,6 +1,6 @@
 mod compute;
 
-use crate::{background, prelude::*, ViewTextures};
+use crate::{background, prelude::*, shader_manager::RenderPipelines, ViewTextures};
 
 pub fn init_mod(ecs: &mut Initailiser) {
     ecs.init.add_systems(
@@ -262,7 +262,7 @@ fn mk_pipeline(
 }
 
 pub fn draw_bloom(
-    render_pipelines: Res<PipelinesView<RenderPipeline>>,
+    render_pipelines: Res<RenderPipelines>,
     mut encoder: ResMut<Marker<CommandEncoder, Bloom>>,
     bloom: Res<Bloom>,
     br: Res<BloomReasoruces>,

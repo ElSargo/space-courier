@@ -23,7 +23,7 @@ pub use {
         physics::Physics,
         renderables::SolidRenderable,
         shader_manager::{
-            PipelineHandle, PipelinesView, ShaderLoader, ShaderManager,
+            ComputePipelines, PipelineHandle, RenderPipelines, ShaderLoader, ShaderManager,
             SolidPipelineModuleResourceExtras, SolidShader, SplitPipelineModuleResource,
             SplitShaders, UnifiedPipelineModuleResource, UnifiedShaders,
         },

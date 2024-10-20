@@ -9,7 +9,7 @@ mod unified_pipeline;
 pub use self::{
     loader::ShaderLoader,
     pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor},
-    pipeline_view::PipelinesView,
+    pipeline_view::{ComputePipelines, RenderPipelines},
     solid_pipeline::{SolidPipelineModuleResource, SolidPipelineModuleResourceExtras, SolidShader},
     split_pipeline::{SplitPipelineModuleResource, SplitShaders},
     unified_pipeline::{UnifiedPipelineModuleResource, UnifiedShaders},
@@ -100,8 +100,8 @@ impl ShaderManager {
             compute_queue_send,
             render_queue_send,
         ));
-        rr.init_resource::<PipelinesView<wgpu::RenderPipeline>>();
-        rr.init_resource::<PipelinesView<wgpu::ComputePipeline>>();
+        rr.init_resource::<RenderPipelines>();
+        rr.init_resource::<ComputePipelines>();
 
         Ok(Self {
             _file_whatcher: begin_whatching_fs(to_filter_rcv, compile_queue_sender),

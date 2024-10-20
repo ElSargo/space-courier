@@ -14,7 +14,10 @@ impl<PipelineType> PipelinesView<PipelineType> {
         self.0.get(&handle)
     }
 
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self(BTreeMap::new())
     }
 }
+
+pub type ComputePipelines = PipelinesView<wgpu::ComputePipeline>;
+pub type RenderPipelines = PipelinesView<wgpu::RenderPipeline>;

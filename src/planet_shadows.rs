@@ -224,7 +224,7 @@ impl PlanetShadows {
 
 pub fn draw_planet_shadows(
     encoder: &mut wgpu::CommandEncoder,
-    shader_manager: &PipelinesView<wgpu::RenderPipeline>,
+    shader_manager: &RenderPipelines,
 
     planet_shadows: Res<PlanetShadows>,
     vt: Res<ViewTextures>,

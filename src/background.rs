@@ -1,4 +1,4 @@
-use crate::{prelude::*, shader_manager};
+use crate::{prelude::*, shader_manager::ComputePipelines};
 use std::sync::atomic::AtomicBool;
 
 #[derive(Resource)]
@@ -219,7 +219,7 @@ pub fn keyboard_generate_background(
 }
 
 fn fire_bg_gen(
-    shader_manager: Res<shader_manager::PipelinesView<wgpu::ComputePipeline>>,
+    shader_manager: Res<ComputePipelines>,
     bg: ResMut<Background>,
     mut cmd_encoder: ResMut<Marker<CommandEncoder, Background>>,
     mut callbacks: ResMut<RenderCompleteCallBack>,

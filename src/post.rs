@@ -2,6 +2,7 @@ use crate::{
     gpu::{OutputTextureResource, ScreenFormat, VTBGL},
     planet_shadows::PlanetShadows,
     prelude::*,
+    shader_manager::RenderPipelines,
     Background, ViewTextures,
 };
 
@@ -139,7 +140,7 @@ impl Postprocessing {
 pub fn draw_post(
     mut encoder: ResMut<Marker<CommandEncoder, Postprocessing>>,
     output_view: Res<OutputTextureResource>,
-    render_pipelines: Res<PipelinesView<RenderPipeline>>,
+    render_pipelines: Res<RenderPipelines>,
     vtr: Res<ViewTextures>,
     post: Res<Postprocessing>,
     fsq: Res<FullscreenQuad>,
