@@ -25,12 +25,12 @@ macro_rules! load_shader {
 #[derive(Resource, Clone)]
 pub struct ShaderLoader {
     /// Used to tell the whatcher which files should be compiled
-    shader_src_filter_adder: Sender<(PathBuf, ShaderHandle)>,
+    shader_path_whitelist_queue: Sender<(PathBuf, ShaderHandle)>,
     /// Used to create render pipelines, they are queues beacuse the creation
     /// is defered until right before the render stage when the provied consturtors
     /// can have exclusive access to the ecs world
-    compute_creation_queue: Sender<Adder<wgpu::ComputePipeline>>,
-    render_creation_queue: Sender<Adder<wgpu::RenderPipeline>>,
+    compute_constructor_registration_queue: Sender<Adder<wgpu::ComputePipeline>>,
+    render_constructor_registration_queue: Sender<Adder<wgpu::RenderPipeline>>,
 }
 
 impl ShaderLoader {
@@ -40,31 +40,31 @@ impl ShaderLoader {
         render_creation_queue: Sender<Adder<wgpu::RenderPipeline>>,
     ) -> Self {
         Self {
-            shader_src_filter_adder,
-            compute_creation_queue,
-            render_creation_queue,
+            shader_path_whitelist_queue: shader_src_filter_adder,
+            compute_constructor_registration_queue: compute_creation_queue,
+            render_constructor_registration_queue: render_creation_queue,
         }
     }
 
     pub fn load_shader(&self, path: impl Into<PathBuf>) -> ShaderHandle {
         let path = path.into();
-        let path = path
+        let absolute_path = path
             .canonicalize()
             .expect(&format!("Unable to resolve file path {path:#?}"));
 
         log!(
             "Sent ",
             bright_red,
-            "{path:#?}",
+            "{absolute_path:#?}",
             bright_purple,
             " to queue",
             white
         );
 
-        let handle = path_to_shader_id(&path);
+        let handle = path_to_shader_id(&absolute_path);
 
-        self.shader_src_filter_adder
-            .send((path, handle))
+        self.shader_path_whitelist_queue
+            .send((absolute_path, handle))
             .expect("Unable to send shader to load queue");
 
         handle
@@ -88,7 +88,7 @@ impl ShaderLoader {
 
         let descriptor = Shaders::into_descriptor(shaders, system);
 
-        self.render_creation_queue
+        self.render_constructor_registration_queue
             .send(Box::new(
                 move |render_manager: &mut PipelineManager<wgpu::RenderPipeline>, rr| {
                     render_manager.add_pipeline(descriptor, pipeline_handle, rr)
@@ -118,7 +118,7 @@ impl ShaderLoader {
 
         let descriptor = Shaders::into_descriptor(shaders, system);
 
-        self.compute_creation_queue
+        self.compute_constructor_registration_queue
             .send(Box::new(
                 move |compute_manager: &mut PipelineManager<wgpu::ComputePipeline>, rr| {
                     compute_manager.add_pipeline(descriptor, pipeline_handle, rr)

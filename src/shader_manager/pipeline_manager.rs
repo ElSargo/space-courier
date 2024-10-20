@@ -2,7 +2,7 @@ use crate::shader_manager::PipelineModuleDescriptor;
 use bevy_ecs::{system::Resource, world::World};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, HashMap},
     ops::Deref,
     sync::{Arc, RwLock, RwLockReadGuard},
 };
@@ -14,12 +14,18 @@ pub type Adder<PipelineType> =
     Box<dyn FnOnce(&mut PipelineManager<PipelineType>, &mut World) + Send + Sync>;
 
 pub(super) struct PipelineManager<PipelineType> {
-    creation_queue: Receiver<Adder<PipelineType>>,
-    pipelines_requirements: BTreeMap<ShaderHandle, Vec<PipelineHandle>>,
-    pipline_reasoureces: BTreeMap<PipelineHandle, Vec<ShaderHandle>>,
+    /// Queue of procedures that register a pipelines constructor on the world
+    /// This exists so code can create render pipelines without needing exclusive world access
+    pipelines_to_register: Receiver<Adder<PipelineType>>,
+    /// Map of pipelines that need to be recompiled when a shader changes
+    pipelines_depending_on: BTreeMap<ShaderHandle, Vec<PipelineHandle>>,
+    /// Map of the shader modules a pipeline needs to be created
+    modules_for_pipeline: BTreeMap<PipelineHandle, Vec<ShaderHandle>>,
+    /// Functions that create the actuall pipelines
+    /// These are passed the required modules and can access the world
     pipeline_connstructors: BTreeMap<PipelineHandle, Box<dyn PipelineConstructor<PipelineType>>>,
+    /// Where the pipelines are stored
     pipelines: Arc<RwLock<BTreeMap<PipelineHandle, PipelineType>>>,
-    pipelines_to_init: BTreeSet<PipelineHandle>,
 }
 
 #[derive(Resource)]
@@ -58,15 +64,14 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
         let (send, rcv) = unbounded();
         (
             Self {
-                creation_queue: rcv,
-                pipelines_requirements: BTreeMap::new(),
-                pipelines_to_init: BTreeSet::new(),
+                pipelines_to_register: rcv,
+                pipelines_depending_on: BTreeMap::new(),
 
                 pipelines: pipelines.clone(),
 
                 pipeline_connstructors: BTreeMap::new(),
 
-                pipline_reasoureces: BTreeMap::new(),
+                modules_for_pipeline: BTreeMap::new(),
             },
             PipelinesView(pipelines),
             send,
@@ -82,13 +87,13 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
         Descriptor: PipelineModuleDescriptor<N, PipelineType, System, M>, // Descriptor: PipelineModuleDescriptor<N, PipelineType, System, M> + Send + Sync,
     {
         for shader_handle in descriptor.as_arr() {
-            self.pipelines_requirements
+            self.pipelines_depending_on
                 .entry(shader_handle)
                 .or_insert(vec![])
                 .push(pipeline_handle)
         }
 
-        self.pipline_reasoureces
+        self.modules_for_pipeline
             .insert(pipeline_handle, descriptor.as_arr().to_vec());
         self.pipeline_connstructors
             .insert(pipeline_handle, Box::new(descriptor.constructor(rr)));
@@ -100,8 +105,7 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
         shaders: &HashMap<ShaderHandle, Arc<ShaderModule>>,
         rr: &mut World,
     ) {
-        self.pipelines_to_init.remove(pipline_handle);
-        if let Some(reasources) = self.pipline_reasoureces.get(pipline_handle) {
+        if let Some(reasources) = self.modules_for_pipeline.get(pipline_handle) {
             let mut compiled_shaders = Vec::with_capacity(reasources.len());
             for sh in reasources {
                 if let Some(shader) = shaders.get(sh) {
@@ -131,7 +135,7 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
         shaders: &HashMap<ShaderHandle, Arc<ShaderModule>>,
         rr: &mut World,
     ) {
-        if let Some(pipelines_to_reconstruct) = self.pipelines_requirements.get(&shader).cloned() {
+        if let Some(pipelines_to_reconstruct) = self.pipelines_depending_on.get(&shader).cloned() {
             for pipline_handle in pipelines_to_reconstruct {
                 self.proccess_pipline(&pipline_handle, &shaders, rr);
             }
@@ -144,13 +148,10 @@ impl<PipelineType: 'static> PipelineManager<PipelineType> {
         rr: &mut World,
         shader_handle: ShaderHandle,
     ) {
-        while let Ok(f) = self.creation_queue.try_recv() {
+        while let Ok(f) = self.pipelines_to_register.try_recv() {
             f(self, rr);
         }
         self.recompile_dependants(shader_handle, &shaders, rr);
-        for pipeline_handle in self.pipelines_to_init.clone().iter() {
-            self.proccess_pipline(&pipeline_handle, &shaders, rr);
-        }
     }
 }
 
