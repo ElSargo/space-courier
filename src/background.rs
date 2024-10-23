@@ -92,12 +92,8 @@ pub fn init_background(device: RD, shader_manager: Res<ShaderLoader>, mut comman
         pipeline_layout: pipline_layout,
     });
 
-    let pipeline = shader_manager.add_compute_pipeline(
-        UnifiedShaders {
-            handle: shader_handle,
-        },
-        background_pipeline_constructor,
-    );
+    let pipeline =
+        shader_manager.add_compute_pipeline(shader_handle, background_pipeline_constructor);
 
     let tex = device.create_texture(&TextureDescriptor {
         label: Some("Background storage"),
@@ -244,7 +240,7 @@ fn fire_bg_gen(
 }
 
 fn background_pipeline_constructor(
-    In(module): In<UnifiedPipelineModuleResource>,
+    module: In<Arc<ShaderModule>>,
     device: RD,
     layout: Res<ConstructorReasources>,
     mut fire_bg: EventWriter<FireBGGenEvent>,

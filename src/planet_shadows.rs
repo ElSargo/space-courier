@@ -20,7 +20,7 @@ use crate::{
     instance_buffer::{InstanceBuffer, RenderPassExt},
     instance_layout,
     planets::Planet,
-    shader_manager::{PipelineHandle, ShaderLoader, UnifiedPipelineModuleResource, UnifiedShaders},
+    shader_manager::{PipelineHandle, ShaderLoader},
     transform::Transform,
     vertex_layout, ViewTextures,
 };
@@ -92,12 +92,8 @@ impl PlanetShadows {
 
         let shader_handle = shader_manager.load_shader("./src/planet_shadows.wgsl");
 
-        let pipeline = shader_manager.add_render_pipeline(
-            UnifiedShaders {
-                handle: shader_handle,
-            },
-            // Box::new(move |__rr, device, module| {
-            |In(module): bevy_ecs::system::In<UnifiedPipelineModuleResource>, device: RD| {
+        let pipeline =
+            shader_manager.add_render_pipeline(shader_handle, |module: In<Arc<_>>, device: RD| {
                 device.create_render_pipeline(&RenderPipelineDescriptor {
                     label: Some("Planet shadow pipeline"),
                     layout: Some(pipeline_layout),
@@ -144,8 +140,7 @@ impl PlanetShadows {
                     multiview: None,
                     cache: None,
                 })
-            },
-        );
+            });
 
         let instance_buffer = InstanceBuffer::new(
             Some("Planet shadow instance buffer".to_owned()),

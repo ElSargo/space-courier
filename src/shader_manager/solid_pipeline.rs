@@ -1,18 +1,12 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use crate::{shader_manager::ShaderHandle, solid_pass::solid_pass_render_descriptor};
-use bevy_ecs::{
-    system::{IntoSystem, SystemId},
-    world::World,
-};
+use bevy_ecs::{system::SystemId, world::World};
 use wgpu::{BindGroupLayout, PushConstantRange, ShaderModule, VertexBufferLayout};
 
-use super::{
-    pipeline_shader_resource::PipelineShaderDescriptor, PipelineConstructor,
-    PipelineModuleDescriptor,
-};
+use super::{pipeline_shader_resource::ShadersD, PipelineConstructor};
 
-pub struct SolidSplitShaders {
+pub struct SolidShaders {
     pub vertex: ShaderHandle,
     pub fragment: ShaderHandle,
 }
@@ -21,59 +15,12 @@ pub struct SolidShader {
     pub handle: ShaderHandle,
 }
 
-impl<M, S: IntoSystem<(), SolidPipelineModuleResourceExtras, M> + 'static>
-    PipelineShaderDescriptor<1, wgpu::RenderPipeline, S, M> for SolidShader
-{
-    type Descriptor = SolidPipelineModuleDescriptor<1, S, M>;
-
-    fn into_descriptor(self, system: S) -> SolidPipelineModuleDescriptor<1, S, M> {
-        SolidPipelineModuleDescriptor {
-            shaders: [self.handle],
-            system,
-            phantom: PhantomData,
-        }
-    }
-}
-
-impl<M, S: IntoSystem<(), SolidPipelineModuleResourceExtras, M> + 'static>
-    PipelineShaderDescriptor<2, wgpu::RenderPipeline, S, M> for SolidSplitShaders
-{
-    type Descriptor = SolidPipelineModuleDescriptor<2, S, M>;
-
-    fn into_descriptor(self, system: S) -> SolidPipelineModuleDescriptor<2, S, M> {
-        SolidPipelineModuleDescriptor {
-            shaders: [self.vertex, self.fragment],
-            system,
-            phantom: PhantomData,
-        }
-    }
-}
-
-pub struct SolidPipelineModuleDescriptor<const N: usize, S, M>
-where
-    S: IntoSystem<(), SolidPipelineModuleResourceExtras, M> + 'static,
-{
-    shaders: [ShaderHandle; N],
-    system: S,
-    phantom: PhantomData<M>,
-}
-
+#[derive(Default)]
 pub struct SolidPipelineModuleResourceExtras {
     pub vertex_buffers: Arc<[VertexBufferLayout<'static>]>,
     pub extra_bind_groups: Vec<Arc<BindGroupLayout>>,
     pub push_constants: Vec<PushConstantRange>,
     pub label: Option<&'static str>,
-}
-
-impl Default for SolidPipelineModuleResourceExtras {
-    fn default() -> Self {
-        Self {
-            vertex_buffers: Arc::new([]),
-            extra_bind_groups: vec![],
-            push_constants: vec![],
-            label: None,
-        }
-    }
 }
 
 pub struct SolidPipelineModuleResource {
@@ -82,34 +29,56 @@ pub struct SolidPipelineModuleResource {
     pub extras: SolidPipelineModuleResourceExtras,
 }
 
-impl<
-        const N: usize,
-        System: bevy_ecs::system::IntoSystem<(), SolidPipelineModuleResourceExtras, M>,
-        M,
-    > PipelineModuleDescriptor<N, wgpu::RenderPipeline, System, M>
-    for SolidPipelineModuleDescriptor<N, System, M>
+impl<System, M> ShadersD<wgpu::RenderPipeline, System, (), SolidPipelineModuleResourceExtras, M>
+    for SolidShader
+where
+    System: bevy_ecs::system::IntoSystem<(), SolidPipelineModuleResourceExtras, M> + 'static,
 {
-    // type Shaders = SolidSplitShaders;
-    fn constructor(
-        self,
-        world: &mut World,
-    ) -> impl PipelineConstructor<wgpu::RenderPipeline> + 'static {
-        SolidPipelineConstructor {
-            descriptor_system_id: world.register_system(self.system),
-            system_id: world.register_system(solid_pass_render_descriptor),
-        }
+    fn handles(&self) -> Box<[ShaderHandle]> {
+        Box::new([self.handle])
     }
 
-    fn as_arr(&self) -> [ShaderHandle; N] {
-        self.shaders
+    fn constructor(
+        self,
+        system: System,
+        world: &mut World,
+    ) -> impl PipelineConstructor<wgpu::RenderPipeline> + 'static {
+        let extras_system = world.register_system(system);
+        let constructor_system = world.register_system(solid_pass_render_descriptor);
+
+        construct(extras_system, constructor_system)
     }
 }
 
-impl PipelineConstructor<wgpu::RenderPipeline> for SolidPipelineConstructor {
-    fn construct(&mut self, moduels: &[Arc<ShaderModule>], rr: &mut World) -> wgpu::RenderPipeline {
-        let extras = rr.run_system(self.descriptor_system_id).unwrap();
+impl<System, M> ShadersD<wgpu::RenderPipeline, System, (), SolidPipelineModuleResourceExtras, M>
+    for SolidShaders
+where
+    System: bevy_ecs::system::IntoSystem<(), SolidPipelineModuleResourceExtras, M> + 'static,
+{
+    fn handles(&self) -> Box<[ShaderHandle]> {
+        Box::new([self.vertex, self.fragment])
+    }
+
+    fn constructor(
+        self,
+        system: System,
+        world: &mut World,
+    ) -> impl PipelineConstructor<wgpu::RenderPipeline> + 'static {
+        let extras_system = world.register_system(system);
+        let constructor_system = world.register_system(solid_pass_render_descriptor);
+
+        construct(extras_system, constructor_system)
+    }
+}
+
+fn construct(
+    extras_system: SystemId<(), SolidPipelineModuleResourceExtras>,
+    constructor_system: SystemId<SolidPipelineModuleResource, wgpu::RenderPipeline>,
+) -> impl Fn(&[Arc<ShaderModule>], &mut World) -> wgpu::RenderPipeline {
+    move |moduels: &[Arc<ShaderModule>], rr: &mut World| {
+        let extras = rr.run_system(extras_system).unwrap();
         rr.run_system_with_input(
-            self.system_id,
+            constructor_system,
             SolidPipelineModuleResource {
                 extras,
                 vertex: moduels[0].clone(),
@@ -118,9 +87,4 @@ impl PipelineConstructor<wgpu::RenderPipeline> for SolidPipelineConstructor {
         )
         .unwrap()
     }
-}
-
-pub struct SolidPipelineConstructor {
-    descriptor_system_id: SystemId<(), SolidPipelineModuleResourceExtras>,
-    system_id: SystemId<SolidPipelineModuleResource, wgpu::RenderPipeline>,
 }

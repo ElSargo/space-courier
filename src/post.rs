@@ -82,7 +82,7 @@ impl Postprocessing {
                 fragment: shader_handle,
             },
             // Box::new(move |rr, device, modules| {
-            |In(SplitPipelineModuleResource { vertex, fragment }),
+            |In(SplitShaderResource { vertex, fragment }),
              fsq: Res<FullscreenQuad>,
              format: Res<ScreenFormat>,
              device: RD| {

@@ -15,7 +15,7 @@ use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
-    ComputePipelineDescriptor, Device, PushConstantRange, ShaderStages,
+    ComputePipelineDescriptor, Device, PushConstantRange, ShaderModule, ShaderStages,
 };
 
 use crate::{
@@ -26,7 +26,6 @@ use crate::{
     renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{
         PipelineHandle, ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader,
-        UnifiedPipelineModuleResource, UnifiedShaders,
     },
     transform::Transform,
     ComputePipelines, RawInstance,
@@ -163,12 +162,8 @@ pub fn init_res(shader_manager: Res<ShaderLoader>, mut commands: Commands, devic
         }],
     });
     let compute_pipeline = shader_manager.add_compute_pipeline(
-        UnifiedShaders {
-            handle: shader_manager.load_shader("src/tri_mesh_gen.wgsl"),
-        },
-        move |In(mo): In<UnifiedPipelineModuleResource>,
-              device: RD,
-              mut ew: EventWriter<ReGenMeshes>| {
+        shader_manager.load_shader("src/tri_mesh_gen.wgsl"),
+        move |mo: In<Arc<ShaderModule>>, device: RD, mut ew: EventWriter<ReGenMeshes>| {
             ew.send(ReGenMeshes);
             device.create_compute_pipeline(&ComputePipelineDescriptor {
                 label: Some("Tri mesh generator"),

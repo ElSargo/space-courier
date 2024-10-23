@@ -1,9 +1,9 @@
 use super::{
-    path_to_shader_id, pipeline_manager::Adder, pipeline_shader_resource::PipelineShaderDescriptor,
-    PipelineHandle, PipelineManager, ShaderHandle,
+    path_to_shader_id, pipeline_manager::Adder, PipelineHandle, PipelineManager, ShaderHandle,
 };
+use crate::shader_manager::pipeline_shader_resource::ShadersD;
 use crate::{log, log_expand};
-use bevy_ecs::system::Resource;
+use bevy_ecs::system::{IntoSystem, Resource};
 use crossbeam_channel::Sender;
 use rand::random;
 use std::{
@@ -73,51 +73,49 @@ impl ShaderLoader {
         handle
     }
 
-    pub fn add_render_pipeline<'a, const N: usize, System, Shaders, M>(
+    pub fn add_render_pipeline<'a, System, Shaders, I, O, M>(
         &'a self,
         shaders: Shaders,
         system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::RenderPipeline, M> + Send + Sync + 'static,
     ) -> PipelineHandle
     where
-        Shaders: PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M> + Send + Sync,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::RenderPipeline, System, M>>::Descriptor:
-            Send + Sync + 'static,
+        Shaders: ShadersD<wgpu::RenderPipeline, System, I, O, M> + Send + Sync + 'static,
+        System: IntoSystem<I, O, M> + Send + Sync + 'static,
     {
         let pipeline_handle = PipelineHandle { id: random() };
 
-        let descriptor = Shaders::into_descriptor(shaders, system);
+        // let descriptor = Shaders::into_descriptor(shaders, system);
 
         self.render_constructor_registration_queue
             .send(Box::new(
                 move |render_manager: &mut PipelineManager<wgpu::RenderPipeline>, rr| {
-                    render_manager.add_pipeline(descriptor, pipeline_handle, rr)
+                    render_manager.add_pipeline(shaders, system, pipeline_handle, rr)
                 },
             ))
             .expect("Render creatation queue closed for some reason, this shouldn't happen");
         pipeline_handle
     }
 
-    pub fn add_compute_pipeline<'a, const N: usize, System, Shaders, M>(
+    pub fn add_compute_pipeline<'a, System, Shaders, I, O, M>(
         &'a self,
         shaders: Shaders,
-        system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::ComputePipeline, M> + Send + Sync + 'static,
+        system: System, // connstructor: impl IntoSystem<OutputResource, wgpu::computePipeline, M> + Send + Sync + 'static,
     ) -> PipelineHandle
     where
-        Shaders: PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M> + Send + Sync,
-        <Shaders as PipelineShaderDescriptor<N, wgpu::ComputePipeline, System, M>>::Descriptor:
-            Send + Sync + 'static,
+        Shaders: ShadersD<wgpu::ComputePipeline, System, I, O, M> + Send + Sync + 'static,
+        System: IntoSystem<I, O, M> + Send + Sync + 'static,
     {
         let pipeline_handle = PipelineHandle { id: random() };
 
-        let descriptor = Shaders::into_descriptor(shaders, system);
+        // let descriptor = Shaders::into_descriptor(shaders, system);
 
         self.compute_constructor_registration_queue
             .send(Box::new(
                 move |compute_manager: &mut PipelineManager<wgpu::ComputePipeline>, rr| {
-                    compute_manager.add_pipeline(descriptor, pipeline_handle, rr)
+                    compute_manager.add_pipeline(shaders, system, pipeline_handle, rr)
                 },
             ))
-            .expect("Compute creatation queue closed for some reason, this shouldn't happen");
+            .expect("compute creatation queue closed for some reason, this shouldn't happen");
         pipeline_handle
     }
 }

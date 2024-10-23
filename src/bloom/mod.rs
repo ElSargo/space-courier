@@ -459,7 +459,7 @@ pub fn init_res(
                 vertex: fsq.shader_handle,
                 fragment: bloom_down_handle,
             },
-            move |In(modules): In<SplitPipelineModuleResource>,
+            move |In(modules): In<SplitShaderResource>,
                   device: RD,
                   fsq: Res<FullscreenQuad>,
                   dpl: Res<DownPipelineLayout>| {
@@ -495,7 +495,7 @@ pub fn init_res(
                 vertex: fsq.shader_handle,
                 fragment: bloom_up_handle,
             },
-            |In(SplitPipelineModuleResource { vertex, fragment }),
+            |In(SplitShaderResource { vertex, fragment }),
              device: RD,
              fsq: Res<FullscreenQuad>,
              upl: Res<UpPipelineLayout>| {
@@ -527,7 +527,7 @@ pub fn init_res(
             vertex: fsq.shader_handle,
             fragment: bloom_extract_handle,
         },
-        |In(SplitPipelineModuleResource { vertex, fragment }),
+        |In(SplitShaderResource { vertex, fragment }),
          fsq: Res<FullscreenQuad>,
          epl: Res<ExtractPipelineLayout>,
          device: RD| {

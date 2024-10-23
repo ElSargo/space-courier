@@ -23,9 +23,9 @@ pub use {
         physics::Physics,
         renderables::SolidRenderable,
         shader_manager::{
-            ComputePipelines, PipelineHandle, RenderPipelines, ShaderLoader, ShaderManager,
-            SolidPipelineModuleResourceExtras, SolidShader, SplitPipelineModuleResource,
-            SplitShaders, UnifiedPipelineModuleResource, UnifiedShaders,
+            ComputePipelines, PipelineHandle, RenderPipelines, ShaderHandle, ShaderLoader,
+            ShaderManager, SolidPipelineModuleResourceExtras, SolidShader, SplitShaderResource,
+            SplitShaders,
         },
         texture::{TexCube, Texture},
         time::Time,

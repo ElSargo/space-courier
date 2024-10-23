@@ -4,15 +4,13 @@ mod pipeline_shader_resource;
 mod pipeline_view;
 mod solid_pipeline;
 mod split_pipeline;
-mod unified_pipeline;
 
 pub use self::{
     loader::ShaderLoader,
-    pipeline_shader_resource::{PipelineConstructor, PipelineModuleDescriptor},
+    pipeline_shader_resource::PipelineConstructor,
     pipeline_view::{ComputePipelines, RenderPipelines},
     solid_pipeline::{SolidPipelineModuleResource, SolidPipelineModuleResourceExtras, SolidShader},
-    split_pipeline::{SplitPipelineModuleResource, SplitShaders},
-    unified_pipeline::{UnifiedPipelineModuleResource, UnifiedShaders},
+    split_pipeline::{SplitShaderResource, SplitShaders},
 };
 use bevy_ecs::{component::Component, world::World};
 use crossbeam_channel::{unbounded, Receiver, Sender};

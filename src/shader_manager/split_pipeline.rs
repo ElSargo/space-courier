@@ -1,100 +1,41 @@
-use std::{marker::PhantomData, sync::Arc};
-
-use crate::shader_manager::ShaderHandle;
-use bevy_ecs::{
-    system::{IntoSystem, SystemId},
-    world::World,
-};
-use wgpu::ShaderModule;
-
-use super::{
-    pipeline_shader_resource::PipelineShaderDescriptor, PipelineConstructor,
-    PipelineModuleDescriptor,
-};
+use super::{pipeline_shader_resource::ShadersD, PipelineConstructor};
+use crate::prelude::*;
 
 pub struct SplitShaders {
     pub vertex: ShaderHandle,
     pub fragment: ShaderHandle,
 }
 
-impl<
-        PipelineType: 'static,
-        S: bevy_ecs::system::IntoSystem<SplitPipelineModuleResource, PipelineType, M> + 'static,
-        M,
-    > PipelineShaderDescriptor<2, PipelineType, S, M> for SplitShaders
-{
-    type Descriptor = SplitPipelineModuleDescriptor<PipelineType, S, M>;
-
-    fn into_descriptor(self, system: S) -> SplitPipelineModuleDescriptor<PipelineType, S, M>
-    where
-        S: IntoSystem<SplitPipelineModuleResource, PipelineType, M> + 'static,
-    {
-        SplitPipelineModuleDescriptor {
-            shaders: self,
-            system,
-            phantom: PhantomData,
-        }
-    }
-}
-
-pub struct SplitPipelineModuleDescriptor<PipelineType, S, M>
-where
-    S: IntoSystem<SplitPipelineModuleResource, PipelineType, M> + 'static,
-{
-    shaders: SplitShaders,
-    system: S,
-    phantom: PhantomData<(PipelineType, M)>,
-}
-
-pub struct SplitPipelineModuleResource {
+pub struct SplitShaderResource {
     pub vertex: Arc<ShaderModule>,
     pub fragment: Arc<ShaderModule>,
 }
 
-pub struct SplitPipelineConstructor<PipelineType> {
-    system_id: SystemId<SplitPipelineModuleResource, PipelineType>,
-}
-
-impl<'a> From<[Arc<ShaderModule>; 2]> for SplitPipelineModuleResource {
-    fn from(value: [Arc<ShaderModule>; 2]) -> Self {
-        Self {
-            vertex: value[0].clone(),
-            fragment: value[1].clone(),
-        }
-    }
-}
-
-impl<PipelineType, S, M> PipelineModuleDescriptor<2, PipelineType, S, M>
-    for SplitPipelineModuleDescriptor<PipelineType, S, M>
+impl<PipelineType, System, M> ShadersD<PipelineType, System, SplitShaderResource, PipelineType, M>
+    for SplitShaders
 where
-    S: IntoSystem<SplitPipelineModuleResource, PipelineType, M> + 'static,
     PipelineType: 'static,
+    System: IntoSystem<SplitShaderResource, PipelineType, M> + 'static,
 {
-    fn as_arr(&self) -> [ShaderHandle; 2] {
-        [self.shaders.vertex, self.shaders.fragment]
+    fn handles(&self) -> Box<[ShaderHandle]> {
+        Box::new([self.vertex, self.fragment])
     }
+
     fn constructor(
-        // system_ids: Vec<SystemId<SplitPipelineModuleResource, PipelineType>>,
         self,
+        system: System,
         world: &mut World,
     ) -> impl PipelineConstructor<PipelineType> + 'static {
-        SplitPipelineConstructor {
-            system_id: world.register_system(self.system),
+        let id = world.register_system(system);
+        move |moduels: &[Arc<ShaderModule>], rr: &mut World| {
+            rr.run_system_with_input(
+                id,
+                SplitShaderResource {
+                    vertex: moduels[0].clone(),
+                    fragment: moduels[1].clone(),
+                },
+            )
+            .unwrap()
         }
-    }
-}
-
-impl<PipelineType: 'static> PipelineConstructor<PipelineType>
-    for SplitPipelineConstructor<PipelineType>
-{
-    fn construct(&mut self, moduels: &[Arc<ShaderModule>], rr: &mut World) -> PipelineType {
-        rr.run_system_with_input(
-            self.system_id,
-            SplitPipelineModuleResource {
-                vertex: moduels[0].clone(),
-                fragment: moduels[1].clone(),
-            },
-        )
-        .unwrap()
     }
 }
