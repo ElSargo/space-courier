@@ -81,6 +81,7 @@ pub fn run() {
     event_loop.run_app(&mut state).unwrap();
 }
 
+use wgpu::PresentMode;
 // lib.rs
 use winit::{
     application::ApplicationHandler,
@@ -90,22 +91,6 @@ use winit::{
     keyboard::{Key, NamedKey, PhysicalKey},
     window::{Window, WindowAttributes},
 };
-
-#[derive(Resource)]
-struct ViewTextures {
-    color_texture: Texture,
-    depth_texture: Texture,
-    bind_group: BindGroup,
-}
-
-#[derive(Resource)]
-struct ReflectedViewTextures {
-    color_texture: Texture,
-    depth_texture: Texture,
-    bind_group: BindGroup,
-    _null_texture: Texture,
-    null_bind_group: BindGroup,
-}
 
 struct GraphicsContext<'a> {
     surface: wgpu::Surface<'a>,
@@ -152,9 +137,7 @@ impl GraphicsContext<'_> {
 
         let surface_capabilities = surface.get_capabilities(&adapter);
 
-        // Shader code in this tutorial assumes an sRGB surface texture. Using a different
-        // one will result in all the colors coming out darker. If you want to support non
-        // sRGB surfaces, you'll need to account for that when drawing to the frame.
+        // TODO other output formats
         let surface_format = surface_capabilities
             .formats
             .iter()
@@ -163,12 +146,25 @@ impl GraphicsContext<'_> {
             .next()
             .unwrap_or(surface_capabilities.formats[0]);
         let size = window.inner_size();
+
+        // TODO proper vsync settings
+        let present_mode = if surface_capabilities
+            .present_modes
+            .contains(&PresentMode::Fifo)
+        {
+            // Get vsync if we can
+            PresentMode::Fifo
+        } else {
+            // Whatever
+            surface_capabilities.present_modes[0]
+        };
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: surface_capabilities.present_modes[0],
+            present_mode,
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -222,9 +218,6 @@ impl GraphicsContext<'_> {
 }
 
 struct State<'a> {
-    // The window must be declared after the surface so
-    // it gets dropped after it as the surface contains
-    // unsafe references to the window's resources.
     graphics_ctx: Option<GraphicsContext<'a>>,
     initialiser: Option<Initailiser>,
     world: Option<World>,
@@ -242,7 +235,6 @@ impl<'a> ApplicationHandler for State<'a> {
             let gtx = GraphicsContext::new(event_loop, &mut world);
 
             world.run_schedule(InitSchedual);
-            world.increment_change_tick();
 
             self.world = Some(world);
             self.graphics_ctx = Some(gtx);
@@ -258,14 +250,6 @@ impl<'a> ApplicationHandler for State<'a> {
         event: winit::event::DeviceEvent,
     ) {
         match event {
-            // winit::event::DeviceEvent::MouseMotion { delta } => {
-            //     if let Some(ref mut world) = self.world {
-            //         world.send_event(MouseDelta {
-            //             x: delta.0 as f32,
-            //             y: delta.1 as f32,
-            //         });
-            //     }
-            // }
             winit::event::DeviceEvent::Motion { axis, value } => {
                 if let Some(ref mut world) = self.world {
                     world.send_event(AxisEvent {
@@ -274,11 +258,7 @@ impl<'a> ApplicationHandler for State<'a> {
                     });
                 }
             }
-            // update
-            _ => {} // DeviceEvent::MouseWheel { delta } => todo!(),
-                    // DeviceEvent::Button { button, self } => todo!(),
-                    // DeviceEvent::Key(e) => self.input(&e),
-                    // DeviceEvent::Text { codepoint } => todo!(),
+            _ => {}
         };
     }
 
@@ -303,23 +283,14 @@ impl<'a> ApplicationHandler for State<'a> {
                 self.window().request_redraw();
             },
             WindowEvent::Resized(physical_size) => {
-                            // RedrawRequested will only trigger once unless we manually
-                            // request it.
-                            // self.window().request_redraw();
-                            // }
                             self.resize(physical_size);
                             self.window().request_redraw();
-                        },
-                        WindowEvent::ScaleFactorChanged { .. } => {
-                            // new_inner_size is &&mut so we have to dereference it twice
-                            // self.resize(**new_inner_size);
                         },
                         WindowEvent::CloseRequested
                         | WindowEvent::KeyboardInput {
                             event:
                                 winit::event::KeyEvent {
                                     logical_key: Key::Named(NamedKey::Escape),
-                                    state: winit::event::ElementState::Pressed,
                                     ..
                                 },
                             ..
@@ -445,151 +416,10 @@ impl<'a> State<'a> {
     }
 }
 
-fn make_view_textures_bind_group(
-    device: &wgpu::Device,
-    depth_texture_bind_group_layout: &BindGroupLayout,
-    depth_texture: &Texture,
-    color_texture: &Texture,
-) -> BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &depth_texture_bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&color_texture.view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&color_texture.sampler),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::TextureView(&depth_texture.view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 3,
-                resource: wgpu::BindingResource::Sampler(&depth_texture.sampler),
-            },
-        ],
-        label: Some("view_bind_group"),
-    })
-}
-
-fn make_view_texture(resolution: &ScreenResolution, device: &wgpu::Device) -> Texture {
-    let size = wgpu::Extent3d {
-        // 2.
-        width: resolution.width,
-        height: resolution.height,
-        depth_or_array_layers: 1,
-    };
-    let desc = wgpu::TextureDescriptor {
-        label: Some("View tex"),
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: TextureFormat::Rgba16Float,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT // 3.
-        | wgpu::TextureUsages::TEXTURE_BINDING,
-        view_formats: &[],
-    };
-    let texture = device.create_texture(&desc);
-    let view = texture.create_view(&wgpu::TextureViewDescriptor {
-        label: Some("View texture descriptor"),
-        format: Some(TextureFormat::Rgba16Float),
-        ..Default::default()
-    });
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        // 4.
-        address_mode_u: wgpu::AddressMode::ClampToEdge,
-        address_mode_v: wgpu::AddressMode::ClampToEdge,
-        address_mode_w: wgpu::AddressMode::ClampToEdge,
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: wgpu::FilterMode::Linear,
-        ..Default::default()
-    });
-    Texture { view, sampler }
-}
-
-pub fn mk_pipeline_layout(
-    device: &wgpu::Device,
-    label: &str,
-    bind_group_layouts: &[&BindGroupLayout],
-) -> wgpu::PipelineLayout {
-    let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some(format!("{label} pipline layout").as_str()),
-        bind_group_layouts,
-        push_constant_ranges: &[],
-    });
-    render_pipeline_layout
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct RawInstance {
-    transform: Mat4,
-    rotation_only: Mat3,
-}
-unsafe impl bytemuck::Pod for RawInstance {}
-unsafe impl bytemuck::Zeroable for RawInstance {}
-instance_layout!(RawInstance, [
-     // Model matrix
-     5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
-     // Model rotation matrix
-     9 => Float32x3, 10 => Float32x3, 11 => Float32x3,
-]);
-
-impl RawInstance {
-    pub fn from_transform(t: &Transform) -> Self {
-        Self {
-            transform: t.to_mat(),
-            rotation_only: Mat3::from_quat(t.rotation),
-        }
-    }
-}
-
 fn main() {
-    // fn test(x: Vec2) -> f32 {
-    //     x.x.sin() * x.y.cos()
-    // }
-    // let mesh = tri_meash_gen::gen_mesh(5, 5, test);
-    // println!("{:#?}", mesh);
-
     color_eyre::install().unwrap();
     run();
 }
-
-// fn main() {
-//     let rt = tokio::runtime::Builder::new_current_thread()
-//         .enable_all()
-//         .on_thread_park(|| println!("Parked"))
-//         .build()
-//         .unwrap();
-
-//     rt.handle().spawn(async { run().await });
-// }
-
-// fn create_instance_buffers<Marker>(
-//     q: Query<Transform, With<Marker>>,
-//     camera: Res<Camera>
-//     buffer: Option<Res<InstanceBuffer<Marker>>>,
-//     commands: Commands,
-// ) {
-
-//     let Some(instance_buffer) = buffer else {
-//         InstanceBuffer::new()
-//     };
-
-//     instance_buffer.write(
-//         instance_buffer_bytes(q.iter(), camrea.eye)
-//     );
-
-//     if buffer.is_none() {
-//         commands.insert_resource(instance_buffer);
-//     }
-
-// }
 
 fn log_time(
     mut current_second: Local<f64>,
@@ -615,68 +445,12 @@ fn log_time(
         *current_second = time.since_startup;
     }
 
-    if time.delta_seconds > 1.0 / 60.0 {
+    if time.delta_seconds > 1.0 / 40.0 {
         println!(
             "[Time] {}: {} millis",
             "Lag spike".red(),
             time.delta_seconds * 1000.0
         );
-    }
-}
-
-#[macro_export]
-macro_rules! get_all {
-    ( $map:expr, $( $x:ty ),* ) => {
-        {
-            let clj = ||{Some(
-                (
-                    $(
-
-                        {
-                            let tmp = $map.get::<$x>();
-                            tmp?
-                        },
-                    )*
-                )
-            )
-            };
-            clj()
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! idx_all {
-    ( $map:expr, $( $x:ty ),* ) => {
-        {
-                (
-                    $(
-
-                        {
-                            let tmp = $map.get::<$x>();
-                            tmp.expect(&format!("Failed to index type {:?}", std::any::type_name::<$x>()))
-                        },
-                    )*
-                )
-
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! get_all_shaders {
-    ( $sm:expr, $( $handle:expr),* ) => {
-        {
-            let closure = ||{Some(
-                (
-                    $(
-                        $sm.get_module($handle)?,
-                    )*
-                )
-            )
-            };
-            closure()
-        }
     }
 }
 

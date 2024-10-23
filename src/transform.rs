@@ -2,7 +2,7 @@
 use bevy_ecs::component::Component;
 use glam::{Mat3, Mat4, Quat, Vec2, Vec3, Vec3Swizzles};
 
-use crate::{gpu::Packable, RawInstance};
+use crate::{gpu::Packable, instance_layout};
 
 #[derive(Debug, Clone, Component)]
 pub struct Transform {
@@ -157,5 +157,29 @@ impl Packable for RawInstance {
 
     fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
         RawInstance::from_transform(&input.translated(-eye.extend(0.0).xzy()))
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct RawInstance {
+    transform: Mat4,
+    rotation_only: Mat3,
+}
+unsafe impl bytemuck::Pod for RawInstance {}
+unsafe impl bytemuck::Zeroable for RawInstance {}
+instance_layout!(RawInstance, [
+     // Model matrix
+     5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
+     // Model rotation matrix
+     9 => Float32x3, 10 => Float32x3, 11 => Float32x3,
+]);
+
+impl RawInstance {
+    pub fn from_transform(t: &Transform) -> Self {
+        Self {
+            transform: t.to_mat(),
+            rotation_only: Mat3::from_quat(t.rotation),
+        }
     }
 }

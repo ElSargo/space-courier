@@ -13,6 +13,8 @@ use wgpu::{
 
 use crate::{
     background::Background,
+    camera::ReflectedViewTextures,
+    camera::ViewTextures,
     camera::{CameraUniform, ReflectedCameraUniform},
     ecs::Initailiser,
     gpu::{RD, RTBL, VTBGL},
@@ -21,7 +23,7 @@ use crate::{
     model::{self},
     renderables::SolidRenderable,
     shader_manager::{ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader},
-    texture, RawInstance, ReflectedViewTextures, StandardRenderPipeline, ViewTextures,
+    texture, RawInstance, StandardRenderPipeline,
 };
 
 pub struct Solidpass;

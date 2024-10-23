@@ -29,26 +29,6 @@ impl ButtonInput {
         Self::default()
     }
 
-    // pub fn on_key_down(&mut self, key: Key) {
-    //     let key_state = self.data.entry(key).or_insert(KeyState::JustDown);
-    //     match key_state {
-    //         KeyState::Down | KeyState::JustDown => {}
-    //         KeyState::Up | KeyState::JustUp => {
-    //             *key_state = KeyState::JustDown;
-    //         }
-    //     };
-    // }
-
-    // pub fn on_key_up(&mut self, key: Key) {
-    //     let key_state = self.data.entry(key).or_insert(KeyState::JustUp);
-    //     match key_state {
-    //         KeyState::Up | KeyState::JustUp => {}
-    //         KeyState::Down | KeyState::JustDown => {
-    //             *key_state = KeyState::JustUp;
-    //         }
-    //     };
-    // }
-
     pub fn update(
         mut this: ResMut<Self>,
         time: Res<Time>,

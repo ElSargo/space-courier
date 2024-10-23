@@ -1,9 +1,10 @@
 use crate::{
+    camera::ViewTextures,
     gpu::{OutputTextureResource, ScreenFormat, VTBGL},
     planet_shadows::PlanetShadows,
     prelude::*,
     shader_manager::RenderPipelines,
-    Background, ViewTextures,
+    Background,
 };
 
 #[derive(Resource)]

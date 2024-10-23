@@ -15,6 +15,7 @@ use wgpu::{
 
 use crate::{
     camera::CameraUniform,
+    camera::ViewTextures,
     ecs::Initailiser,
     gpu::{Packable, ScreenResolution, RD},
     instance_buffer::{InstanceBuffer, RenderPassExt},
@@ -22,7 +23,7 @@ use crate::{
     planets::Planet,
     shader_manager::{PipelineHandle, ShaderLoader},
     transform::Transform,
-    vertex_layout, ViewTextures,
+    vertex_layout,
 };
 
 #[derive(Resource)]

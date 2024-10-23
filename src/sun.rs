@@ -1,6 +1,6 @@
 use crate::{prelude::*, standard_object};
 
-pub(crate) const SUN_MASS: f32 = 20000.0;
+pub(crate) const SUN_MASS: f32 = 10.0;
 
 #[derive(Component)]
 pub struct Sun;

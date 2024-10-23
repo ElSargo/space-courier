@@ -17,7 +17,6 @@ pub use {
         instance_buffer::InstanceBuffer,
         load_shader,
         marker::Marker,
-        mk_pipeline_layout,
         model::{self, Model},
         model_loader,
         physics::Physics,
@@ -29,8 +28,7 @@ pub use {
         },
         texture::{TexCube, Texture},
         time::Time,
-        transform::Transform,
-        RawInstance,
+        transform::{RawInstance, Transform},
     },
     arc_swap::{ArcSwap, Guard as ArcGuard},
     bevy_ecs::{

@@ -3,14 +3,14 @@ use bevy_ecs::{
     system::{Commands, Res, ResMut, Resource},
 };
 use glam::{vec3, Mat4, Vec3, Vec4};
-use wgpu::{util::DeviceExt, Device};
+use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Device, TextureFormat};
 
 use std::default::Default;
 
 use crate::{
     ecs::Initailiser,
     gpu::{ScreenResolution, ViewTexturesBindGroupLayout, RD, RQ, VTBGL},
-    make_view_texture, make_view_textures_bind_group, texture, ReflectedViewTextures, ViewTextures,
+    texture, Texture,
 };
 
 #[derive(Resource)]
@@ -328,4 +328,87 @@ pub fn init_view_textures(device: RD, mut commands: Commands, resolution: Res<Sc
     }
 
     commands.insert_resource(ViewTexturesBindGroupLayout(bind_group_layout));
+}
+
+fn make_view_texture(resolution: &ScreenResolution, device: &wgpu::Device) -> Texture {
+    let size = wgpu::Extent3d {
+        // 2.
+        width: resolution.width,
+        height: resolution.height,
+        depth_or_array_layers: 1,
+    };
+    let desc = wgpu::TextureDescriptor {
+        label: Some("View tex"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: TextureFormat::Rgba16Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT // 3.
+        | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    };
+    let texture = device.create_texture(&desc);
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("View texture descriptor"),
+        format: Some(TextureFormat::Rgba16Float),
+        ..Default::default()
+    });
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        // 4.
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    });
+    Texture { view, sampler }
+}
+
+fn make_view_textures_bind_group(
+    device: &wgpu::Device,
+    depth_texture_bind_group_layout: &BindGroupLayout,
+    depth_texture: &Texture,
+    color_texture: &Texture,
+) -> BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &depth_texture_bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&color_texture.view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&color_texture.sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(&depth_texture.view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(&depth_texture.sampler),
+            },
+        ],
+        label: Some("view_bind_group"),
+    })
+}
+
+#[derive(Resource)]
+pub struct ViewTextures {
+    pub color_texture: Texture,
+    pub depth_texture: Texture,
+    pub bind_group: BindGroup,
+}
+
+#[derive(Resource)]
+pub struct ReflectedViewTextures {
+    pub color_texture: Texture,
+    pub depth_texture: Texture,
+    pub bind_group: BindGroup,
+    pub _null_texture: Texture,
+    pub null_bind_group: BindGroup,
 }

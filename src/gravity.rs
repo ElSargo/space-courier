@@ -2,7 +2,7 @@ use crate::{ecs::Initailiser, physics::Physics, time::Time, transform::Transform
 use bevy_ecs::system::{Query, Res};
 use glam::Vec3;
 
-pub const G: f32 = -10.0;
+pub const G: f32 = -1.0;
 
 pub fn apply_gravity(mut planets: Query<(&mut Physics, &Transform)>, time: Res<Time>) {
     let mut comps = planets.iter_combinations_mut();

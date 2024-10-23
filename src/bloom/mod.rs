@@ -1,6 +1,6 @@
 mod compute;
 
-use crate::{background, prelude::*, shader_manager::RenderPipelines, ViewTextures};
+use crate::{background, camera::ViewTextures, prelude::*, shader_manager::RenderPipelines};
 
 pub fn init_mod(ecs: &mut Initailiser) {
     ecs.init.add_systems(
