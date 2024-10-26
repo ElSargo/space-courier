@@ -29,95 +29,6 @@ pub struct PlayerControllerUpright {
     pub speed: f32,
 }
 
-#[derive(Debug, Component)]
-pub struct PlayerController {
-    pub speed: f32,
-    pub momentum: f32,
-    pub _skating: bool,
-}
-
-#[allow(dead_code)]
-pub fn update<'a>(
-    mut player: Query<(&mut PlayerController, &mut Transform)>,
-    mut camera: ResMut<Camera>,
-    time: Res<Time>,
-    kb: Res<ButtonInput>,
-    axis: Res<AxisInput>,
-    look_ahead: Local<Quat>,
-) {
-    let (mut player_controller, mut transform) = player.single_mut();
-    let (player_controller, transform) = (&mut *player_controller, &mut *transform);
-
-    // let gravity = gravity_all(transform.translation, bodies.iter()) * time.delta_seconds * -10.0;
-    // transform.translation += gravity;
-    // camera.eye += gravity;
-    // camera.target += gravity;
-
-    if kb.active(Forward) {
-        player_controller.momentum += player_controller.speed * time.delta_seconds
-    }
-    if kb.active(crate::input::Inputs::Back) {
-        player_controller.momentum *= 0.95
-    }
-    let camera_displacement_factor = 0.04;
-    camera.fovy = std::f32::consts::PI * 0.25 * (2.0 - (-player_controller.momentum * 0.1).exp());
-
-    let mouse_sensitivity = 0.3;
-
-    let cam_transform = Transform::from_mat4(&camera.view_matrix());
-
-    let x_rotation = (cam_transform.rotation.inverse()
-        * Quat::from_rotation_x(mouse_sensitivity * (axis.y) * time.delta_seconds))
-        * cam_transform.rotation;
-
-    let y_rotation = (cam_transform.rotation.inverse()
-        * Quat::from_rotation_y(mouse_sensitivity * (axis.x) * time.delta_seconds))
-        * cam_transform.rotation;
-
-    let body_rotation = x_rotation * y_rotation;
-
-    transform.rotation = body_rotation * transform.rotation;
-    look_ahead.lerp(
-        body_rotation * 10.0,
-        1.0 - (-1.0 * time.delta_seconds).exp(),
-    );
-
-    // Correct view
-    let camera_alginment_full_rotation = Quat::from_rotation_arc(camera.up, transform.up());
-
-    camera.up = Quat::IDENTITY
-        .lerp(
-            camera_alginment_full_rotation,
-            1.0 - (-1.0 * time.delta_seconds).exp(),
-        )
-        .mul_vec3(camera.up);
-
-    let frame_translation = player_controller.momentum
-        * player_controller.speed
-        * time.delta_seconds
-        * transform.forward();
-    transform.translation += frame_translation;
-
-    let focal_ponit = transform.translation
-        + (transform.up() * 1.5 + transform.forward() * 2.0) * camera_displacement_factor;
-    let camera_eye_target = focal_ponit + transform.back() * camera_displacement_factor * 6.0;
-    let camera_target_target = focal_ponit
-        + look_ahead.mul_vec3(transform.forward())
-            * camera_displacement_factor
-            * 3.0
-            * (player_controller.momentum + 1.0).ln();
-
-    let lerp_factor = 1.0
-        - (-time.delta_seconds
-            * 020.0
-            * (1.0 / (1.1 + cam_transform.forward().dot(transform.forward())) + 1.0))
-            .exp();
-    camera.eye += frame_translation;
-    camera.target += frame_translation;
-    camera.target = camera.target.lerp(camera_target_target, lerp_factor);
-    camera.eye = camera.eye.lerp(camera_eye_target, lerp_factor);
-}
-
 pub fn update_camera_from_upright_player_controller(
     player_query: Query<&mut PlayerControllerUpright>,
     mut camera: ResMut<Camera>,
@@ -137,7 +48,7 @@ pub fn update_camera_from_upright_player_controller(
     );
 
     camera.eye = player_controller.position;
-    camera.target = player_controller.position + cinematic_smoothing.forward();
+    camera.orientation = *cinematic_smoothing;
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {

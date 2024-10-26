@@ -2,7 +2,7 @@ use bevy_ecs::{
     schedule::IntoSystemConfigs,
     system::{Commands, Res, ResMut, Resource},
 };
-use glam::{vec3, Mat4, Vec3, Vec4};
+use glam::{vec3, Mat4, Quat, Vec3, Vec4};
 use wgpu::{util::DeviceExt, BindGroup, BindGroupLayout, Device, TextureFormat};
 
 use std::default::Default;
@@ -10,14 +10,15 @@ use std::default::Default;
 use crate::{
     ecs::Initailiser,
     gpu::{ScreenResolution, ViewTexturesBindGroupLayout, RD, RQ, VTBGL},
-    texture, Texture,
+    texture,
+    transform::QuatDirections,
+    Texture,
 };
 
 #[derive(Resource)]
 pub struct Camera {
     pub eye: Vec3,
-    pub target: Vec3,
-    pub up: Vec3,
+    pub orientation: Quat,
     pub aspect: f32,
     pub fovy: f32,
     pub znear: f32,
@@ -73,26 +74,22 @@ impl ReflectedCameraUniform {
 }
 
 impl Camera {
-    pub fn build_view_projection_matrix(view: Mat4, proj: Mat4) -> glam::Mat4 {
-        return proj * view;
-    }
-
     pub fn projection_matrix(&self) -> Mat4 {
         glam::Mat4::perspective_infinite_reverse_lh(self.fovy, self.aspect, self.znear)
     }
 
     pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_at_lh(
+        Mat4::look_to_lh(
             Vec3::Y * self.eye,
-            self.target - self.eye * vec3(1.0, 0.0, 1.0),
-            self.up,
+            self.orientation.forward(),
+            self.orientation.up(),
         )
     }
 
     pub fn into_uniform_data(&self) -> CameraUniformData {
         let view = self.view_matrix();
         let proj = self.projection_matrix();
-        let view_proj = Self::build_view_projection_matrix(view, proj);
+        let view_proj = proj * view;
         CameraUniformData {
             view_pos: self.eye.extend(1.0),
             view,
@@ -105,24 +102,31 @@ impl Camera {
 
     pub fn into_reflected_uniform_data(&self) -> CameraUniformData {
         let refy = Vec3::X + Vec3::NEG_Y + Vec3::Z;
+        let eye = self.eye * refy;
+        let view = Mat4::look_to_lh(
+            self.eye * refy * Vec3::Y,
+            self.orientation.forward() * refy,
+            self.orientation.up() * refy,
+        );
 
-        let r = Self {
-            eye: self.eye * refy,
-            target: self.target * refy,
-            up: self.up * refy,
-            ..*self
-        };
-
-        r.into_uniform_data()
+        let proj = self.projection_matrix();
+        let view_proj = proj * view;
+        CameraUniformData {
+            view_pos: eye.extend(1.0),
+            view,
+            proj,
+            view_proj,
+            inv_proj: proj.inverse(),
+            inv_view: view.transpose(),
+        }
     }
 }
 
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            eye: vec3(200.0, 0.0, 0.0),
-            target: Vec3::ZERO,
-            up: Vec3::Y,
+            eye: vec3(0.0, 0.0, 0.0),
+            orientation: Quat::IDENTITY,
             aspect: 1.0,
             fovy: std::f32::consts::PI * 0.25,
             znear: 0.1,
@@ -195,7 +199,7 @@ pub fn insert_camera(resolution: Res<ScreenResolution>, device: RD, mut commands
     let camera = Camera {
         aspect: resolution.width as f32 / resolution.height as f32,
         eye: vec3(0.0, 0.0, -200.0),
-        target: Vec3::ZERO,
+
         ..Default::default()
     };
 
