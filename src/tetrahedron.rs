@@ -48,10 +48,10 @@ impl Packable for Instance {
     fn pack<'a>(
         intput: <<Self::Input<'a> as bevy_ecs::query::QueryData>::ReadOnly as bevy_ecs::query::WorldQuery>::Item<'_>,
         eye: glam::Vec2,
-    ) -> Self {
-        Self {
+    ) -> Option<Self> {
+        Some(Self {
             mat: intput.translated(-eye.extend(0.0).xzy()).to_mat(),
-        }
+        })
     }
 }
 

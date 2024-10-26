@@ -96,12 +96,16 @@ impl InstanceBuffer {
     pub fn write_from_iterator<'a, T: bytemuck::Pod>(
         &self,
         // instances: &[T],
-        items: impl ExactSizeIterator<Item = T>,
+        items: impl Iterator<Item = T>,
         device: &Device,
         queue: &Queue,
     ) {
         let width = std::mem::size_of::<T>();
-        let Some(required_size) = NonZeroU64::new((items.len() * width) as u64) else {
+        let max_items = items
+            .size_hint()
+            .1
+            .expect("Iterator must provide an upper bound so space can be reserved");
+        let Some(required_size) = NonZeroU64::new((max_items * width) as u64) else {
             return;
         };
 
@@ -112,7 +116,7 @@ impl InstanceBuffer {
             .expect("Grow at least should have produced a buffer large enough but didn't");
 
         self.instances.store(
-            (items.len() as u32).into(),
+            (max_items as u32).into(),
             std::sync::atomic::Ordering::SeqCst,
         );
 

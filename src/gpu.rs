@@ -64,7 +64,7 @@ pub trait Packable: Pod {
     fn pack<'a>(
         intput: <<Self::Input<'a> as QueryData>::ReadOnly as WorldQuery>::Item<'_>,
         eye: Vec2,
-    ) -> Self;
+    ) -> Option<Self>;
 }
 
 pub fn pack_buffers<'a, Raw: Packable, InputFilter, InstanceBufferFilter>(
@@ -80,7 +80,7 @@ pub fn pack_buffers<'a, Raw: Packable, InputFilter, InstanceBufferFilter>(
 {
     match instance_buffer.get_single() {
         Ok(ib) => {
-            let i = inputs.iter().map(|i| Raw::pack(i, camera.eye.xz()));
+            let i = inputs.iter().flat_map(|i| Raw::pack(i, camera.eye.xz()));
             ib.write_from_iterator(i, &device, &queue);
         }
         Err(_e) => {

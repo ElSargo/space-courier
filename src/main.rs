@@ -81,6 +81,7 @@ pub fn run() {
     event_loop.run_app(&mut state).unwrap();
 }
 
+use tri_meash_gen::positon_to_chunk_id;
 use wgpu::PresentMode;
 // lib.rs
 use winit::{
@@ -426,6 +427,7 @@ fn log_time(
     mut frame: Local<u128>,
     mut avg: Local<f64>,
     time: Res<Time>,
+    camera: Res<Camera>,
 ) {
     use color_eyre::owo_colors::OwoColorize;
     *frame += 1;
@@ -443,6 +445,8 @@ fn log_time(
         *frame = 0;
         *avg = 0.0;
         *current_second = time.since_startup;
+
+        println!("Cam_chunk_id: {:?}", positon_to_chunk_id(camera.eye.xz()))
     }
 
     if time.delta_seconds > 1.0 / 40.0 {

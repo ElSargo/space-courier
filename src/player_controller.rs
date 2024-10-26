@@ -185,7 +185,7 @@ pub fn update_upright_player_controller<'a>(
         * time.delta_seconds
         * ship_transform.forward();
     ship_transform.translation += frame_translation;
-    ship_transform.translation.y = 0.02;
+    ship_transform.translation.y = 20.02;
     player_controller.position = ship_transform.translation
         + ship_transform
             .rotation
@@ -211,7 +211,7 @@ fn spawn_player(mut commands: Commands) {
             pitch: 0.0,
             yaw: 0.0,
             momentum: 0.0,
-            speed: 1.0,
+            speed: 10.0,
         },
         Transform {
             scale: Vec3::ONE * 0.01,

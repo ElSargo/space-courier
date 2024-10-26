@@ -323,7 +323,7 @@ pub fn init_mod(ecs: &mut Initailiser) {
 impl Packable for Instance {
     type Input<'a> = (&'a Transform, &'a Planet);
 
-    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Option<Self> {
         let sun_radius = 20.0;
         let distance_recip = input.0.translation.length_recip();
         let umbra_gradient = (sun_radius - input.1.radius) * distance_recip;
@@ -334,7 +334,7 @@ impl Packable for Instance {
         let back_length = 20000.0;
         let back_width = back_length * penumbra_gradient + input.1.radius;
 
-        Instance {
+        Some(Instance {
             penumbra_origin_length,
             penumbra_cosa: penumbra_origin_length
                 / vec2(penumbra_origin_length, sun_radius).length(),
@@ -346,6 +346,6 @@ impl Packable for Instance {
             radius: input.1.radius,
             back_length,
             back_width,
-        }
+        })
     }
 }

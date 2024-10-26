@@ -1,3 +1,4 @@
+use crate::instance_buffer;
 use std::{collections::VecDeque, mem::size_of, sync::Arc};
 
 use bevy_ecs::{
@@ -9,26 +10,23 @@ use bevy_ecs::{
 };
 
 use bytemuck::cast_slice;
-use glam::{Vec2, Vec3Swizzles};
-
-use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
-    ComputePipelineDescriptor, Device, PushConstantRange, ShaderModule, ShaderStages,
-};
+use glam::{vec2, IVec2, Vec2, Vec3Swizzles};
 
 use crate::{
     ecs::Initailiser,
     gpu::{pack_buffers, Packable, RD, RQ},
-    instance_buffer::InstanceBuffer,
     instance_layout,
     renderables::{SolidDrawable, SolidRenderable},
     shader_manager::{
         PipelineHandle, ShaderLoader, SolidPipelineModuleResourceExtras, SolidShader,
     },
-    transform::Transform,
-    ComputePipelines, RawInstance,
+    Camera, ComputePipelines,
+};
+use wgpu::{
+    util::{BufferInitDescriptor, DeviceExt},
+    BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BufferBinding, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
+    ComputePipelineDescriptor, Device, PushConstantRange, ShaderModule, ShaderStages,
 };
 
 type IndexType = u16;
@@ -90,21 +88,39 @@ pub fn index_buffer(width: IndexType, device: &Device) -> wgpu::Buffer {
 }
 
 pub fn init_mod(i: &mut Initailiser) {
-    i.init
-        .add_systems(init_res.after(crate::background::init_background));
+    i.init.add_systems(
+        (
+            init_res.after(crate::background::init_background),
+            init_meshes,
+        )
+            .chain(),
+    );
     i.prepare_buffers
         .add_systems(pack_buffers::<Instance, (), With<TriMeshInstanceBufferMarker>>);
-    i.update.add_systems((/*test,*/ gen_height, regen_meshes));
+    i.update.add_systems((
+        /*test,*/
+        gen_height,
+        // regen_meshes,
+        mangage_mesh_positions.after(regen_meshes),
+    ));
     i.world.init_resource::<Events<ReGenMeshes>>();
 }
 
 impl Packable for Instance {
-    type Input<'a> = (&'a Transform, &'a TriMeshMarker);
-    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Self {
-        Self {
-            position: (input.0.translation.xz() - eye).to_array(),
-            offset: input.1.offset * CHUNK_SIZE as u32,
-        }
+    type Input<'a> = &'a TriMeshMarker;
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Option<Self> {
+        let bounding_circle = vec2(
+            CHUNK_DIM as f32 - 1.0,
+            (CHUNK_DIM as f32 - 1.0) * 3f32.sqrt() / 2.0,
+        )
+        .length();
+
+        // let forward = eye
+
+        Some(Self {
+            position: (chunk_id_to_position(input.computed_chunk_id) - eye).to_array(),
+            offset: input.offset * CHUNK_SIZE as u32,
+        })
     }
 }
 
@@ -130,8 +146,9 @@ impl SolidDrawable for TriMesh {
     }
 }
 
-const CHUNKS: usize = 3;
-const CHUNK_DIM: usize = 251;
+const RENDER_DISTANCE: usize = 20;
+const CHUNKS: usize = (RENDER_DISTANCE) * (RENDER_DISTANCE) * 4;
+const CHUNK_DIM: usize = 33;
 const CHUNK_SIZE: usize = CHUNK_DIM * CHUNK_DIM;
 const TOTAL_CHUNK_DATA_SIZE: usize = size_of::<f32>() * CHUNKS * CHUNK_SIZE;
 
@@ -223,11 +240,11 @@ pub fn init_res(shader_manager: Res<ShaderLoader>, mut commands: Commands, devic
         }],
     }));
 
-    let tq = TriQueue {
+    commands.insert_resource(TriQueue {
         queue: VecDeque::new(),
         pipeline: compute_pipeline,
         bind: output_compute_bind.clone(),
-    };
+    });
 
     let mesh = TriMesh {
         vertex_storage: output_vertex_bind,
@@ -257,35 +274,15 @@ pub fn init_res(shader_manager: Res<ShaderLoader>, mut commands: Commands, devic
             ),
             renderable: Box::new(mesh),
         },
-        InstanceBuffer::new_init(
-            Some("Tri mesh index buffer".to_string()),
-            BufferUsages::COPY_DST | BufferUsages::VERTEX,
-            &device,
-            &[RawInstance::from_transform(&Transform::default())],
-        ),
+        instance_buffer!(@ "Tri mesh index buffer", &device),
         TriMeshInstanceBufferMarker,
     ));
-
-    commands.insert_resource(tq);
-    commands.spawn((Transform::default(), TriMeshMarker { offset: 0 }));
-    // commands.spawn((
-    //     Transform {
-    //         translation: vec3(CHUNK_DIM as f32, 0.0, 0.0),
-    //         ..Default::default()
-    //     },
-    //     TriMeshMarker { offset: 1 },
-    // ));
-    // commands.spawn((
-    //     Transform {
-    //         translation: vec3(0.0, 0.0, CHUNK_DIM as f32 * 3.0f32.sqrt() / 2.0),
-    //         ..Default::default()
-    //     },
-    //     TriMeshMarker { offset: 2 },
-    // ));
 }
 
-#[derive(Component)]
+#[derive(Component, Clone, Copy)]
 pub struct TriMeshMarker {
+    base_chunk_id: IVec2,
+    computed_chunk_id: IVec2,
     offset: u32,
 }
 
@@ -294,7 +291,7 @@ pub struct TriMeshInstanceBufferMarker;
 
 #[derive(Resource)]
 pub struct TriQueue {
-    queue: VecDeque<(Vec2, u32)>,
+    queue: VecDeque<TriMeshMarker>,
     pipeline: PipelineHandle,
     bind: Arc<wgpu::BindGroup>,
 }
@@ -318,12 +315,20 @@ fn gen_height(
         let mut enc = device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("Tri mesh enc"),
         });
-        while let Some((position, offset_index)) = to_process.queue.pop_front() {
-            println!("Dispatcing compute");
+        while let Some(TriMeshMarker {
+            base_chunk_id: _,
+            computed_chunk_id,
+            offset,
+        }) = to_process.queue.pop_front()
+        {
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Tri mesh compute"),
                 timestamp_writes: None,
             });
+            let offset_position = CHUNK_SIZE as u32 * offset;
+            let size = CHUNK_DIM as u32;
+            let position = chunk_id_to_position(computed_chunk_id);
+            // println!("Dispatcing compute: pos: {position:?}, offset_index: {offset:?} offset_position: {offset_position}");
 
             pass.set_bind_group(0, &to_process.bind, &[]);
             pass.set_pipeline(&p);
@@ -331,8 +336,8 @@ fn gen_height(
             pass.set_push_constants(
                 0,
                 cast_slice(&[Push {
-                    offset: CHUNK_SIZE as u32 * offset_index,
-                    size: CHUNK_DIM as u32,
+                    offset: offset_position,
+                    size,
                     position,
                 }]),
             );
@@ -345,12 +350,69 @@ fn gen_height(
 fn regen_meshes(
     mut er: EventReader<ReGenMeshes>,
     mut tq: ResMut<TriQueue>,
-    meshes: Query<(&Transform, &TriMeshMarker)>,
+    meshes: Query<&TriMeshMarker>,
 ) {
     if let Some(_) = er.read().last() {
-        for (transform, marker) in meshes.iter() {
-            tq.queue
-                .push_front((transform.translation.xz(), marker.offset));
+        for marker in meshes.iter() {
+            tq.queue.push_front(marker.clone());
+        }
+    }
+}
+
+pub fn positon_to_chunk_id(position: Vec2) -> IVec2 {
+    let denomenator: Vec2 = vec2(1.0, 3f32.sqrt() / 2.0) * (CHUNK_DIM - 1) as f32;
+    let scaled = position / denomenator;
+    IVec2::new(scaled.x.round() as i32, scaled.y.round() as i32)
+}
+
+fn chunk_id_to_position(position: IVec2) -> Vec2 {
+    let scaled = vec2(position.x as f32, position.y as f32);
+    let scaler: Vec2 = vec2(1.0, 3f32.sqrt() / 2.0) * (CHUNK_DIM - 1) as f32;
+    scaled * scaler
+}
+
+fn mangage_mesh_positions(
+    mut tri_meshes: Query<&mut TriMeshMarker>,
+    camera: Res<Camera>,
+    mut tri_q: ResMut<TriQueue>,
+) {
+    let cam_id = positon_to_chunk_id(camera.eye.xz());
+    // println!("Cam: {cam_id:?}");
+
+    for mut id in tri_meshes.iter_mut() {
+        let id = &mut (*id);
+        if wrap_chunk(cam_id, &mut id.computed_chunk_id, id.base_chunk_id.clone()) {
+            tri_q.queue.push_back(id.clone())
+        }
+    }
+}
+
+fn wrap_chunk(cam_id: IVec2, chunk_position: &mut IVec2, offset: IVec2) -> bool {
+    let old = *chunk_position;
+    let new = wrap(cam_id, offset, IVec2::splat(RENDER_DISTANCE as i32));
+
+    *chunk_position = new;
+
+    return new != old;
+}
+
+fn wrap(p: IVec2, offset: IVec2, period: IVec2) -> IVec2 {
+    let wraped = (p - offset + period) / (period * 2);
+    wraped * 2 * period + offset
+}
+
+fn init_meshes(mut tri_q: ResMut<TriQueue>, mut commands: Commands) {
+    let mut i = 0;
+    for x in -(RENDER_DISTANCE as i32)..RENDER_DISTANCE as i32 {
+        for y in -(RENDER_DISTANCE as i32)..RENDER_DISTANCE as i32 {
+            let marker = TriMeshMarker {
+                offset: i,
+                base_chunk_id: IVec2 { x, y },
+                computed_chunk_id: IVec2 { x, y },
+            };
+            commands.spawn(marker);
+            tri_q.queue.push_back(marker);
+            i += 1;
         }
     }
 }
