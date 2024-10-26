@@ -1,8 +1,7 @@
 #![allow(dead_code)]
-use bevy_ecs::component::Component;
-use glam::{Mat3, Mat4, Quat, Vec2, Vec3, Vec3Swizzles};
-
 use crate::{gpu::Packable, instance_layout};
+use bevy_ecs::component::Component;
+use glam::{vec3, Mat3, Mat4, Quat, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles};
 
 #[derive(Debug, Clone, Component)]
 pub struct Transform {
@@ -55,63 +54,27 @@ impl Transform {
     }
 
     pub fn forward(&self) -> Vec3 {
-        Self::forward_of_quat(self.rotation)
-    }
-
-    pub fn forward_of_quat(rotation: Quat) -> Vec3 {
-        Vec3 {
-            x: 2.0 * (rotation.x * rotation.z + rotation.w * rotation.y),
-            y: 2.0 * (rotation.y * rotation.z - rotation.w * rotation.x),
-            z: 1.0 - 2.0 * (rotation.x * rotation.x + rotation.y * rotation.y),
-        }
+        self.rotation.forward()
     }
 
     pub fn up(&self) -> Vec3 {
-        Self::up_of_quat(self.rotation)
-    }
-
-    pub fn up_of_quat(rotation: Quat) -> Vec3 {
-        Vec3 {
-            x: 2.0 * (rotation.x * rotation.y - rotation.w * rotation.z),
-            y: 1.0 - 2.0 * (rotation.x * rotation.x + rotation.z * rotation.z),
-            z: 2.0 * (rotation.y * rotation.z + rotation.w * rotation.x),
-        }
+        self.rotation.up()
     }
 
     pub fn right(&self) -> Vec3 {
-        Self::right_of_quat(self.rotation)
-    }
-
-    pub fn right_of_quat(rotation: Quat) -> Vec3 {
-        Vec3 {
-            x: 1.0 - 2.0 * (rotation.y * rotation.y + rotation.z * rotation.z),
-            y: 2.0 * (rotation.x * rotation.y + rotation.w * rotation.z),
-            z: 2.0 * (rotation.x * rotation.z - rotation.w * rotation.y),
-        }
+        self.rotation.right()
     }
 
     pub fn down(&self) -> Vec3 {
-        -self.up()
-    }
-
-    pub fn down_of_quat(rotation: Quat) -> Vec3 {
-        -Self::up_of_quat(rotation)
+        self.rotation.down()
     }
 
     pub fn left(&self) -> Vec3 {
-        -self.right()
-    }
-
-    pub fn left_of_quat(rotation: Quat) -> Vec3 {
-        -Self::right_of_quat(rotation)
+        self.rotation.left()
     }
 
     pub fn back(&self) -> Vec3 {
-        -self.forward()
-    }
-
-    pub fn back_of_quat(rotation: Quat) -> Vec3 {
-        -Self::forward_of_quat(rotation)
+        self.rotation.back()
     }
 
     pub fn look_at(&mut self, target: Vec3, up: Vec3) {
@@ -183,5 +146,63 @@ impl RawInstance {
             transform: t.to_mat(),
             rotation_only: Mat3::from_quat(t.rotation),
         }
+    }
+}
+
+pub trait QuatDirections {
+    fn forward(self) -> Vec3;
+
+    fn up(self) -> Vec3;
+
+    fn right(self) -> Vec3;
+
+    fn down(self) -> Vec3;
+
+    fn left(self) -> Vec3;
+
+    fn back(self) -> Vec3;
+}
+
+// forward = +y, back = -y
+// right   = +x, left = -x
+// up      = +z, down = -z
+impl QuatDirections for Quat {
+    fn forward(self) -> Vec3 {
+        let v = Vec4::from(self);
+        2.0 * vec3(
+            v.xw().dot(v.zy()),
+            v.y * v.z - v.w * v.x,
+            0.5 - v.xy().length_squared(),
+        )
+    }
+
+    fn up(self) -> Vec3 {
+        let v = Vec4::from(self);
+        2.0 * vec3(
+            v.x * v.y - v.w * v.z,
+            0.5 - v.xz().length_squared(),
+            v.yw().dot(v.zx()),
+        )
+    }
+
+    fn right(self) -> Vec3 {
+        let v = Vec4::from(self);
+        2.0 * vec3(
+            0.5 - v.yz().length_squared(),
+            v.xw().dot(v.yz()),
+            v.x * v.z - v.w * v.y,
+        )
+    }
+
+    fn down(self) -> Vec3 {
+        -self.up()
+    }
+
+    fn left(self) -> Vec3 {
+        -self.right()
+    }
+
+    fn back(self) -> Vec3 {
+        -self.forward()
     }
 }

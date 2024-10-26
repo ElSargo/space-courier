@@ -1,3 +1,4 @@
+use crate::transform::QuatDirections;
 use crate::{
     camera::Camera,
     ecs::Initailiser,
@@ -136,7 +137,7 @@ pub fn update_camera_from_upright_player_controller(
     );
 
     camera.eye = player_controller.position;
-    camera.target = player_controller.position + Transform::forward_of_quat(*cinematic_smoothing);
+    camera.target = player_controller.position + cinematic_smoothing.forward();
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -161,7 +162,7 @@ pub fn update_upright_player_controller<'a>(
         player_controller.momentum *= 0.95
     }
 
-    let pc_forward = Transform::forward_of_quat(player_controller.rotation);
+    let pc_forward = player_controller.rotation.forward();
     let roll_ammount = pc_forward.dot(ship_transform.left()) * 4.0;
     *roll_average = lerp(
         *roll_average,
