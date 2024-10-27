@@ -146,7 +146,7 @@ impl SolidDrawable for TriMesh {
     }
 }
 
-const RENDER_DISTANCE: usize = 20;
+const RENDER_DISTANCE: usize = 15;
 const CHUNKS: usize = (RENDER_DISTANCE) * (RENDER_DISTANCE) * 4;
 const CHUNK_DIM: usize = 33;
 const CHUNK_SIZE: usize = CHUNK_DIM * CHUNK_DIM;

@@ -97,7 +97,7 @@ pub fn update_upright_player_controller<'a>(
         * time.delta_seconds
         * ship_transform.forward();
     ship_transform.translation += frame_translation;
-    ship_transform.translation.y = 20.02;
+    ship_transform.translation.y = 0.02;
     player_controller.position = ship_transform.translation
         + ship_transform
             .rotation
