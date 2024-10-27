@@ -89,9 +89,9 @@ pub fn init(ecs: &mut Initailiser) {
 impl Packable for RawArrowInstance {
     type Input<'a> = (&'a Transform, &'a ArrowGizmo);
 
-    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Option<Self> {
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2, _eye_forward: Vec2) -> Option<Self> {
         Some(Self {
-            transform: input.0.translated(-eye.extend(0.0).xzy()).to_mat(),
+            transform: input.0.translated(-eye.extend(0.0)).to_mat(),
             color: input.1.color,
         })
     }

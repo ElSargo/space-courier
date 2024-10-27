@@ -115,15 +115,15 @@ impl InstanceBuffer {
             .write_buffer_with(&buffer, 0, required_size)
             .expect("Grow at least should have produced a buffer large enough but didn't");
 
-        self.instances.store(
-            (max_items as u32).into(),
-            std::sync::atomic::Ordering::SeqCst,
-        );
-
-        for (i, v) in items.enumerate() {
+        let mut i = 0;
+        for v in items {
             let start = i * width;
             write_buffer[start..start + width].copy_from_slice(bytemuck::bytes_of(&v));
+            i += 1;
         }
+
+        self.instances
+            .store((i as u32).into(), std::sync::atomic::Ordering::SeqCst);
     }
 }
 

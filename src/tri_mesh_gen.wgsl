@@ -121,9 +121,9 @@ fn full(
 
     // 3_f32.sqrt() / 2.0
     let x = f32(gid.x) + 0.5 * f32(gid.y % 2);
-    let z = f32(gid.y) * sqrt(3.0) * 0.5;
+    let y = f32(gid.y) * sqrt(3.0) * 0.5;
 
-    let y = height(vec2(x, z) + size.position);
+    let z = height(vec2(x, y) + size.position);
 
-    vertex_data[output_index] = y;
+    vertex_data[output_index] = z;
 }

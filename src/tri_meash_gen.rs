@@ -59,21 +59,21 @@ pub fn index_buffer(width: IndexType, device: &Device) -> wgpu::Buffer {
             if y % 2 == 0 {
                 idxs.extend_from_slice(&[
                     this_row_base,
-                    next_row_base,
                     this_row_base + 1,
-                    //
                     next_row_base,
+                    //
                     next_row_base + 1,
+                    next_row_base,
                     this_row_base + 1,
                 ]);
             } else {
                 idxs.extend_from_slice(&[
-                    next_row_base,
                     next_row_base + 1,
+                    next_row_base,
                     this_row_base,
                     //
-                    this_row_base,
                     next_row_base + 1,
+                    this_row_base,
                     this_row_base + 1,
                 ]);
             }
@@ -108,17 +108,16 @@ pub fn init_mod(i: &mut Initailiser) {
 
 impl Packable for Instance {
     type Input<'a> = &'a TriMeshMarker;
-    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Option<Self> {
-        let bounding_circle = vec2(
-            CHUNK_DIM as f32 - 1.0,
-            (CHUNK_DIM as f32 - 1.0) * 3f32.sqrt() / 2.0,
-        )
-        .length();
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2, eye_forward: Vec2) -> Option<Self> {
+        // let bounding_circle = vec2(
+        //     CHUNK_DIM as f32 - 1.0,
+        //     (CHUNK_DIM as f32 - 1.0) * 3f32.sqrt() / 2.0,
+        // )
+        // .length();
+        let position = chunk_id_to_position(input.computed_chunk_id) - eye;
 
-        // let forward = eye
-
-        Some(Self {
-            position: (chunk_id_to_position(input.computed_chunk_id) - eye).to_array(),
+        (position.normalize().dot(eye_forward) > -1.0).then_some(Self {
+            position: position.to_array(),
             offset: input.offset * CHUNK_SIZE as u32,
         })
     }
@@ -279,7 +278,7 @@ pub fn init_res(shader_manager: Res<ShaderLoader>, mut commands: Commands, devic
     ));
 }
 
-#[derive(Component, Clone, Copy)]
+#[derive(Component, Clone, Copy, Debug)]
 pub struct TriMeshMarker {
     base_chunk_id: IVec2,
     computed_chunk_id: IVec2,
@@ -365,7 +364,7 @@ pub fn positon_to_chunk_id(position: Vec2) -> IVec2 {
     IVec2::new(scaled.x.round() as i32, scaled.y.round() as i32)
 }
 
-fn chunk_id_to_position(position: IVec2) -> Vec2 {
+pub fn chunk_id_to_position(position: IVec2) -> Vec2 {
     let scaled = vec2(position.x as f32, position.y as f32);
     let scaler: Vec2 = vec2(1.0, 3f32.sqrt() / 2.0) * (CHUNK_DIM - 1) as f32;
     scaled * scaler
@@ -376,8 +375,7 @@ fn mangage_mesh_positions(
     camera: Res<Camera>,
     mut tri_q: ResMut<TriQueue>,
 ) {
-    let cam_id = positon_to_chunk_id(camera.eye.xz());
-    // println!("Cam: {cam_id:?}");
+    let cam_id = positon_to_chunk_id(camera.eye.xy());
 
     for mut id in tri_meshes.iter_mut() {
         let id = &mut (*id);
@@ -397,7 +395,7 @@ fn wrap_chunk(cam_id: IVec2, chunk_position: &mut IVec2, offset: IVec2) -> bool 
 }
 
 fn wrap(p: IVec2, offset: IVec2, period: IVec2) -> IVec2 {
-    let wraped = (p - offset + period) / (period * 2);
+    let wraped = (p - offset + period).div_euclid(period * 2);
     wraped * 2 * period + offset
 }
 

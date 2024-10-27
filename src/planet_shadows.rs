@@ -323,7 +323,7 @@ pub fn init_mod(ecs: &mut Initailiser) {
 impl Packable for Instance {
     type Input<'a> = (&'a Transform, &'a Planet);
 
-    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Option<Self> {
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2, _eye_forward: Vec2) -> Option<Self> {
         let sun_radius = 20.0;
         let distance_recip = input.0.translation.length_recip();
         let umbra_gradient = (sun_radius - input.1.radius) * distance_recip;

@@ -327,6 +327,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     return vec4(color, 1.0);
     // return vec4(vec3(1.0 - pow(edge,10.)),1.0);
+    // return vec4(clamp(nor,vec3(0.0),vec3(1.0)),1.0);
 }
 
 // Stars / background 

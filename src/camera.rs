@@ -80,7 +80,7 @@ impl Camera {
 
     pub fn view_matrix(&self) -> Mat4 {
         Mat4::look_to_lh(
-            Vec3::Y * self.eye,
+            Vec3::Z * self.eye,
             self.orientation.forward(),
             self.orientation.up(),
         )
@@ -101,10 +101,10 @@ impl Camera {
     }
 
     pub fn into_reflected_uniform_data(&self) -> CameraUniformData {
-        let refy = Vec3::X + Vec3::NEG_Y + Vec3::Z;
+        let refy = Vec3::X + Vec3::Y + Vec3::NEG_Z;
         let eye = self.eye * refy;
         let view = Mat4::look_to_lh(
-            self.eye * refy * Vec3::Y,
+            self.eye * refy * Vec3::Z,
             self.orientation.forward() * refy,
             self.orientation.up() * refy,
         );

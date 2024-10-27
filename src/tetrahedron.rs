@@ -48,9 +48,10 @@ impl Packable for Instance {
     fn pack<'a>(
         intput: <<Self::Input<'a> as bevy_ecs::query::QueryData>::ReadOnly as bevy_ecs::query::WorldQuery>::Item<'_>,
         eye: glam::Vec2,
+        _eye_forward: glam::Vec2,
     ) -> Option<Self> {
         Some(Self {
-            mat: intput.translated(-eye.extend(0.0).xzy()).to_mat(),
+            mat: intput.translated(-eye.extend(0.0)).to_mat(),
         })
     }
 }
@@ -112,7 +113,7 @@ fn spawn_stars(mut commands: Commands) {
     commands.spawn((
         Transform {
             scale: Vec3::splat(400.0),
-            translation: vec3(-100.0, 2.0, -100.0),
+            translation: vec3(-100.0, -100.0, 2.0),
             ..Default::default()
         },
         Star,
@@ -131,7 +132,7 @@ pub fn init_mod(initailiser: &mut Initailiser) {
 struct Star;
 
 fn make_vertex_data(batch_size: usize) -> Vec<Vertex> {
-    let batch_bounds = vec3(1.0, 0.5, 1.0);
+    let batch_bounds = vec3(1.0, 1.0, 0.5);
     let scale_bounds = 0.001..0.003;
     let mut rng = thread_rng();
 

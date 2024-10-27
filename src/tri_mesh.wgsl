@@ -35,14 +35,14 @@ struct VertexOutput {
 fn vs_main(
     @builtin(vertex_index) in_vertex_index: u32, instance: InstanceInput,
 ) -> VertexOutput {
-    let z_index = in_vertex_index / size;
-    let z = f32(z_index) * sqrt(3.0) * 0.5;
-    let x = f32(in_vertex_index % size) + 0.5 * f32(z_index % 2);
-    let y = vertex_data[instance.buffer_offset + in_vertex_index];
-    let vert_position = vec4(x + instance.translation.x, y, z + instance.translation.y, 1.0);
+    let y_index = in_vertex_index / size;
+    let x = f32(in_vertex_index % size) + 0.5 * f32(y_index % 2);
+    let y = f32(y_index) * sqrt(3.0) * 0.5;
+    let z = vertex_data[instance.buffer_offset + in_vertex_index];
+    let vert_position = vec4(vec2(x, y) + instance.translation.xy, z, 1.0);
     return VertexOutput(
         camera.view_proj * vert_position,
-        vert_position.xyz - vec3(0.0, camera.view_pos.y, 0.0),
+        vert_position.xyz - vec3(0.0, 0.0, camera.view_pos.z),
         vec3(x, y, z),
     );
 }
@@ -88,9 +88,9 @@ struct Hex {
 fn hex_tile(p: vec2f) -> Hex {
     let t = dot(p, axis);
     let j = 1.48194195; // Floating point jank
-    let s = fract((p.x + j * 2. * i3)/j)*j - j * i3;
-    let l = select(2. * s, -s  ,s > 0.0);
-    let u = round((p.x * 4. + l + 0.5 ) * i3 - t / s34);
+    let s = fract((p.x + j * 2. * i3) / j) * j - j * i3;
+    let l = select(2. * s, -s, s > 0.0);
+    let u = round((p.x * 4. + l + 0.5) * i3 - t / s34);
     let b = vec2(0, u * 2. * s34);
     let t1 = dot(p - b, axis);
     let v = round(t1 / c);
@@ -105,7 +105,7 @@ fn hex_tile(p: vec2f) -> Hex {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sin_60 = sqrt(3.0) / 2.0;
-    let tri_coord = vec3(in.mesh_position.xz * mat2x2(sin_60, 0.5, sin_60, -0.5), in.mesh_position.z) + 3.0 / sqrt(48.0);
+    let tri_coord = vec3(in.mesh_position.xy * mat2x2(sin_60, 0.5, sin_60, -0.5), in.mesh_position.y) + 3.0 / sqrt(48.0);
 
     let tri_int = triangle_line_signal(tri_coord, 0.02) ;
     let line_signal = max(tri_int.x, max(tri_int.y, tri_int.z));
@@ -115,20 +115,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let flat_normal = normalize(cross(dpdx(in.relative_position), dpdy(in.relative_position)));
     let reflected_ray_direction = reflect(ray_direction, flat_normal);
 
-    let planer_reflection_incident = sample_planar_reflection(in.clip_position.xy) * step(0.99, flat_normal.y);
+    let planer_reflection_incident = sample_planar_reflection(in.clip_position.xy) * step(0.99, flat_normal.z);
     let background_incident = textureSample(background, background_sampler, reflected_ray_direction).rgb;
 
     let reflection_incident = mix(background_incident.rgb, planer_reflection_incident.rgb, planer_reflection_incident.a);
 
     let fresnel_strength = fresnel(ray_direction, flat_normal, 5.0);
-    let reflection_strength = pow(max(0.0, dot(reflected_ray_direction, ray_direction)), 2.0) * fresnel_strength + 0.2;
+    let reflection_strength = pow(max(0.0, dot(reflected_ray_direction, ray_direction)), 2.0) * fresnel_strength + 0.0;
 
-    let h_factor = exp(-in.mesh_position.y);
+    let h_factor = exp(-in.mesh_position.z);
 
-    let line_color = mix(vec3(0.2, 0.23, 1.0) * (2.0 + 10.0 * pow(flat_normal.y, 5.0)), vec3(1.0, 0.0, 0.23) * 20.0, smoothstep(0.1, 0.2, h_factor)) * ((1.0 - h_factor) + 0.03);
+    let line_color = mix(vec3(0.2, 0.23, 1.0) * (2.0 + 10.0 * pow(flat_normal.z, 5.0)), vec3(1.0, 0.0, 0.23) * 20.0, smoothstep(0.1, 0.2, h_factor)) * ((1.0 - h_factor) + 0.03);
     let reflection_color = reflection_strength * reflection_incident;
     let color = reflection_color + line_color * line_signal ;
 
-    return vec4(color, 1.0);
+
+
+    let alpha = smoothstep(0.0002,0.0003, in.clip_position.z);
+    return vec4(color , alpha);
     // let hx = hex_tile((in.relative_position.xz + camera.view_pos.xz)*0.5).position;
 }

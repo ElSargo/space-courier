@@ -81,7 +81,7 @@ pub fn run() {
     event_loop.run_app(&mut state).unwrap();
 }
 
-use tri_meash_gen::positon_to_chunk_id;
+use tri_meash_gen::{chunk_id_to_position, positon_to_chunk_id};
 use wgpu::PresentMode;
 // lib.rs
 use winit::{
@@ -446,7 +446,12 @@ fn log_time(
         *avg = 0.0;
         *current_second = time.since_startup;
 
-        println!("Cam_chunk_id: {:?}", positon_to_chunk_id(camera.eye.xz()))
+        println!(
+            "Cam_chunk_id: {:?}, position actual {:?}, position computed {:?}",
+            positon_to_chunk_id(camera.eye.xy()),
+            camera.eye.xy(),
+            chunk_id_to_position(positon_to_chunk_id(camera.eye.xy()))
+        )
     }
 
     if time.delta_seconds > 1.0 / 40.0 {

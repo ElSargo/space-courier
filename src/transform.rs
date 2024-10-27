@@ -118,9 +118,9 @@ impl Transform {
 impl Packable for RawInstance {
     type Input<'a> = &'a Transform;
 
-    fn pack<'a>(input: Self::Input<'a>, eye: Vec2) -> Option<Self> {
+    fn pack<'a>(input: Self::Input<'a>, eye: Vec2, _eye_forward: Vec2) -> Option<Self> {
         Some(RawInstance::from_transform(
-            &input.translated(-eye.extend(0.0).xzy()),
+            &input.translated(-eye.extend(0.0)),
         ))
     }
 }
@@ -170,18 +170,18 @@ impl QuatDirections for Quat {
     fn forward(self) -> Vec3 {
         let v = Vec4::from(self);
         2.0 * vec3(
-            v.xw().dot(v.zy()),
-            v.y * v.z - v.w * v.x,
-            0.5 - v.xy().length_squared(),
+            v.x * v.y - v.w * v.z,
+            0.5 - v.xz().length_squared(),
+            v.yw().dot(v.zx()),
         )
     }
 
     fn up(self) -> Vec3 {
         let v = Vec4::from(self);
         2.0 * vec3(
-            v.x * v.y - v.w * v.z,
-            0.5 - v.xz().length_squared(),
-            v.yw().dot(v.zx()),
+            v.xw().dot(v.zy()),
+            v.y * v.z - v.w * v.x,
+            0.5 - v.xy().length_squared(),
         )
     }
 

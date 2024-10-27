@@ -83,7 +83,7 @@ pub fn update_upright_player_controller<'a>(
 
     // ship_transform.rotation = full_rot;
     let ship_roll = (player_controller.rotation
-        * Quat::from_rotation_z(*roll_average)
+        * Quat::from_rotation_y(-*roll_average)
         * player_controller.rotation.inverse())
     .lerp(Quat::IDENTITY, (-0.2 * player_controller.momentum).exp());
 
@@ -97,19 +97,14 @@ pub fn update_upright_player_controller<'a>(
         * time.delta_seconds
         * ship_transform.forward();
     ship_transform.translation += frame_translation;
-    ship_transform.translation.y = 0.02;
+    ship_transform.translation.z = 30.02;
     player_controller.position = ship_transform.translation
         + ship_transform
             .rotation
             // .lerp(ship_transform.rotation.inverse(), 0.5)
-            .mul_vec3(vec3(0.04, 0.1, -0.4))
-            * vec3(1.0, 0.1, 1.0)
-        + Vec3::Y * 0.1;
-    // * vec3(1.0, 0.0, 1.0);
-
-    // + Transform::back_of_quat(player_controller.rotation) * 0.4
-    // + Transform::up_of_quat(player_controller.rotation) * 0.1
-    // + Transform::right_of_quat(player_controller.rotation) * 0.04;
+            .mul_vec3(vec3(0.04, -0.4, 0.1))
+            * vec3(1.0, 1.0, 0.1)
+        + Vec3::Z * 0.1;
 }
 
 fn spawn_player(mut commands: Commands) {
@@ -118,7 +113,7 @@ fn spawn_player(mut commands: Commands) {
     commands.spawn((
         // PlayerController::new(10.1),
         PlayerControllerUpright {
-            rotation: Quat::from_rotation_y(0.0),
+            rotation: Quat::from_rotation_z(0.0),
             position: spawn_position,
             pitch: 0.0,
             yaw: 0.0,
@@ -150,7 +145,7 @@ fn update_upright_pitch_and_yaw(
         player.yaw += axis.x * time.delta_seconds * mouse_sensitivity;
         let max_pitch = std::f32::consts::PI * 0.4;
         player.pitch = player.pitch.clamp(-max_pitch, max_pitch);
-        player.rotation = Quat::from_euler(glam::EulerRot::YXZ, player.yaw, player.pitch, 0.0);
+        player.rotation = Quat::from_euler(glam::EulerRot::ZXY, player.yaw, -player.pitch, 0.0);
     }
 }
 
@@ -186,8 +181,8 @@ pub fn apply_velocity(
 pub fn bank_player(mut players: Query<(&mut PlayerControllerUpright, &mut Transform)>) {
     for (mut pc, mut tra) in players.iter_mut() {
         let tra = &mut *tra;
-        if tra.translation.y < 0.0 {
-            tra.translation.y = 0.0;
+        if tra.translation.z < 0.0 {
+            tra.translation.z = 0.0;
             pc.pitch = -pc.pitch.abs();
         }
     }

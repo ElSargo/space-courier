@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{prelude::*, transform::QuatDirections};
 
 // #[derive(Resource, Clone)]
 // pub struct DeviceResource(pub Arc<wgpu::Device>);
@@ -64,6 +64,7 @@ pub trait Packable: Pod {
     fn pack<'a>(
         intput: <<Self::Input<'a> as QueryData>::ReadOnly as WorldQuery>::Item<'_>,
         eye: Vec2,
+        eye_forward: Vec2,
     ) -> Option<Self>;
 }
 
@@ -80,7 +81,9 @@ pub fn pack_buffers<'a, Raw: Packable, InputFilter, InstanceBufferFilter>(
 {
     match instance_buffer.get_single() {
         Ok(ib) => {
-            let i = inputs.iter().flat_map(|i| Raw::pack(i, camera.eye.xz()));
+            let i = inputs
+                .iter()
+                .flat_map(|i| Raw::pack(i, camera.eye.xy(), camera.orientation.forward().xy()));
             ib.write_from_iterator(i, &device, &queue);
         }
         Err(_e) => {
