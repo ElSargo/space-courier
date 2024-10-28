@@ -97,14 +97,16 @@ pub fn update_upright_player_controller<'a>(
         * time.delta_seconds
         * ship_transform.forward();
     ship_transform.translation += frame_translation;
-    ship_transform.translation.z = 30.02;
+    ship_transform.translation.z = 0.02;
     player_controller.position = ship_transform.translation
-        + ship_transform
-            .rotation
-            // .lerp(ship_transform.rotation.inverse(), 0.5)
-            .mul_vec3(vec3(0.04, -0.4, 0.1))
-            * vec3(1.0, 1.0, 0.1)
+        + ship_transform.rotation.mul_vec3(vec3(0.1, -0.4, 0.1)) * vec3(1.0, 1.0, 0.1)
         + Vec3::Z * 0.1;
+    // println!(
+    //     "R: {:?} F: {:?} U: {:?}",
+    //     player_controller.rotation.right(),
+    //     player_controller.rotation.forward(),
+    //     player_controller.rotation.up()
+    // );
 }
 
 fn spawn_player(mut commands: Commands) {
@@ -145,7 +147,7 @@ fn update_upright_pitch_and_yaw(
         player.yaw += axis.x * time.delta_seconds * mouse_sensitivity;
         let max_pitch = std::f32::consts::PI * 0.4;
         player.pitch = player.pitch.clamp(-max_pitch, max_pitch);
-        player.rotation = Quat::from_euler(glam::EulerRot::ZXY, player.yaw, -player.pitch, 0.0);
+        player.rotation = Quat::from_euler(glam::EulerRot::ZXY, -player.yaw, -player.pitch, 0.0);
     }
 }
 

@@ -167,9 +167,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let background_color = textureSample(background, background_sampler, ray_direction);
 
 
-    var color = mix(background_color.rgb, view_color.rgb , view_color.a   );
+    var color = mix(background_color.rgb, view_color.rgb, view_color.a);
     color = aces_tonemap(color + bloom);
     return vec4(gamma(color * 1.0 + bloom * 0.4), 1.0);
+    // return vec4(
+    //     view_pos.xyz,
+    //     1.0
+    // );
     // return vec4(1.0,0.0,1.0,1.0);
 }
 

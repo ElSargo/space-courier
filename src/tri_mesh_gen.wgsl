@@ -13,7 +13,7 @@ struct Push {
 
 const s3: f32 = sqrt(3.);
 const s34: f32 = sqrt(3. / 4.);
-const c : f32 = sqrt(sqrt(3.)-1.)*2.;
+const c : f32 = sqrt(sqrt(3.) - 1.) * 2.;
 const i3: f32 = 1. / 3.;
 const axis: vec2f = vec2(s3 / 2., -.5); 
 struct Hex {
@@ -24,9 +24,9 @@ struct Hex {
 fn hex_tile(p: vec2f) -> Hex {
     let t = dot(p, axis);
     let j = 1.48194195; // Floating point jank
-    let s = fract((p.x + j * 2. * i3)/j)*j - j * i3;
-    let l = select(2. * s, -s  ,s > 0.0);
-    let u = round((p.x * 4. + l + 0.5 ) * i3 - t / s34);
+    let s = fract((p.x + j * 2. * i3) / j) * j - j * i3;
+    let l = select(2. * s, -s, s > 0.0);
+    let u = round((p.x * 4. + l + 0.5) * i3 - t / s34);
     let b = vec2(0, u * 2. * s34);
     let t1 = dot(p - b, axis);
     let v = round(t1 / c);
@@ -87,24 +87,20 @@ fn nfbm(p: vec3f) -> f32 {
 }
 
 
-fn hash12(p: vec2f) -> f32
-{
-    var p3  = fract(p.xyx * .1031);
+fn hash12(p: vec2f) -> f32 {
+    var p3 = fract(p.xyx * .1031);
     p3 += dot(p3, p3.yzx + 33.33);
     return fract((p3.x + p3.y) * p3.z);
 }
 
 fn height(p: vec2f) -> f32 {
 
-    let hx = hex_tile(p*0.6);
-    let h = max(nfbm(vec3(p.x * 0.005, 0.0, p.y * 0.005 + 1.0)) - 0.9, 0.0) * 100.0;
-    let g = max(nfbm(vec3(p.x * 0.02, 0.0, p.y * 0.02)) - 0.8, 0.0) * 20.0;
+    let hx = hex_tile(p * 0.6);
+    let h = max(nfbm(vec3(p.x * 0.005, 0.0, p.y * 0.005 + 1.0)) - 0.9, 0.0) * 100.0 ;
+    let g = max(nfbm(vec3(p.x * 0.02, 0.0, p.y * 0.02)) - 0.8, 0.0) * 20.0 ;
     let k = max(nfbm(vec3(p.x * 0.2, 0.0, p.y * 0.5)) - 0.9, 0.0) * 5.0;
     let o = max(nfbm(vec3(hx.position.x * 0.2, 0.0, hx.position.y)) - 0.9, 0.0) * 5.0;
-    // return h + g + k;
-
-    // let l = hash12(hx.position);
-    return  h + g ;
+    return  (h + g) * smoothstep(4.0, 10.0, abs(p.x * 0.25 + p.y * 0.75)) ;
 }
 
 @compute

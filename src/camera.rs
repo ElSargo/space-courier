@@ -75,11 +75,11 @@ impl ReflectedCameraUniform {
 
 impl Camera {
     pub fn projection_matrix(&self) -> Mat4 {
-        glam::Mat4::perspective_infinite_reverse_lh(self.fovy, self.aspect, self.znear)
+        glam::Mat4::perspective_infinite_reverse_rh(self.fovy, self.aspect, self.znear)
     }
 
     pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_to_lh(
+        Mat4::look_to_rh(
             Vec3::Z * self.eye,
             self.orientation.forward(),
             self.orientation.up(),
@@ -99,12 +99,11 @@ impl Camera {
             inv_view: view.transpose(),
         }
     }
-
     pub fn into_reflected_uniform_data(&self) -> CameraUniformData {
         let refy = Vec3::X + Vec3::Y + Vec3::NEG_Z;
         let eye = self.eye * refy;
-        let view = Mat4::look_to_lh(
-            self.eye * refy * Vec3::Z,
+        let view = Mat4::look_to_rh(
+            Vec3::Z * self.eye * refy,
             self.orientation.forward() * refy,
             self.orientation.up() * refy,
         );

@@ -151,7 +151,7 @@ macro_rules! instance_buffer {
             $(
                 label = Some($label.to_owned());
             )?
-            let usages =  BufferUsages::empty() $( | $usages )? ;
+            let usages =  wgpu::BufferUsages::empty() $( | $usages )? ;
             crate::instance_buffer::InstanceBuffer::new(label, usages , $device)
 
         }

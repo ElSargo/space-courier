@@ -1,35 +1,28 @@
 #![allow(dead_code)]
 
+use crate::instance_buffer;
+use crate::RQ;
 use crate::{
     ecs::Initailiser,
-    gpu::{pack_buffers, Packable},
-    instance_layout,
+    gpu::{pack_buffers, Packable, TextureBindGroupLayoutResource},
+    instance_layout, model,
+    model_loader::{self},
     transform::Transform,
+    ShaderLoader, SolidPipelineModuleResourceExtras, SolidRenderable, SolidShader, RD,
 };
-use bevy_ecs::{component::Component, query::With};
-use glam::{vec4, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
+use bevy_ecs::schedule::IntoSystemConfigs;
+use bevy_ecs::{
+    component::Component,
+    query::With,
+    system::{Commands, Res},
+};
+use glam::vec3;
+use glam::{vec4, Mat4, Vec2, Vec3, Vec4};
 
 #[derive(Debug, Component)]
 pub struct ArrowGizmo {
     pub color: Vec4,
 }
-
-// impl ArrowGizmos {
-//     pub fn len(&self) -> usize {
-//         self.transforms.len()
-//     }
-
-//     pub fn to_raw_buffer(&self) -> Vec<RawArrowInstance> {
-//         self.transforms
-//             .iter()
-//             .zip(self.colors.iter())
-//             .map(|(transform, color)| RawArrowInstance {
-//                 transform: transform.to_mat(),
-//                 color: *color,
-//             })
-//             .collect()
-//     }
-// }
 
 #[repr(C)]
 #[derive(Component, Debug, Copy, Clone)]
@@ -66,26 +59,103 @@ instance_layout!(RawArrowInstance, [ 5 => Float32x4, 6 => Float32x4, 7 => Float3
 
 #[derive(Component)]
 pub struct ArrowBufferMarker;
-pub fn init(ecs: &mut Initailiser) {
-    for color in [
-        vec4(1.0, 0.5, 0.25, 1.0),
-        vec4(0.2, 0.5, 1.0, 1.0),
-        vec4(0.2, 1., 0.5, 1.0),
-    ] {
-        ecs.world.spawn((
-            Transform {
-                scale: Vec3::ONE * 0.01,
-                ..Default::default()
-            },
-            ArrowGizmo { color },
-        ));
+pub fn init_mod(ecs: &mut Initailiser) {
+    // for color in [
+    //     vec4(1.0, 0.5, 0.25, 1.0),
+    //     vec4(0.2, 0.5, 1.0, 1.0),
+    //     vec4(0.2, 1., 0.5, 1.0),
+    // ] {
+    //     ecs.world.spawn((
+    //         Transform {
+    //             scale: Vec3::ONE * 0.1,
+    //             ..Default::default()
+    //         },
+    //         ArrowGizmo { color },
+    //     ));
+    // }
+
+    for x in -1..=1 {
+        for y in -1..=1 {
+            for z in -1..=1 {
+                let coord = vec3(x as f32, y as f32, z as f32);
+                ecs.world.spawn((
+                    Transform {
+                        scale: Vec3::ONE * 0.1,
+                        translation: coord,
+                        ..Default::default()
+                    },
+                    ArrowGizmo {
+                        color: coord.extend(1.0),
+                    },
+                ));
+            }
+        }
     }
 
+    ecs.init.add_systems(
+        init.after(crate::background::init_background)
+            .after(crate::solid_pass::init_normal_pipeline),
+    );
+    // // .after(crate::background::init_background)
+    // .after(crate::solid_pass::init_normal_pipeline),));
     ecs.prepare_buffers
         .add_systems(pack_buffers::<RawArrowInstance, (), With<ArrowBufferMarker>>);
     // ecs.update.add_systems(update_arrows);
 }
 
+fn init(
+    device: RD,
+    queue: RQ,
+    mut commands: Commands,
+    sl: Res<ShaderLoader>,
+    tr: Res<TextureBindGroupLayoutResource>,
+) {
+    let shader = sl.load_shader("./src/gizmo.wgsl");
+
+    let pipeline = sl.add_render_pipeline(SolidShader { handle: shader }, move || {
+        SolidPipelineModuleResourceExtras {
+            vertex_buffers: [model::ModelVertex::desc(), RawArrowInstance::desc()].into(),
+            label: Some("Gizmo pipeline"),
+            ..Default::default()
+        }
+    });
+
+    commands.spawn((
+        SolidRenderable {
+            pipeline,
+            renderable: Box::new(model_loader::load_model(
+                "arrow.obj",
+                device.0.clone(),
+                queue.0.clone(),
+                tr.0.clone(),
+            )),
+        },
+        instance_buffer!(@ "Gizmo",& device),
+        ArrowBufferMarker,
+    ));
+}
+
+// impl SolidDrawable  for
+// ArrowBufferMarker {
+//     type Resource = ();
+
+//     fn draw<'a: 'b, 'b>(
+//         &self,
+//         render_pass: &mut wgpu::RenderPass,
+//         instances: std::ops::Range<u32>,
+//         _asset: &'a Self::Resource,
+//     ) {
+//         // TODO set instance buffer properly
+//         // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+//         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+//         render_pass.set_push_constants(ShaderStages::VERTEX, 0, &(CHUNK_DIM as u32).to_ne_bytes());
+//         render_pass.draw_indexed(0..self.index_buffer.size() as u32 / 2, 0, instances);
+//     }
+
+//     fn aquire(&self) -> Option<Arc<Self::Resource>> {
+//         Some(Arc::new(()))
+//     }
+// }
 impl Packable for RawArrowInstance {
     type Input<'a> = (&'a Transform, &'a ArrowGizmo);
 
@@ -96,21 +166,3 @@ impl Packable for RawArrowInstance {
         })
     }
 }
-
-// {
-//             let arrow_instances =
-//                 QueryBuilder::<(&Transform, &ArrowGizmo)>::new(&mut self.ecs.world)
-//                     .build()
-//                     .iter(&self.ecs.world)
-//                     .map(|(transform, gizmo)| RawArrowInstance {
-//                         transform: transform.to_mat(),
-//                         color: gizmo.color,
-//                     })
-//                     .collect::<Vec<_>>();
-
-//             self.arrow_transform_instance_buffer.write(
-//                 &self.gpu.device,
-//                 &arrow_instances.as_slice(),
-//                 &self.gpu.queue,
-//             );
-//         }

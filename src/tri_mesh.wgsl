@@ -77,7 +77,7 @@ fn sample_planar_reflection(clip_coords: vec2f) -> vec4f {
 
 const s3: f32 = sqrt(3.);
 const s34: f32 = sqrt(3. / 4.);
-const c : f32 = sqrt(sqrt(3.)-1.)*2.;
+const c : f32 = sqrt(sqrt(3.) - 1.) * 2.;
 const i3: f32 = 1. / 3.;
 const axis: vec2f = vec2(s3 / 2., -.5); 
 struct Hex {
@@ -112,7 +112,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 
     let ray_direction = normalize(in.relative_position.xyz);
-    let flat_normal = normalize(cross(dpdx(in.relative_position), dpdy(in.relative_position)));
+    let flat_normal = normalize(cross(dpdy(in.relative_position), dpdx(in.relative_position)));
     let reflected_ray_direction = reflect(ray_direction, flat_normal);
 
     let planer_reflection_incident = sample_planar_reflection(in.clip_position.xy) * step(0.99, flat_normal.z);
@@ -131,7 +131,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 
 
-    let alpha = smoothstep(0.0002,0.0003, in.clip_position.z);
-    return vec4(color , alpha);
+    let alpha = smoothstep(0.0002, 0.0003, in.clip_position.z);
+    // return vec4(clamp(background_incident*vec3(1.0,1.0,1.0),vec3(0.0),vec3(100000.0)), alpha);
+    // return vec4(max(vec3(0.),flat_normal*vec3(1.0,1.0,0.0)), alpha);
+    return vec4(color, alpha);
     // let hx = hex_tile((in.relative_position.xz + camera.view_pos.xz)*0.5).position;
 }

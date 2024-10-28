@@ -251,7 +251,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 
     let nor = normalize(in.world_normal);
-    // let nor_flat = normalize(cross(dpdx(in.world_position  + disp), dpdy(in.world_position + disp)));
+    // let nor = normalize(cross(dpdy(in.relative_position ),dpdx(in.relative_position )));
     let dis = length(in.relative_position * 0.005);
     let freznel = fresnel(rd, nor, 5.0);
     let reflect_direction = reflect(rd, nor);
@@ -327,7 +327,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     return vec4(color, 1.0);
     // return vec4(vec3(1.0 - pow(edge,10.)),1.0);
-    // return vec4(clamp(nor,vec3(0.0),vec3(1.0)),1.0);
+    // return vec4(clamp(nor*vec3(1.0,1.0,0.0),vec3(0.0),vec3(1.0)),1.0);
 }
 
 // Stars / background 

@@ -42,6 +42,7 @@ use prelude::*;
 
 fn init_modules(initialiser: &mut Initailiser) {
     [
+        gizmo::init_mod,
         gpu::init_mod,
         input::init_mod,
         planet_shadows::init_mod,

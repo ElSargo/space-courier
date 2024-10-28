@@ -51,6 +51,14 @@ fn solid_pass(
             &view_textures.depth_texture.view,
             &reflected_view_textures.bind_group,
         ),
+        // DEL
+        //
+        // (
+        //     &reflected_camera_uniform.bind_group,
+        //     &view_textures.color_texture.view,
+        //     &view_textures.depth_texture.view,
+        //     &reflected_view_textures.null_bind_group,
+        // ),
     ] {
         let mut render_pass = pass(&mut cmd_encoder, color_view, depth_view);
 
@@ -194,7 +202,7 @@ pub fn solid_pass_render_descriptor<'a>(
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList, // 1.
             strip_index_format: None,
-            front_face: wgpu::FrontFace::Cw, // 2.
+            front_face: wgpu::FrontFace::Ccw, // 2.
             cull_mode: Some(wgpu::Face::Back),
             // cull_mode: None,
             // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
