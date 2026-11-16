@@ -1,4 +1,4 @@
-# Sargo's Pizza
+# Space Courier
 
 A space racing game written in Rust on [wgpu](https://wgpu.rs). There is no game engine underneath: the renderer, shader and pipeline management, physics and input handling are written from scratch, and `bevy_ecs` supplies only the entity-component system.
 
